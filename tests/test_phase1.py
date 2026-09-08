@@ -116,6 +116,37 @@ def test_packaged_ui_matches_source():
         assert archive.read('ui-web/index.php') == (ROOT / 'resource/client/ui-web/index.php').read_bytes()
 
 
+def test_client_github_downloads_use_proxy():
+    source = (ROOT / 'client').read_text()
+    assert 'gh_candidates' in source
+    assert 'wget_gh' in source
+    assert 'curl_gh' in source
+    assert 'https://ghfast.top/' in source
+    assert 'https://gh-proxy.com/' in source
+    pre = function('client', 'preDL')
+    assert 'wget_gh /tmp/de_GWD.zip' in pre
+    repo = function('client', 'repoDL')
+    assert 'wget_gh /tmp/nginx' in repo
+    assert 'wget_gh /tmp/client.zip' in repo
+    result = shell(
+        function('client', 'gh_candidates')
+        + '\nGH_PROXY=off gh_candidates https://raw.githubusercontent.com/stuinx/uGWD/main/x\n'
+    )
+    assert result.stdout.strip() == 'https://raw.githubusercontent.com/stuinx/uGWD/main/x'
+    result = shell(
+        function('client', 'gh_candidates')
+        + '\ngh_candidates https://raw.githubusercontent.com/stuinx/uGWD/main/x\n'
+    )
+    out = result.stdout.split()
+    assert out[0] == 'https://ghfast.top/https://raw.githubusercontent.com/stuinx/uGWD/main/x'
+    assert 'https://gh-proxy.com/https://raw.githubusercontent.com/stuinx/uGWD/main/x' in out
+    assert out[-1] == 'https://raw.githubusercontent.com/stuinx/uGWD/main/x'
+    ui4 = (ROOT / 'resource/client/ui-script/ui_4am').read_text()
+    assert 'wget_gh /tmp/geosite.dat' in ui4
+    auto = (ROOT / 'resource/client/ui-script/ui-autoUpdateHour').read_text()
+    assert 'ghfast.top/https://raw.githubusercontent.com/stuinx/uGWD/main/client' in auto
+
+
 def test_runtime_does_not_fetch_original_repo():
     banned = (
         'jacyl4/de_GWD',

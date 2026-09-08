@@ -23,7 +23,7 @@ bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx
 
 ```
 apt install -y wget
-bash <(wget --no-check-certificate -qO- https://ghproxy.net/https://raw.githubusercontent.com/stuinx/uGWD/main/client)
+bash <(wget --no-check-certificate -qO- https://ghfast.top/https://raw.githubusercontent.com/stuinx/uGWD/main/client)
 ```
 
 或

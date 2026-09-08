@@ -22,7 +22,7 @@ fi
 
 
 installCMD=`cat << EOF
-bash <(wget --no-check-certificate -qO- https://ghproxy.net/https://raw.githubusercontent.com/stuinx/uGWD/main/client)
+bash <(wget --no-check-certificate -qO- https://ghfast.top/https://raw.githubusercontent.com/stuinx/uGWD/main/client)
 EOF
 `
 
@@ -130,15 +130,65 @@ fi
 }
 
 
+# GitHub proxy for client downloads (not a LAN copy).
+#   GH_PROXY=https://gh-proxy.com/   force one prefix
+#   GH_PROXY=off                     GitHub direct
+# Default: ghfast.top, gh-proxy.com, ghproxy.net, then direct.
+gh_candidates(){
+local url="$1"
+case "$url" in
+  https://github.com/*|https://raw.githubusercontent.com/*|https://gist.githubusercontent.com/*|https://api.github.com/*|https://objects.githubusercontent.com/*|https://codeload.github.com/*) ;;
+  *) echo "$url"; return ;;
+esac
+if [[ ${GH_PROXY:-} = off || ${GH_PROXY:-} = OFF || ${GH_PROXY:-} = direct ]]; then
+  echo "$url"
+  return
+fi
+if [[ -n ${GH_PROXY:-} ]]; then
+  echo "${GH_PROXY%/}/$url"
+  echo "$url"
+  return
+fi
+echo "https://ghfast.top/$url"
+echo "https://gh-proxy.com/$url"
+echo "https://ghproxy.net/$url"
+echo "$url"
+}
+
+curl_gh(){
+local url="$1"
+local u
+for u in $(gh_candidates "$url"); do
+  curl -fsSL --connect-timeout 8 --max-time 60 --retry 0 "$u" && return 0
+done
+return 1
+}
+
+wget_gh(){
+local dest="$1" url="$2" u tmp
+tmp="${dest}.part"
+rm -f "$tmp"
+for u in $(gh_candidates "$url"); do
+  echo -e "  ${CYAN}$u${cRES}"
+  if wget --no-check-certificate --show-progress -c --timeout=30 --tries=2 --connect-timeout=8 -O "$tmp" "$u" && [[ -s $tmp ]]; then
+    mv -f "$tmp" "$dest"
+    return 0
+  fi
+  rm -f "$tmp"
+done
+return 1
+}
+
+
 
 preDL(){
 mkdir -p /opt/de_GWD
 mkdir -p /opt/de_GWD/.repo
 
-sha256sum_IPchnroute=$(curl -fsSLo- https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum)
+sha256sum_IPchnroute=$(curl_gh https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum)
 if [[ -n $sha256sum_IPchnroute ]] && [[ $(checkSum /opt/de_GWD/.repo/IPchnroute $sha256sum_IPchnroute) = "false" ]] ; then
 rm -rf /tmp/IPchnroute
-wget --no-check-certificate --show-progress -cqO /tmp/IPchnroute https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute
+wget_gh /tmp/IPchnroute https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute
 [[ $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "false" ]] && echo -e "${WHITE}IPchnroute${RED} Download Failed${cRES}" && exit
 [[ $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "true" ]] && mv -f /tmp/IPchnroute /opt/de_GWD/.repo/IPchnroute
 fi
@@ -146,11 +196,11 @@ fi
 if [[ -f "./de_GWD_$architecture.zip" ]]; then
     mv -f ./de_GWD_$architecture.zip /opt/de_GWD/.repo/de_GWD.zip
 else
-    sha256sum_de_GWD=$(curl -fsSLo- https://ghproxy.net/https://raw.githubusercontent.com/stuinx/uGWD/main/de_GWD_"$architecture".zip.sha256sum)
+    sha256sum_de_GWD=$(curl_gh https://raw.githubusercontent.com/stuinx/uGWD/main/de_GWD_"$architecture".zip.sha256sum)
     if [[ -n $sha256sum_de_GWD ]] && [[ $(checkSum /opt/de_GWD/.repo/de_GWD.zip $sha256sum_de_GWD) = "false" ]]; then
     rm -rf /tmp/de_GWD.zip
-    wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip https://ghproxy.net/https://raw.githubusercontent.com/stuinx/uGWD/main/de_GWD_"$architecture".zip
-    [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && rm -rf /tmp/de_GWD.zip && wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip https://github.com/stuinx/uGWD/releases/latest/download/de_GWD_"$architecture".zip
+    wget_gh /tmp/de_GWD.zip https://raw.githubusercontent.com/stuinx/uGWD/main/de_GWD_"$architecture".zip
+    [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && rm -rf /tmp/de_GWD.zip && wget_gh /tmp/de_GWD.zip https://github.com/stuinx/uGWD/releases/latest/download/de_GWD_"$architecture".zip
     [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit
     [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "true" ]] && mv -f /tmp/de_GWD.zip /opt/de_GWD/.repo/de_GWD.zip
     fi
@@ -175,43 +225,43 @@ chmod +x /opt/de_GWD/tcpTime
 
 repoDL(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Repo Download${cRES}\r\c"
-sha256sum_nginx=$(curl -fsSLo- https://raw.githubusercontent.com/stuinx/uGWD/$branch/resource/nginx/nginx_"$architecture".sha256sum)
-sha256sum_nginxConf=$(curl -fsSLo- https://raw.githubusercontent.com/stuinx/uGWD/$branch/resource/nginx/nginxConf.zip.sha256sum)
-sha256sum_client=$(curl -fsSLo- https://raw.githubusercontent.com/stuinx/uGWD/$branch/resource/client/Archive.zip.sha256sum)
+sha256sum_nginx=$(curl_gh https://raw.githubusercontent.com/stuinx/uGWD/$branch/resource/nginx/nginx_"$architecture".sha256sum)
+sha256sum_nginxConf=$(curl_gh https://raw.githubusercontent.com/stuinx/uGWD/$branch/resource/nginx/nginxConf.zip.sha256sum)
+sha256sum_client=$(curl_gh https://raw.githubusercontent.com/stuinx/uGWD/$branch/resource/client/Archive.zip.sha256sum)
 
 if [[ $(checkSum /usr/sbin/nginx $sha256sum_nginx) = "false" ]]; then
 rm -rf /tmp/nginx
-wget --show-progress -cqO /tmp/nginx https://raw.githubusercontent.com/stuinx/uGWD/$branch/resource/nginx/nginx_"$architecture"
+wget_gh /tmp/nginx https://raw.githubusercontent.com/stuinx/uGWD/$branch/resource/nginx/nginx_"$architecture"
 [[ $(checkSum /tmp/nginx $sha256sum_nginx) = "false" ]] && echo -e "${WHITE}NGINX Core${RED} Download Failed${cRES}" && exit
 [[ $(checkSum /tmp/nginx $sha256sum_nginx) = "true" ]] && mv -f /tmp/nginx /usr/sbin/nginx && chmod +x /usr/sbin/nginx
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/nginxConf.zip $sha256sum_nginxConf) = "false" ]]; then
 rm -rf /tmp/nginxConf.zip
-wget --show-progress -cqO /tmp/nginxConf.zip https://raw.githubusercontent.com/stuinx/uGWD/$branch/resource/nginx/nginxConf.zip
+wget_gh /tmp/nginxConf.zip https://raw.githubusercontent.com/stuinx/uGWD/$branch/resource/nginx/nginxConf.zip
 [[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
 [[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "true" ]] && mv -f /tmp/nginxConf.zip /opt/de_GWD/.repo/nginxConf.zip
 fi
 
 if [[ $(ttyd -v 2>&1 | grep -o '[0-9]\.[0-9]\.[0-9]') != $TTYD_Ver ]]; then
-wget --show-progress -cqO /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/$TTYD_Ver/ttyd.$(uname -m)
+wget_gh /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/$TTYD_Ver/ttyd.$(uname -m)
 [[ $? -ne 0 ]] && echo -e "${WHITE}TTYD${RED} Download Failed${cRES}"
 [[ $(du -sk /tmp/ttyd 2>/dev/null | awk '{print$1}') -gt 1000 ]] && mv -f /tmp/ttyd /usr/bin/ttyd && chmod +x /usr/bin/ttyd && TTYD_UPDATE="true"
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/client.zip $sha256sum_client) = "false" ]]; then
 rm -rf /tmp/client.zip
-wget --show-progress -cqO /tmp/client.zip https://raw.githubusercontent.com/stuinx/uGWD/$branch/resource/client/Archive.zip
+wget_gh /tmp/client.zip https://raw.githubusercontent.com/stuinx/uGWD/$branch/resource/client/Archive.zip
 [[ $(checkSum /tmp/client.zip $sha256sum_client) = "false" ]] && echo -e "${WHITE}Client Zip${RED} Download Failed${cRES}" && exit
 [[ $(checkSum /tmp/client.zip $sha256sum_client) = "true" ]] && mv -f /tmp/client.zip /opt/de_GWD/.repo/client.zip
 fi
 
 localVer=$(awk 'NR==1' /opt/de_GWD/.repo/version.php 2>/dev/null)
-remoteVer=$(curl -fsSLo- https://raw.githubusercontent.com/stuinx/uGWD/main/version.php | head -n 1)
+remoteVer=$(curl_gh https://raw.githubusercontent.com/stuinx/uGWD/main/version.php | head -n 1)
 
 if [[ $localVer != $remoteVer ]] || [[ ! -f '/opt/de_GWD/.repo/version.php' ]]; then
 rm -rf /opt/de_GWD/.repo/version.php
-wget --show-progress -cqO /opt/de_GWD/.repo/version.php https://raw.githubusercontent.com/stuinx/uGWD/main/version.php
+wget_gh /opt/de_GWD/.repo/version.php https://raw.githubusercontent.com/stuinx/uGWD/main/version.php
 [[ $? -ne 0 ]] && echo -e "${WHITE}Version file${RED} Download Failed${cRES}" && exit
 fi
 
@@ -228,10 +278,13 @@ if [[ -f $dest ]] && [[ $(checkSum "$dest" "$sum") = "true" ]]; then
   return 0
 fi
 tmp=$(mktemp /tmp/de-gwd-dl.XXXXXX) || return 1
-if curl -fsSL --connect-timeout 8 --max-time 180 --retry 2 --retry-delay 2 -o "$tmp" "$url" && [[ $(checkSum "$tmp" "$sum") = "true" ]]; then
-  mv -f "$tmp" "$dest"
-  return 0
-fi
+local u
+for u in $(gh_candidates "$url"); do
+  if curl -fsSL --connect-timeout 8 --max-time 180 --retry 0 -o "$tmp" "$u" && [[ $(checkSum "$tmp" "$sum") = "true" ]]; then
+    mv -f "$tmp" "$dest"
+    return 0
+  fi
+done
 rm -f "$tmp"
 return 1
 }
@@ -240,10 +293,10 @@ fetchRuntimeRules(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Runtime rules${cRES}\r\c"
 mkdir -p /opt/de_GWD/.repo /opt/de_GWD/vtrui /opt/de_GWD/nftables /etc/dnsmasq.d
 local geosite_sha256sum geoip_sha256sum IPchnroute_sha256sum DomainsChn_sha256sum
-geosite_sha256sum=$(curl -fsSL --connect-timeout 8 --max-time 60 https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat.sha256sum | awk '{print$1}')
-geoip_sha256sum=$(curl -fsSL --connect-timeout 8 --max-time 60 https://raw.githubusercontent.com/Loyalsoldier/geoip/release/geoip.dat.sha256sum | awk '{print$1}')
-IPchnroute_sha256sum=$(curl -fsSL --connect-timeout 8 --max-time 60 https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum)
-DomainsChn_sha256sum=$(curl -fsSL --connect-timeout 8 --max-time 60 https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.chn.txt.sha256sum)
+geosite_sha256sum=$(curl_gh https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat.sha256sum | awk '{print$1}')
+geoip_sha256sum=$(curl_gh https://raw.githubusercontent.com/Loyalsoldier/geoip/release/geoip.dat.sha256sum | awk '{print$1}')
+IPchnroute_sha256sum=$(curl_gh https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum)
+DomainsChn_sha256sum=$(curl_gh https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.chn.txt.sha256sum)
 fetchVerified /opt/de_GWD/.repo/geosite.dat https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat "$geosite_sha256sum" || true
 fetchVerified /opt/de_GWD/.repo/geoip.dat https://raw.githubusercontent.com/Loyalsoldier/geoip/release/geoip.dat "$geoip_sha256sum" || true
 fetchVerified /opt/de_GWD/.repo/IPchnroute https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute "$IPchnroute_sha256sum" || true
@@ -2473,7 +2526,7 @@ fi
 
 
 installkernel(){
-bash <(wget --show-progress -cqO- https://raw.githubusercontent.com/stuinx/uGWD/main/resource/kernel/installkernel)
+bash <(curl_gh https://raw.githubusercontent.com/stuinx/uGWD/main/resource/kernel/installkernel)
 }
 
 
