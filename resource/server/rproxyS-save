@@ -1,0 +1,122 @@
+#!/bin/bash
+# RproxyS portal: wu/LA-style raw TCP tunnel only.
+mkdir -p /opt/de_GWD/RproxyS
+if [[ ! -x /opt/de_GWD/RproxyS/RproxyS ]]; then
+  cp -f /opt/de_GWD/vtrui/vtrui /opt/de_GWD/RproxyS/RproxyS
+  chmod +x /opt/de_GWD/RproxyS/RproxyS
+fi
+
+RproxySinStatus=$(jq -r '.FORWARD.Rproxy.server.inStatus // .FORWARD.Rproxy.server.status' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+RproxySmappingStatus=$(jq -r '.FORWARD.Rproxy.server.mappingStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+RproxyStunnelPort=$(jq -r '.FORWARD.Rproxy.server.tunnel.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+RproxyStunnelUUID=$(jq -r '.FORWARD.Rproxy.server.tunnel.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+RproxySinUUID=$(jq -r '.FORWARD.Rproxy.server.inUUID[].RproxyS0uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+RproxySmappingList=$(jq -r '.FORWARD.Rproxy.server.mapping' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+
+if [[ -z $RproxyStunnelPort || -z $RproxyStunnelUUID ]]; then
+  echo "RproxyS tunnel port/uuid missing in 0conf" >&2
+  exit 1
+fi
+if [[ $RproxyStunnelPort = "55443" || $RproxyStunnelPort = "443" ]]; then
+  echo "tunnel port $RproxyStunnelPort conflicts with nginx" >&2
+  exit 1
+fi
+
+cat << EOF >/opt/de_GWD/RproxyS/config.json
+{
+  "log": {
+    "access":"none",
+    "error":"none",
+    "loglevel":"none"
+  },
+  "dns":{
+    "queryStrategy":"UseIP",
+    "disableCache":true,
+    "servers":["tcp+local://127.0.0.1:53"]
+  },
+  "routing":{
+    "rules":[
+      {"type":"field","inboundTag":["reverseTunnel"],"domain":["full:reverse.localhost"],"outboundTag":"portal"},
+      {"type":"field","inboundTag":["reverseTunnel"],"outboundTag":"portal"}
+    ]
+  },
+  "reverse": {
+    "portals": [{
+        "tag": "portal",
+        "domain": "reverse.localhost"
+     }]
+  },
+  "inbounds": [
+    {
+      "tag": "reverseTunnel",
+      "port": $RproxyStunnelPort,
+      "protocol": "vmess",
+      "settings":{
+        "clients":[
+          {
+            "id":"$RproxyStunnelUUID",
+            "alterId": 0
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp"
+      }
+    }
+  ]
+}
+EOF
+
+if [[ $RproxySinStatus = "on" ]]; then
+  for uuid in $RproxySinUUID; do
+    uuidStr='{"id":"'$uuid'", "alterId":0}'
+    jq --argjson uuidStr "$uuidStr" '
+      .inbounds |= map(if .protocol=="vmess" then .settings.clients+=[$uuidStr] else . end)
+    ' /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
+  done
+  jq '
+    .inbounds |= map(if .protocol=="vmess" then .settings.clients=(.settings.clients|unique) else . end)
+  ' /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
+fi
+
+if [[ $RproxySmappingStatus = "on" && -n $RproxySmappingList && $RproxySmappingList != "null" ]]; then
+  len=$(echo $RproxySmappingList | jq length)
+  for (( i=0; i<$len; i++ )); do
+    port=$(echo $RproxySmappingList | jq -r --argjson i "$i" '.[$i].port')
+    protocol=$(echo $RproxySmappingList | jq -r --argjson i "$i" '.[$i].protocol')
+    [[ -z $protocol || $protocol == "tcp+udp" || $protocol == "null" ]] && protocol="tcp,udp"
+    [[ $port = "$RproxyStunnelPort" || $port = "55443" || $port = "443" ]] && continue
+    RontingMapping=$(jq -nc --arg tag "mapping$i" '{type:"field",inboundTag:[$tag],outboundTag:"portal"}')
+    IBmapping=$(jq -nc --arg tag "mapping$i" --argjson port "$port" --arg net "$protocol" \
+      '{tag:$tag,port:$port,protocol:"dokodemo-door",settings:{address:"127.0.0.1",port:$port,network:$net}}')
+    jq --argjson RontingMapping "$RontingMapping" --argjson IBmapping "$IBmapping" \
+      '.routing.rules+=[$RontingMapping] | .inbounds+=[$IBmapping]' \
+      /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
+  done
+fi
+
+chmod 666 /opt/de_GWD/RproxyS/config.json
+[[ -d /var/www/ssl ]] && chmod 644 /var/www/ssl/*.key 2>/dev/null || true
+
+cat << "EOF" >/etc/systemd/system/RproxyS.service
+[Unit]
+Description=Rproxy Service
+After=network.target nss-lookup.target
+
+[Service]
+User=root
+Type=simple
+ExecStart=/opt/de_GWD/RproxyS/RproxyS run -config /opt/de_GWD/RproxyS/config.json
+Restart=always
+RestartSec=2
+TimeoutStopSec=5
+LimitNOFILE=1048576
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload >/dev/null
+systemctl enable RproxyS >/dev/null 2>&1
+systemctl restart RproxyS

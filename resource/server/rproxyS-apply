@@ -1,0 +1,46 @@
+#!/bin/bash
+# Apply RproxyS on the VPS using the same 0conf schema as the LAN client UI.
+# Defaults avoid nginx 55443. Override with RPROXY_TUNNEL_PORT / RPROXY_UUID / RPROXY_MAP_PORTS.
+set -euo pipefail
+
+TUNNEL_PORT="${RPROXY_TUNNEL_PORT:-55444}"
+UUID="${RPROXY_UUID:-$(cat /proc/sys/kernel/random/uuid)}"
+MAP_PORTS="${RPROXY_MAP_PORTS:-55445,55446,55447,55448,55455,55456}"
+HOST="${RPROXY_HOST:-sg.samue.qzz.io}"
+
+if [[ "$TUNNEL_PORT" == "55443" ]]; then
+  echo "55443 is nginx (DoH/WS); pick another tunnel port" >&2
+  exit 1
+fi
+
+mkdir -p /opt/de_GWD
+[[ -f /opt/de_GWD/0conf ]] || echo '{}' >/opt/de_GWD/0conf
+
+mapping_json='[]'
+IFS=',' read -ra ports <<< "$MAP_PORTS"
+for p in "${ports[@]}"; do
+  p="${p// /}"
+  [[ -z "$p" || "$p" == "55443" ]] && continue
+  mapping_json=$(jq --arg p "$p" '. + [{"port":$p,"protocol":"tcp,udp"}]' <<<"$mapping_json")
+done
+
+jq --arg port "$TUNNEL_PORT" --arg uuid "$UUID" --argjson mapping "$mapping_json" '
+  .FORWARD = (.FORWARD // {}) |
+  .FORWARD.Rproxy = (.FORWARD.Rproxy // {}) |
+  .FORWARD.Rproxy.server.inStatus = "off" |
+  .FORWARD.Rproxy.server.mappingStatus = "on" |
+  .FORWARD.Rproxy.server.tunnel.port = $port |
+  .FORWARD.Rproxy.server.tunnel.uuid = $uuid |
+  .FORWARD.Rproxy.server.mapping = $mapping
+' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+chmod 0640 /opt/de_GWD/0conf
+
+here=$(cd "$(dirname "$0")" && pwd)
+bash "$here/rproxyS-save"
+
+cat <<EOF
+RproxyS tunnel: ${HOST}:${TUNNEL_PORT}
+UUID: ${UUID}
+Mapping ports: ${MAP_PORTS}
+Client RproxyC address: ${HOST}:${TUNNEL_PORT}
+EOF
