@@ -179,6 +179,48 @@ done
 return 1
 }
 
+# Docker Hub is often RST from China. Keep iptables:false and add pull-through mirrors.
+writeDockerDaemon(){
+mkdir -p /etc/docker
+python3 - <<'PY'
+import json, os
+path = "/etc/docker/daemon.json"
+old = ""
+data = {}
+if os.path.isfile(path):
+    old = open(path).read()
+    try:
+        data = json.loads(old) or {}
+    except Exception:
+        data = {}
+data["iptables"] = False
+wanted = [
+    "https://docker.1ms.run",
+    "https://docker.m.daocloud.io",
+    "https://hub.rat.dev",
+]
+mirrors = [m for m in (data.get("registry-mirrors") or []) if isinstance(m, str)]
+for m in wanted:
+    if m not in mirrors:
+        mirrors.append(m)
+data["registry-mirrors"] = mirrors
+new = json.dumps(data, indent=2) + "\n"
+if new != old:
+    open(path, "w").write(new)
+    print("changed")
+else:
+    print("same")
+PY
+}
+
+ensureDockerMirrors(){
+local st
+st=$(writeDockerDaemon)
+if [[ $st = changed ]] && systemctl list-unit-files docker.service >/dev/null 2>&1; then
+  systemctl restart docker >/dev/null 2>&1 || true
+fi
+}
+
 
 
 preDL(){
@@ -973,13 +1015,8 @@ sync
 sysctl -p >/dev/null 2>&1
 
 if [[ -n $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && [[ -n $(dpkg -l | awk '{print$2}' | grep '^containerd.io$') ]]; then
-mkdir -p /etc/docker/
 systemctl stop docker docker.socket containerd
-cat << EOF >/etc/docker/daemon.json
-{
-  "iptables": false
-}
-EOF
+writeDockerDaemon >/dev/null
 systemctl restart docker
 fi
 
@@ -2303,10 +2340,27 @@ cp -f /opt/de_GWD/.repo/version.php /var/www/html/act/version.php
 
 pullpihole(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Install Pi-hole${cRES}\r\c"
-if ! docker pull pihole/pihole:latest; then
-  echo -e "${WHITE}Pi-hole image${RED} Download Failed${cRES}"
-  return 1
+ensureDockerMirrors
+if docker image inspect pihole/pihole:latest >/dev/null 2>&1; then
+  return 0
 fi
+if docker pull pihole/pihole:latest; then
+  return 0
+fi
+local img
+for img in \
+  docker.m.daocloud.io/pihole/pihole:latest \
+  docker.1ms.run/pihole/pihole:latest \
+  hub.rat.dev/pihole/pihole:latest
+do
+  echo -e "  ${CYAN}docker pull $img${cRES}"
+  if docker pull "$img"; then
+    docker tag "$img" pihole/pihole:latest
+    return 0
+  fi
+done
+echo -e "${WHITE}Pi-hole image${RED} Download Failed${cRES}"
+return 1
 }
 
 
@@ -2428,6 +2482,7 @@ if [[ $(jq -r '.FORWARD.block53' /opt/de_GWD/0conf 2>/dev/null) = "on" ]]; then
 fi
 echo
 
+if [[ -f /opt/de_GWD/pihole/pihole.toml ]]; then
 python3 <<EOF
 import toml
 with open("/opt/de_GWD/pihole/pihole.toml", "r") as f:
@@ -2438,8 +2493,8 @@ data["dns"]["port"] = 53
 with open("/opt/de_GWD/pihole/pihole.toml", "w") as f:
     toml.dump(data, f)
 EOF
-
 docker restart pihole >/dev/null 2>&1
+fi
 
 if [[ -n $(jq -r '.address.alias' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$') ]]; then
   /opt/de_GWD/ui-markThis >/dev/null 2>&1
@@ -2712,11 +2767,12 @@ nginxSet
 
 installWebUI
 
-pullpihole || exit 1
-
+if pullpihole; then
 installPihole
-
 piholeSet
+else
+echo -e "${YELLOW}Pi-hole image missing; continue without Pi-hole${cRES}"
+fi
 
 fetchRuntimeRules || exit 1
 
@@ -2768,11 +2824,12 @@ installSmartDNS
 
 installXray
 
-pullpihole || return 1
-
+if pullpihole; then
 installPihole
-
 piholeSet
+else
+echo -e "${YELLOW}Pi-hole image missing; continue without Pi-hole${cRES}"
+fi
 
 fetchRuntimeRules || return 1
 
@@ -2804,11 +2861,12 @@ nginxSet
 
 installWebUI
 
-pullpihole || return 1
-
+if pullpihole; then
 installPihole
-
 piholeSet
+else
+echo -e "${YELLOW}Pi-hole image missing; continue without Pi-hole${cRES}"
+fi
 
 fetchRuntimeRules || return 1
 

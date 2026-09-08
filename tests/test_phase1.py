@@ -43,14 +43,25 @@ def test_install_does_not_stop_stack_on_public_probe_text():
 
 def test_tproxy_after_runtime_rules():
     source = (ROOT / 'client').read_text()
-    install = function('client', 'installGWD') if False else source
     fetch_at = source.find('fetchRuntimeRules || exit 1')
     nft_at = source.find('installNftables || exit 1')
-    pull_at = source.find('pullpihole || exit 1')
+    pull_at = source.find('\npullpihole')
     first_nft = source.find('\ninstallNftables\n')
     assert pull_at != -1 and fetch_at != -1 and nft_at != -1
     assert pull_at < fetch_at < nft_at
     assert first_nft == -1
+
+
+def test_pihole_pull_uses_docker_mirrors():
+    source = (ROOT / 'client').read_text()
+    pull = function('client', 'pullpihole')
+    assert 'docker.m.daocloud.io/pihole/pihole:latest' in pull
+    assert 'docker.1ms.run/pihole/pihole:latest' in pull
+    daemon = function('client', 'writeDockerDaemon')
+    assert 'registry-mirrors' in daemon
+    assert 'docker.m.daocloud.io' in daemon
+    assert 'iptables' in daemon
+    assert 'continue without Pi-hole' in source
 
 
 def test_sudoers_no_wildcard_nopasswd():

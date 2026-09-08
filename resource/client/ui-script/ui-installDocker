@@ -25,11 +25,28 @@ unset aptPKG
 if [[ -n $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && [[ -n $(dpkg -l | awk '{print$2}' | grep '^containerd.io$') ]]; then
 mkdir -p /etc/docker/
 systemctl stop docker containerd
-cat << EOF >/etc/docker/daemon.json
-{
-  "iptables": false
-}
-EOF
+python3 - <<'PY'
+import json, os
+path = "/etc/docker/daemon.json"
+data = {}
+if os.path.isfile(path):
+    try:
+        data = json.load(open(path)) or {}
+    except Exception:
+        data = {}
+data["iptables"] = False
+wanted = [
+    "https://docker.1ms.run",
+    "https://docker.m.daocloud.io",
+    "https://hub.rat.dev",
+]
+mirrors = [m for m in (data.get("registry-mirrors") or []) if isinstance(m, str)]
+for m in wanted:
+    if m not in mirrors:
+        mirrors.append(m)
+data["registry-mirrors"] = mirrors
+open(path, "w").write(json.dumps(data, indent=2) + "\n")
+PY
 systemctl restart docker
 fi
 
