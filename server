@@ -3238,10 +3238,10 @@ fi
 if [[ -n $oldUUID ]]; then
   echo -e "${GREEN} Tunnel UUID  (empty = $oldUUID)${cRES}"
 else
-  echo -e "${GREEN} Tunnel UUID${cRES}"
+  echo -e "${GREEN} Tunnel UUID  (empty = generate)${cRES}"
 fi
 read tunnelUUID
-[[ -z $tunnelUUID ]] && tunnelUUID="$oldUUID"
+[[ -z $tunnelUUID ]] && tunnelUUID="${oldUUID:-$(cat /proc/sys/kernel/random/uuid)}"
 [[ -n $tunnelUUID ]] || { echo -e "${RED}Invalid UUID${cRES}"; return 1; }
 jq --arg port "$tunnelPort" --arg uuid "$tunnelUUID" '
   .FORWARD = (.FORWARD // {}) |
