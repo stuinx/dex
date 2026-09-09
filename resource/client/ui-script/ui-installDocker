@@ -37,14 +37,13 @@ if os.path.isfile(path):
 data["iptables"] = False
 wanted = [
     "https://docker.1ms.run",
-    "https://docker.m.daocloud.io",
+    "https://docker.1panel.live",
     "https://hub.rat.dev",
 ]
-mirrors = [m for m in (data.get("registry-mirrors") or []) if isinstance(m, str)]
-for m in wanted:
-    if m not in mirrors:
-        mirrors.append(m)
-data["registry-mirrors"] = mirrors
+existing = [m for m in (data.get("registry-mirrors") or []) if isinstance(m, str)]
+skip = {"https://docker.m.daocloud.io"}
+extras = [m for m in existing if m not in wanted and m not in skip]
+data["registry-mirrors"] = wanted + extras
 open(path, "w").write(json.dumps(data, indent=2) + "\n")
 PY
 systemctl restart docker

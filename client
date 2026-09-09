@@ -78,12 +78,13 @@ systemctl enable --now cron >/dev/null 2>&1 || true
 
 pkgDEP2(){
 install -m 0755 -d /etc/apt/keyrings
-dockerGpg=https://download.docker.com/linux/debian/gpg
-dockerUri=https://download.docker.com/linux/debian
-if ! curl -fsSL --connect-timeout 8 --max-time 60 -o /etc/apt/keyrings/docker.asc "$dockerGpg"; then
-  dockerGpg=https://mirrors.ustc.edu.cn/docker-ce/linux/debian/gpg
-  dockerUri=https://mirrors.ustc.edu.cn/docker-ce/linux/debian
-  curl -fsSL --connect-timeout 8 --max-time 60 -o /etc/apt/keyrings/docker.asc "$dockerGpg" || true
+# download.docker.com is often RST in China; USTC first.
+dockerGpg=https://mirrors.ustc.edu.cn/docker-ce/linux/debian/gpg
+dockerUri=https://mirrors.ustc.edu.cn/docker-ce/linux/debian
+if ! curl -fsSL --connect-timeout 8 --max-time 30 -o /etc/apt/keyrings/docker.asc "$dockerGpg"; then
+  dockerGpg=https://download.docker.com/linux/debian/gpg
+  dockerUri=https://download.docker.com/linux/debian
+  curl -fsSL --connect-timeout 8 --max-time 30 -o /etc/apt/keyrings/docker.asc "$dockerGpg" || true
 fi
 chmod a+r /etc/apt/keyrings/docker.asc
 cat << EOF >/etc/apt/sources.list.d/docker.sources
@@ -159,7 +160,7 @@ curl_gh(){
 local url="$1"
 local u
 for u in $(gh_candidates "$url"); do
-  curl -fsSL --connect-timeout 8 --max-time 60 --retry 0 "$u" && return 0
+  curl -fsSL --connect-timeout 8 --max-time 90 --retry 0 "$u" 2>/dev/null && return 0
 done
 return 1
 }
@@ -170,7 +171,7 @@ tmp="${dest}.part"
 rm -f "$tmp"
 for u in $(gh_candidates "$url"); do
   echo -e "  ${CYAN}$u${cRES}"
-  if wget --no-check-certificate --show-progress -c --timeout=30 --tries=2 --connect-timeout=8 -O "$tmp" "$u" && [[ -s $tmp ]]; then
+  if wget --no-check-certificate --show-progress --timeout=30 --tries=2 --connect-timeout=10 -O "$tmp" "$u" && [[ -s $tmp ]]; then
     mv -f "$tmp" "$dest"
     return 0
   fi
@@ -196,14 +197,14 @@ if os.path.isfile(path):
 data["iptables"] = False
 wanted = [
     "https://docker.1ms.run",
-    "https://docker.m.daocloud.io",
+    "https://docker.1panel.live",
     "https://hub.rat.dev",
 ]
-mirrors = [m for m in (data.get("registry-mirrors") or []) if isinstance(m, str)]
-for m in wanted:
-    if m not in mirrors:
-        mirrors.append(m)
-data["registry-mirrors"] = mirrors
+existing = [m for m in (data.get("registry-mirrors") or []) if isinstance(m, str)]
+# DaoCloud rejects pihole/pihole (not on allowlist); do not keep it first.
+skip = {"https://docker.m.daocloud.io"}
+extras = [m for m in existing if m not in wanted and m not in skip]
+data["registry-mirrors"] = wanted + extras
 new = json.dumps(data, indent=2) + "\n"
 if new != old:
     open(path, "w").write(new)
@@ -322,7 +323,7 @@ fi
 tmp=$(mktemp /tmp/de-gwd-dl.XXXXXX) || return 1
 local u
 for u in $(gh_candidates "$url"); do
-  if curl -fsSL --connect-timeout 8 --max-time 180 --retry 0 -o "$tmp" "$u" && [[ $(checkSum "$tmp" "$sum") = "true" ]]; then
+  if curl -fsSL --connect-timeout 8 --max-time 300 --retry 0 -o "$tmp" "$u" 2>/dev/null && [[ $(checkSum "$tmp" "$sum") = "true" ]]; then
     mv -f "$tmp" "$dest"
     return 0
   fi
@@ -2344,21 +2345,23 @@ ensureDockerMirrors
 if docker image inspect pihole/pihole:latest >/dev/null 2>&1; then
   return 0
 fi
-if docker pull pihole/pihole:latest; then
-  return 0
-fi
+# docker.io RST in China; DaoCloud allowlist excludes pihole. Try CN prefixes first.
 local img
 for img in \
-  docker.m.daocloud.io/pihole/pihole:latest \
   docker.1ms.run/pihole/pihole:latest \
+  docker.1panel.live/pihole/pihole:latest \
   hub.rat.dev/pihole/pihole:latest
 do
   echo -e "  ${CYAN}docker pull $img${cRES}"
-  if docker pull "$img"; then
-    docker tag "$img" pihole/pihole:latest
+  if timeout 180 docker pull "$img"; then
+    docker tag "$img" pihole/pihole:latest >/dev/null
     return 0
   fi
 done
+echo -e "  ${CYAN}docker pull pihole/pihole:latest${cRES}"
+if timeout 90 docker pull pihole/pihole:latest; then
+  return 0
+fi
 echo -e "${WHITE}Pi-hole image${RED} Download Failed${cRES}"
 return 1
 }
@@ -2573,7 +2576,12 @@ rm -rf /tmp/ui-web
 rm -rf /tmp/client.zip
 rm -rf /opt/de_GWD/update
 
-if [[ $(dpkg --list | grep linux-image | wc -l) != "1" ]]; then
+if [[ -f /opt/de_GWD/0conf ]]; then
+jq --arg updateCMD "$installCMD" '.update.updateCMD=$updateCMD' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+chmod 0640 /opt/de_GWD/0conf
+fi
+
+if [[ $(dpkg --list | grep linux-image | wc -l) != "1" ]] && [[ $(uname -r) != *zabbly* ]]; then
 echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Kernel updated${cRES}"
 fi
 }

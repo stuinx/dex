@@ -55,13 +55,20 @@ def test_tproxy_after_runtime_rules():
 def test_pihole_pull_uses_docker_mirrors():
     source = (ROOT / 'client').read_text()
     pull = function('client', 'pullpihole')
-    assert 'docker.m.daocloud.io/pihole/pihole:latest' in pull
     assert 'docker.1ms.run/pihole/pihole:latest' in pull
+    assert 'docker.1panel.live/pihole/pihole:latest' in pull
+    assert pull.find('docker.1ms.run/pihole/pihole:latest') < pull.find('timeout 90 docker pull pihole/pihole:latest')
+    assert 'docker.m.daocloud.io/pihole/pihole' not in pull
+    assert 'timeout 180 docker pull' in pull
     daemon = function('client', 'writeDockerDaemon')
-    assert 'registry-mirrors' in daemon
-    assert 'docker.m.daocloud.io' in daemon
+    assert 'docker.1ms.run' in daemon
+    assert 'docker.1panel.live' in daemon
     assert 'iptables' in daemon
     assert 'continue without Pi-hole' in source
+    dep2 = function('client', 'pkgDEP2')
+    assert dep2.find('mirrors.ustc.edu.cn/docker-ce') < dep2.find('download.docker.com/linux/debian/gpg')
+    post = function('client', 'postInstall')
+    assert '.update.updateCMD=$updateCMD' in post
 
 
 def test_sudoers_no_wildcard_nopasswd():

@@ -26,6 +26,8 @@ apt install -y wget
 bash <(wget --no-check-certificate -qO- https://ghfast.top/https://raw.githubusercontent.com/stuinx/dex/main/client)
 ```
 
+国内安装默认经 `ghfast.top` 拉 GitHub 资源，失败会换 `gh-proxy.com` / `ghproxy.net`。Pi-hole 镜像优先 `docker.1ms.run` / `docker.1panel.live`，不先打 Docker Hub。可覆盖：`GH_PROXY=https://gh-proxy.com/`。
+
 或
 
 手动上传 client 文件与 de_GWD 压缩包后
