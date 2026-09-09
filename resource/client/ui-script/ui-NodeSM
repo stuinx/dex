@@ -6,6 +6,15 @@ jq 'del(.outbounds[] | select(.tag == "nodeSMtvb"))' |\
 jq 'del(.outbounds[] | select(.tag == "nodeSMbahamut"))' |\
 jq 'del(.outbounds[] | select(.tag == "nodeSMopenai"))' |\
 jq 'del(.outbounds[] | select(.tag == "nodeSMapple"))' |\
+jq 'del(.outbounds[] | select(.tag == "nodeSMclaude"))' |\
+jq 'del(.outbounds[] | select(.tag == "nodeSMgemini"))' |\
+jq 'del(.outbounds[] | select(.tag == "nodeSMgrok"))' |\
+jq 'del(.outbounds[] | select(.tag == "nodeSMwikipedia"))' |\
+jq 'del(.outbounds[] | select(.tag == "nodeSMreddit"))' |\
+jq 'del(.outbounds[] | select(.tag == "nodeSMgithub"))' |\
+jq 'del(.outbounds[] | select(.tag == "nodeSMdiscord"))' |\
+jq 'del(.outbounds[] | select(.tag == "nodeSMtelegram"))' |\
+jq 'del(.outbounds[] | select(.tag == "nodeSMtwitter"))' |\
 jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMyoutube"))' |\
 jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMnetflix"))' |\
 jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMhdh"))' |\
@@ -13,10 +22,45 @@ jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMtvb"))' |\
 jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMbahamut"))' |\
 jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMopenai"))' |\
 jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMapple"))' |\
+jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMclaude"))' |\
+jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMgemini"))' |\
+jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMgrok"))' |\
+jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMwikipedia"))' |\
+jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMreddit"))' |\
+jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMgithub"))' |\
+jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMdiscord"))' |\
+jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMtelegram"))' |\
+jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMtwitter"))' |\
 jq 'del(.routing.rules[] | select(.domain == ["geosite:apple","geosite:apple-ads","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]))' |\
 jq 'del(.routing.rules[] | select(.domain == ["domain:steamserver.net","geosite:steam@cn","geosite:category-games@cn"]))' | sponge /opt/de_GWD/vtrui/config.json
 
-
+nodeSMslot(){
+local arg=$1 key=$2 tag=$3 routingDomain=$4 routingIP=${5:-}
+local address tls uuid path nodeSMnum
+if [[ -n $arg ]] && [[ $arg != "0" ]]; then
+nodeSMnum=$((arg-1))
+address=$(jq -r --argjson nodecheck $nodeSMnum '.v2node | to_entries[] | select(.key == $nodecheck) | .value.domain' /opt/de_GWD/0conf)
+tls=$(jq -r --argjson nodecheck $nodeSMnum '.v2node | to_entries[] | select(.key == $nodecheck) | .value.tls' /opt/de_GWD/0conf)
+uuid=$(jq -r --argjson nodecheck $nodeSMnum '.v2node | to_entries[] | select(.key == $nodecheck) | .value.uuid' /opt/de_GWD/0conf)
+path=$(jq -r --argjson nodecheck $nodeSMnum '.v2node | to_entries[] | select(.key == $nodecheck) | .value.path' /opt/de_GWD/0conf)
+jq --arg address "$address" --arg key "$key" '.v2nodeDIV.nodeSM[$key]=$address' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+/opt/de_GWD/ui-V2routingDomain $tag $routingDomain
+[[ -n $routingIP ]] && /opt/de_GWD/ui-V2routingIP $tag $routingIP
+/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+elif [[ $arg = "0" ]]; then
+jq --arg key "$key" 'del(.v2nodeDIV.nodeSM[$key])' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+else
+address=$(jq -r --arg key "$key" '.v2nodeDIV.nodeSM[$key]' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+	if [[ -n $address ]]; then
+		tls=$(jq -r --arg nodecheck $address '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .value.tls' /opt/de_GWD/0conf)
+		uuid=$(jq -r --arg nodecheck $address '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .value.uuid' /opt/de_GWD/0conf)
+		path=$(jq -r --arg nodecheck $address '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .value.path' /opt/de_GWD/0conf)
+		/opt/de_GWD/ui-V2routingDomain $tag $routingDomain
+		[[ -n $routingIP ]] && /opt/de_GWD/ui-V2routingIP $tag $routingIP
+		/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+	fi
+fi
+}
 
 if [[ -n $2 ]] && [[ $2 != "0" ]]; then
 nodeSMnumYoutube=$[$2-1]
@@ -214,9 +258,19 @@ else
 	fi
 fi
 
+nodeSMslot "${10}" claude nodeSMclaude '["geosite:anthropic","domain:claude.ai"]'
+nodeSMslot "${11}" gemini nodeSMgemini '["geosite:google-gemini","domain:gemini.google.com","domain:aistudio.google.com","domain:generativelanguage.googleapis.com"]'
+nodeSMslot "${12}" grok nodeSMgrok '["domain:x.ai","domain:grok.com","domain:grok.x.ai"]'
+nodeSMslot "${13}" wikipedia nodeSMwikipedia '["geosite:wikipedia","geosite:wikimedia"]'
+nodeSMslot "${14}" reddit nodeSMreddit '["geosite:reddit"]'
+nodeSMslot "${15}" github nodeSMgithub '["geosite:github"]'
+nodeSMslot "${16}" discord nodeSMdiscord '["geosite:discord"]'
+nodeSMslot "${17}" telegram nodeSMtelegram '["geosite:telegram"]' '["geoip:telegram"]'
+nodeSMslot "${18}" twitter nodeSMtwitter '["geosite:twitter","domain:x.com"]' '["geoip:twitter"]'
+
 /opt/de_GWD/ui-submitListBWsm
 
-if [[ $2 = "0" ]] && [[ $3 = "0" ]] && [[ $4 = "0" ]] && [[ $5 = "0" ]] && [[ $6 = "0" ]] && [[ $7 = "0" ]] && [[ $8 = "0" ]]; then
+if [[ $2 = "0" ]] && [[ $3 = "0" ]] && [[ $4 = "0" ]] && [[ $5 = "0" ]] && [[ $6 = "0" ]] && [[ $7 = "0" ]] && [[ $8 = "0" ]] && [[ ${10:-0} = "0" ]] && [[ ${11:-0} = "0" ]] && [[ ${12:-0} = "0" ]] && [[ ${13:-0} = "0" ]] && [[ ${14:-0} = "0" ]] && [[ ${15:-0} = "0" ]] && [[ ${16:-0} = "0" ]] && [[ ${17:-0} = "0" ]] && [[ ${18:-0} = "0" ]]; then
 	jq '.v2nodeDIV.nodeSM.status="off"' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 else
 	jq '.v2nodeDIV.nodeSM.status="on"' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
