@@ -19,23 +19,21 @@
 ## 1. VLESS + REALITY（raw，可选 Vision）
 
 1. 55 → `[1]` → `[1]` Enable。
-2. Listen port：独立公网端口（空则 8443）。防火墙/DNAT 要放到这台机器。
-3. dest：空则 `127.0.0.1:<nginx TLS 端口>`（用本机证书站做伪装）。
-4. serverName/SNI：空则证书域名。
-5. Vision：空则 Y（`xtls-rprx-vision`）。旧客户端不支持 flow 时选 `n`。
-6. 私钥/公钥/shortId 自动生成。菜单 11 取 `vless://`（含 pbk、sid、sni、flow）。
-7. 关闭：55 → `[1]` → `[2]` Disable。
+2. Listen port、dest、SNI、Vision 均需填写，无默认值。
+3. Vision 填 `y` 为 `xtls-rprx-vision`，填 `n` 则无 flow。
+4. 私钥/公钥/shortId 自动生成。菜单 11 取 `vless://`（含 pbk、sid、sni、flow）。
+5. 关闭：55 → `[1]` → `[2]` Disable。
 
 ## 3. SOCKS5
 
 1. 55 → `[3]` → `[1]` Enable。
-2. 端口空则 1080；用户/密码空则自动生成。UDP 开启。
+2. 端口、用户、密码均需填写。UDP 开启。
 3. 菜单 11 取 `socks5://user:pass@host:port`。
 4. 关闭：55 → `[3]` → `[2]` Disable。
 
 ## 4. dokodemo 多规则 TCP/UDP
 
-1. 55 → `[4]` → `[1]` 添加：Listen port、目标 `host:port`、网络（空则 `tcp,udp`）。可多次添加。
+1. 55 → `[4]` → `[1]` 添加：Listen port、目标 `host:port`、网络（`tcp` / `udp` / `tcp,udp`）均需填写。
 2. 删除一条：`[2]` 后输入该 listen port；输入 `all` 或选 `[3]` 关闭全部。
 3. 菜单 11 打印 `host:listen -> target:port network`。
 

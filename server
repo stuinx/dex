@@ -2109,24 +2109,22 @@ fi
 [[ $sw = "1" ]] || return
 domain=$(extraGetDomain)
 [[ -n $domain ]] || { echo -e "${RED}Server domain unavailable${cRES}"; return 1; }
-echo -e "${GREEN} Listen port  (empty = 8443)${cRES}"
+echo -e "${GREEN} Listen port${cRES}"
 read extraPort
-extraPort=${extraPort:-8443}
 [[ $extraPort =~ ^[1-9][0-9]{0,4}$ ]] && (( extraPort <= 65535 )) || { echo -e "${RED}Invalid port${cRES}"; return 1; }
 tcppf_port_available "$extraPort" || { echo -e "${RED}Port $extraPort conflicts${cRES}"; return 1; }
 uuid=$(cat /proc/sys/kernel/random/uuid)
-dest="127.0.0.1:$(extraGetPort)"
-echo -e "${GREEN} REALITY dest  (empty = $dest)${cRES}"
-read destIn
-dest=${destIn:-$dest}
-sni=$domain
-echo -e "${GREEN} serverName/SNI  (empty = $sni)${cRES}"
-read sniIn
-sni=${sniIn:-$sni}
-echo -e "${GREEN} Vision? [Y/n]  (empty = Y)${cRES}"
+echo -e "${GREEN} REALITY dest${cRES}"
+read dest
+[[ -n $dest ]] || { echo -e "${RED}Invalid dest${cRES}"; return 1; }
+echo -e "${GREEN} serverName/SNI${cRES}"
+read sni
+[[ -n $sni ]] || { echo -e "${RED}Invalid SNI${cRES}"; return 1; }
+echo -e "${GREEN} Vision? [y/n]${cRES}"
 read yn
-yn=${yn:-Y}
-if [[ $yn = [Yy] ]]; then flow="xtls-rprx-vision"; else flow=""; fi
+if [[ $yn = [Yy] ]]; then flow="xtls-rprx-vision"
+elif [[ $yn = [Nn] ]]; then flow=""
+else echo -e "${RED}Invalid Vision${cRES}"; return 1; fi
 if [[ ${DE_GWD_TEST_MODE:-0} = 1 ]]; then
   priv=test-private; pub=test-public
 else
@@ -2214,19 +2212,15 @@ if [[ $sw = "2" ]]; then
 fi
 [[ $sw = "1" ]] || return
 domain=$(extraGetDomain)
-echo -e "${GREEN} SOCKS5 port  (empty = 1080)${cRES}"
+echo -e "${GREEN} SOCKS5 port${cRES}"
 read extraPort
-extraPort=${extraPort:-1080}
 [[ $extraPort =~ ^[1-9][0-9]{0,4}$ ]] && (( extraPort <= 65535 )) || { echo -e "${RED}Invalid port${cRES}"; return 1; }
 tcppf_port_available "$extraPort" || { echo -e "${RED}Port $extraPort conflicts${cRES}"; return 1; }
-user=xray$(cat /proc/sys/kernel/random/uuid | tr -d '-' | cut -c1-8)
-pass=$(cat /proc/sys/kernel/random/uuid | tr -d '-' | cut -c1-16)
-echo -e "${GREEN} User  (empty = $user)${cRES}"
-read userIn
-user=${userIn:-$user}
-echo -e "${GREEN} Password  (empty = $pass)${cRES}"
-read passIn
-pass=${passIn:-$pass}
+echo -e "${GREEN} User${cRES}"
+read user
+echo -e "${GREEN} Password${cRES}"
+read pass
+[[ -n $user && -n $pass ]] || { echo -e "${RED}Invalid user/password${cRES}"; return 1; }
 jq -n --arg domain "$domain" --argjson port "$extraPort" --arg user "$user" --arg password "$pass" \
   '{enabled:true,domain:$domain,port:$port,user:$user,password:$password}' >"$settings"
 extraXrayApply || return 1
@@ -2281,10 +2275,9 @@ echo -e "${GREEN} Target host:port${cRES}"
 read targetInput
 parsed=$(parseDomainPort "$targetInput" 2>/dev/null) || { echo -e "${RED}Invalid target${cRES}"; continue; }
 read -r target targetPort <<<"$parsed"
-echo -e "${GREEN} Network tcp / udp / tcp,udp  (empty = tcp,udp)${cRES}"
+echo -e "${GREEN} Network tcp / udp / tcp,udp${cRES}"
 read network
-network=${network:-tcp,udp}
-[[ $network = "tcp" || $network = "udp" || $network = "tcp,udp" ]] || network="tcp,udp"
+[[ $network = "tcp" || $network = "udp" || $network = "tcp,udp" ]] || { echo -e "${RED}Invalid network${cRES}"; continue; }
 jq '.enabled=true' "$settings" | jq --argjson port "$listenPort" --arg target "$target" --argjson targetPort "$targetPort" --arg network "$network" \
   '.rules += [{port:$port,target:$target,targetPort:$targetPort,network:$network}]' | sponge "$settings"
 extraXrayApply || return 1
@@ -3231,16 +3224,26 @@ mkdir -p "$(dirname "$conf")"
 [[ -f $conf ]] || echo '{}' >"$conf"
 oldPort=$(jq -r '.FORWARD.Rproxy.server.tunnel.port // empty' "$conf" 2>/dev/null | grep -v '^null$')
 oldUUID=$(jq -r '.FORWARD.Rproxy.server.tunnel.uuid // empty' "$conf" 2>/dev/null | grep -v '^null$')
-echo -e "${GREEN} Tunnel port  (empty = ${oldPort:-55444})${cRES}"
+if [[ -n $oldPort ]]; then
+  echo -e "${GREEN} Tunnel port  (empty = $oldPort)${cRES}"
+else
+  echo -e "${GREEN} Tunnel port${cRES}"
+fi
 read tunnelPort
-[[ -z $tunnelPort ]] && tunnelPort="${oldPort:-55444}"
+[[ -z $tunnelPort ]] && tunnelPort="$oldPort"
+[[ -n $tunnelPort ]] || { echo -e "${RED}Invalid port${cRES}"; return 1; }
 if [[ $tunnelPort = "55443" || $tunnelPort = "443" || $tunnelPort = "80" ]]; then
   echo -e "${RED}$tunnelPort is nginx${cRES}"
   return 1
 fi
-echo -e "${GREEN} Tunnel UUID  (empty = keep/generate)${cRES}"
+if [[ -n $oldUUID ]]; then
+  echo -e "${GREEN} Tunnel UUID  (empty = $oldUUID)${cRES}"
+else
+  echo -e "${GREEN} Tunnel UUID${cRES}"
+fi
 read tunnelUUID
-[[ -z $tunnelUUID ]] && tunnelUUID="${oldUUID:-$(cat /proc/sys/kernel/random/uuid)}"
+[[ -z $tunnelUUID ]] && tunnelUUID="$oldUUID"
+[[ -n $tunnelUUID ]] || { echo -e "${RED}Invalid UUID${cRES}"; return 1; }
 jq --arg port "$tunnelPort" --arg uuid "$tunnelUUID" '
   .FORWARD = (.FORWARD // {}) |
   .FORWARD.Rproxy = (.FORWARD.Rproxy // {}) |
