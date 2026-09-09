@@ -13,8 +13,7 @@
 ## Server (amd64 & arm64) support kvm xen openvz lxc and so on:
 
 ```
-apt install -y wget
-bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx/dex/main/server)
+bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx/dex/dev/server)
 ```
 
 ![dex 0](resource/screenshot/0.png)
@@ -22,8 +21,7 @@ bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx
 ## Client (amd64):
 
 ```
-apt install -y wget
-bash <(wget --no-check-certificate -qO- https://ghfast.top/https://raw.githubusercontent.com/stuinx/dex/main/client)
+bash <(wget --no-check-certificate -qO- https://ghfast.top/https://raw.githubusercontent.com/stuinx/dex/dev/client)
 ```
 
 国内安装默认经 `ghfast.top` 拉 GitHub 资源，失败会换 `gh-proxy.com` / `ghproxy.net`。Pi-hole 镜像优先 `docker.1ms.run` / `docker.1panel.live`，不先打 Docker Hub。可覆盖：`GH_PROXY=https://gh-proxy.com/`。
