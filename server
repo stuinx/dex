@@ -133,6 +133,11 @@ wget --show-progress -cqO /tmp/version.php https://raw.githubusercontent.com/stu
 [[ $(du -sk /tmp/version.php 2>/dev/null | awk '{print$1}') -ge 4 ]] && mv -f /tmp/version.php /opt/de_GWD/version.php
 fi
 
+if [[ ! -s /opt/de_GWD/rproxyS-save ]]; then
+wget -t 5 -T 15 -cqO /opt/de_GWD/rproxyS-save "https://raw.githubusercontent.com/stuinx/dex/$branch/resource/server/rproxyS-save" 2>/dev/null || true
+[[ -s /opt/de_GWD/rproxyS-save ]] && chmod +x /opt/de_GWD/rproxyS-save
+fi
+
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Repository${cRES}"
 }
 
@@ -3067,7 +3072,7 @@ exit
 rproxySsave(){
 local f=/opt/de_GWD/rproxyS-save
 local here=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)
-local src
+local src url
 for src in "$f" "$here/rproxyS-save" "$here/resource/server/rproxyS-save" /opt/de_GWD/resource/server/rproxyS-save; do
   [[ -f $src ]] || continue
   if [[ $src != $f ]]; then
@@ -3077,6 +3082,18 @@ for src in "$f" "$here/rproxyS-save" "$here/resource/server/rproxyS-save" /opt/d
   bash "$f"
   return
 done
+if [[ ${DE_GWD_TEST_MODE:-0} = 1 ]]; then
+  echo -e "${RED}Missing $f${cRES}"
+  return 1
+fi
+url="https://raw.githubusercontent.com/stuinx/dex/${branch:-dev}/resource/server/rproxyS-save"
+mkdir -p /opt/de_GWD
+wget -t 5 -T 15 -cqO "$f" "$url" 2>/dev/null || curl -fsSLo "$f" "$url" 2>/dev/null || true
+if [[ -s $f ]]; then
+  chmod +x "$f"
+  bash "$f"
+  return
+fi
 echo -e "${RED}Missing $f${cRES}"
 return 1
 }

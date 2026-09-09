@@ -68,6 +68,10 @@ type extraStatusPrint >/dev/null 2>&1 || fail "server did not define extraStatus
 type extraInboundsStatus >/dev/null 2>&1 || fail "server did not define extraInboundsStatus"
 type rproxySstatus >/dev/null 2>&1 || fail "server did not define rproxySstatus"
 type extraRproxyParseMapping >/dev/null 2>&1 || fail "server did not define extraRproxyParseMapping"
+type rproxySsave >/dev/null 2>&1 || fail "server did not define rproxySsave"
+if rproxySsave >/dev/null 2>&1; then
+  fail "rproxySsave succeeded without helper in test mode"
+fi
 type changeXrayNode >/dev/null 2>&1 || fail "server did not define changeXrayNode"
 
 mapped=$(extraRproxyParseMapping '22201' '22200')
