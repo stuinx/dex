@@ -19,7 +19,7 @@
 ## 1. VLESS + REALITY（raw，可选 Vision）
 
 1. 55 → `[1]` → `[1]` Enable。
-2. Listen port、dest、SNI、Vision 均需填写，无默认值。
+2. Listen port 必填。dest 空则 `127.0.0.1:<nginx TLS 端口>`，SNI 空则证书域名，Vision 空则 `y`。
 3. Vision 填 `y` 为 `xtls-rprx-vision`，填 `n` 则无 flow。
 4. 私钥/公钥/shortId 自动生成。菜单 11 取 `vless://`（含 pbk、sid、sni、flow）。
 5. 关闭：55 → `[1]` → `[2]` Disable。

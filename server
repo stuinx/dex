@@ -2113,14 +2113,19 @@ read extraPort
 [[ $extraPort =~ ^[1-9][0-9]{0,4}$ ]] && (( extraPort <= 65535 )) || { echo -e "${RED}Invalid port${cRES}"; return 1; }
 tcppf_port_available "$extraPort" || { echo -e "${RED}Port $extraPort conflicts${cRES}"; return 1; }
 uuid=$(cat /proc/sys/kernel/random/uuid)
-echo -e "${GREEN} REALITY dest${cRES}"
-read dest
+dest="127.0.0.1:$(extraGetPort)"
+echo -e "${GREEN} REALITY dest  (empty = $dest)${cRES}"
+read destIn
+dest=${destIn:-$dest}
 [[ -n $dest ]] || { echo -e "${RED}Invalid dest${cRES}"; return 1; }
-echo -e "${GREEN} serverName/SNI${cRES}"
-read sni
+sni=$domain
+echo -e "${GREEN} serverName/SNI  (empty = $sni)${cRES}"
+read sniIn
+sni=${sniIn:-$sni}
 [[ -n $sni ]] || { echo -e "${RED}Invalid SNI${cRES}"; return 1; }
-echo -e "${GREEN} Vision? [y/n]${cRES}"
+echo -e "${GREEN} Vision? [y/n]  (empty = y)${cRES}"
 read yn
+yn=${yn:-y}
 if [[ $yn = [Yy] ]]; then flow="xtls-rprx-vision"
 elif [[ $yn = [Nn] ]]; then flow=""
 else echo -e "${RED}Invalid Vision${cRES}"; return 1; fi
