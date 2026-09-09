@@ -1806,8 +1806,7 @@ local vpsdomainP=$1 d p
 [[ -n $vpsdomainP ]] || return 1
 d=$(echo "$vpsdomainP" | cut -d: -f1)
 p=$(echo "$vpsdomainP" | cut -d: -f2 | grep '^[[:digit:]]*$')
-[[ -z $p ]] && p=443
-[[ -n $d ]] || return 1
+[[ -n $d && -n $p && $vpsdomainP == *:* ]] || return 1
 [[ $p =~ ^[1-9][0-9]{0,4}$ ]] && (( p <= 65535 )) || return 1
 printf '%s %s\n' "$d" "$p"
 }
@@ -2166,7 +2165,7 @@ if [[ $sw = "2" ]]; then
   return
 fi
 [[ $sw = "1" ]] || return
-echo -e "${GREEN} Input VPS domain${cRES}"
+echo -e "${GREEN} Domain:port${cRES}"
 read vpsdomainP
 parsed=$(extraParseInstallAddr "$vpsdomainP") || { echo -e "${RED}Invalid domain${cRES}"; return 1; }
 read -r domain extraPort <<<"$parsed"
@@ -2293,19 +2292,19 @@ local num
 while true; do
 echo -e "${GREEN}================================ ${cRES}"
 echo -e "${GREEN} 55. Extra inbounds${cRES}"
-echo -e "${GREEN}[0]: View${cRES}"
 echo -e "${GREEN}[1]: VLESS + REALITY${cRES}"
 echo -e "${GREEN}[2]: VLESS + WS + TLS${cRES}"
 echo -e "${GREEN}[3]: SOCKS5${cRES}"
 echo -e "${GREEN}[4]: dokodemo-door${cRES}"
-echo -e "${GREEN}[9]: Back${cRES}"
+echo -e "${GREEN}[5]: View${cRES}"
+echo -e "${GREEN}[0]: Back${cRES}"
 echo -e "${GREEN}================================ ${cRES}"
 extraStatusPrint
 read -s -n 1 num
 echo
 case "$num" in
-  9|"") return ;;
-  0) extraInboundsStatus ;;
+  0|"") return ;;
+  5) extraInboundsStatus ;;
   1) changeVLESSReality ;;
   2) changeVLESSWS ;;
   3) changeSocks5 ;;
@@ -3185,7 +3184,7 @@ tunnelPort=$(rproxyStunnelPort)
 [[ -n $tunnelPort ]] || { echo -e "${RED}Set tunnel first${cRES}"; return 1; }
 echo -e "${GREEN} Mapping${cRES}"
 read mapLine
-[[ -n $mapLine ]] || return 0
+[[ -n $mapLine ]] || return 1
 add=$(extraRproxyParseMapping "$mapLine" "$tunnelPort")
 [[ $(jq 'length' <<<"$add") -gt 0 ]] || { echo -e "${RED}Invalid mapping${cRES}"; return 1; }
 jq --argjson add "$add" '
@@ -3204,7 +3203,7 @@ tunnelPort=$(rproxyStunnelPort)
 jq -r '.FORWARD.Rproxy.server.mapping[]? | "  "+(.port|tostring)+" "+(.protocol // "tcp,udp")' "$conf" 2>/dev/null
 echo -e "${GREEN} Mapping to delete, or all${cRES}"
 read mapLine
-[[ -n $mapLine ]] || return 0
+[[ -n $mapLine ]] || return 1
 if [[ $mapLine = all ]]; then
   jq '.FORWARD.Rproxy.server.mapping=[] | .FORWARD.Rproxy.server.mappingStatus="off"' "$conf" | sponge "$conf"
 else

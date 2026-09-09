@@ -87,8 +87,9 @@ merged=$(jq -nc --argjson a '[{"port":"22201","protocol":"tcp,udp"}]' --argjson 
 
 parsed=$(extraParseInstallAddr 'node.example:2096') || fail "install-style domain:port parse failed"
 [[ $parsed = "node.example 2096" ]] || fail "install-style domain:port mismatch"
-parsed=$(extraParseInstallAddr 'node.example') || fail "install-style domain-only parse failed"
-[[ $parsed = "node.example 443" ]] || fail "install-style default port is not 443"
+if extraParseInstallAddr 'node.example' >/dev/null 2>&1; then
+  fail "domain without port was accepted"
+fi
 if extraParseInstallAddr '' >/dev/null 2>&1; then
   fail "empty domain was accepted"
 fi
