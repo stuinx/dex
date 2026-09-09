@@ -141,21 +141,21 @@ def test_client_github_downloads_use_proxy():
     assert 'wget_gh /tmp/client.zip' in repo
     result = shell(
         function('client', 'gh_candidates')
-        + '\nGH_PROXY=off gh_candidates https://raw.githubusercontent.com/stuinx/uGWD/main/x\n'
+        + '\nGH_PROXY=off gh_candidates https://raw.githubusercontent.com/stuinx/dex/main/x\n'
     )
-    assert result.stdout.strip() == 'https://raw.githubusercontent.com/stuinx/uGWD/main/x'
+    assert result.stdout.strip() == 'https://raw.githubusercontent.com/stuinx/dex/main/x'
     result = shell(
         function('client', 'gh_candidates')
-        + '\ngh_candidates https://raw.githubusercontent.com/stuinx/uGWD/main/x\n'
+        + '\ngh_candidates https://raw.githubusercontent.com/stuinx/dex/main/x\n'
     )
     out = result.stdout.split()
-    assert out[0] == 'https://ghfast.top/https://raw.githubusercontent.com/stuinx/uGWD/main/x'
-    assert 'https://gh-proxy.com/https://raw.githubusercontent.com/stuinx/uGWD/main/x' in out
-    assert out[-1] == 'https://raw.githubusercontent.com/stuinx/uGWD/main/x'
+    assert out[0] == 'https://ghfast.top/https://raw.githubusercontent.com/stuinx/dex/main/x'
+    assert 'https://gh-proxy.com/https://raw.githubusercontent.com/stuinx/dex/main/x' in out
+    assert out[-1] == 'https://raw.githubusercontent.com/stuinx/dex/main/x'
     ui4 = (ROOT / 'resource/client/ui-script/ui_4am').read_text()
     assert 'wget_gh /tmp/geosite.dat' in ui4
     auto = (ROOT / 'resource/client/ui-script/ui-autoUpdateHour').read_text()
-    assert 'ghfast.top/https://raw.githubusercontent.com/stuinx/uGWD/main/client' in auto
+    assert 'ghfast.top/https://raw.githubusercontent.com/stuinx/dex/main/client' in auto
 
 
 def test_runtime_does_not_fetch_original_repo():
@@ -180,9 +180,9 @@ def test_runtime_does_not_fetch_original_repo():
     assert hits == []
     client = (ROOT / 'client').read_text()
     server = (ROOT / 'server').read_text()
-    assert 'raw.githubusercontent.com/stuinx/uGWD' in client
-    assert 'raw.githubusercontent.com/stuinx/uGWD' in server
-    assert 'github.com/stuinx/uGWD/releases' in (ROOT / 'resource/client/ui-web/index.php').read_text()
+    assert 'raw.githubusercontent.com/stuinx/dex' in client
+    assert 'raw.githubusercontent.com/stuinx/dex' in server
+    assert 'github.com/stuinx/dex/releases' in (ROOT / 'resource/client/ui-web/index.php').read_text()
 
 
 def test_server_rproxy_matches_client_schema():

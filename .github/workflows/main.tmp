@@ -12,4 +12,4 @@ jobs:
     steps:
     - name: purge jsdelivr cache
       run: |
-        curl https://purge.jsdelivr.net/gh/stuinx/uGWD@main/client
+        curl https://purge.jsdelivr.net/gh/stuinx/dex@main/client

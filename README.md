@@ -1,4 +1,4 @@
-# uGWD
+# dex
 
 独立维护的 Debian 旁路网关（基于寒月 / de_GWD 的修改版）。
 
@@ -8,22 +8,22 @@
 
 本仓库协议为 [EPL-2.0](LICENSE.md)。来源与署名见 [NOTICE.md](NOTICE.md)。
 
-安装、更新和 Release 只使用本仓库：https://github.com/stuinx/uGWD
+安装、更新和 Release 只使用本仓库：https://github.com/stuinx/dex
 
 ## Server (amd64 & arm64) support kvm xen openvz lxc and so on:
 
 ```
 apt install -y wget
-bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx/uGWD/main/server)
+bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx/dex/main/server)
 ```
 
-![uGWD 0](resource/screenshot/0.png)
+![dex 0](resource/screenshot/0.png)
 
 ## Client (amd64):
 
 ```
 apt install -y wget
-bash <(wget --no-check-certificate -qO- https://ghfast.top/https://raw.githubusercontent.com/stuinx/uGWD/main/client)
+bash <(wget --no-check-certificate -qO- https://ghfast.top/https://raw.githubusercontent.com/stuinx/dex/main/client)
 ```
 
 或
@@ -35,17 +35,17 @@ chmod +x client
 ./client
 ```
 
-![uGWD 1](resource/screenshot/1.png)
-![uGWD 2](resource/screenshot/2.png)
-![uGWD 3](resource/screenshot/3.png)
-![uGWD 4](resource/screenshot/4.png)
-![uGWD 5](resource/screenshot/5.png)
+![dex 1](resource/screenshot/1.png)
+![dex 2](resource/screenshot/2.png)
+![dex 3](resource/screenshot/3.png)
+![dex 4](resource/screenshot/4.png)
+![dex 5](resource/screenshot/5.png)
 
 ## Manual
 
-仓库文档：https://github.com/stuinx/uGWD
+仓库文档：https://github.com/stuinx/dex
 
-Release：https://github.com/stuinx/uGWD/releases
+Release：https://github.com/stuinx/dex/releases
 
 ## Thanks to
 
