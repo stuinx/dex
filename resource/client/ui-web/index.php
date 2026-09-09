@@ -254,92 +254,6 @@ EOT;
 
 <div class="input-group input-group-sm mb-3">
   <div class="input-group-prepend">
-    <span class="input-group-text border-danger bg-white text-danger">NETFLIX</span>
-  </div>
-  <div class="input-group-append">
-      <button id="nodeSMshowNetflix" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
-      <div id="nodeSMnetflix" class="dropdown-menu">
-<a class='dropdown-item' href='#' id='nodeSMnetflix0' onclick="buttonNodeSMnetflix(this)"> 默认代理 </a>
-<?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
-  $name = $de_GWDconf->v2node[$i]->name;
-  $num = $i+1;
-print <<<EOT
-<a class='dropdown-item' href='#' id='nodeSMnetflix$num' onclick="buttonNodeSMnetflix(this)">$name</a>
-EOT;
-}
-?>
-      </div>
-  </div>
-</div>
-
-<div class="input-group input-group-sm mb-3">
-  <div class="input-group-prepend">
-    <span class="input-group-text border-dark bg-dark text-white">HBO</span>
-    <span class="input-group-text text-white" style="border-color: #6c3483;background-color: #6c3483;">Disney+</span>
-    <span class="input-group-text text-white" style="border-color: #2ecc71;background-color: #2ecc71;">Hulu</span>
-  </div>
-  <div class="input-group-append">
-      <button id="nodeSMshowHDH" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
-      <div id="nodeSMhdh" class="dropdown-menu">
-<a class='dropdown-item' href='#' id='nodeSMhdh0' onclick="buttonNodeSMhdh(this)"> 默认代理 </a>
-<?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
-  $name = $de_GWDconf->v2node[$i]->name;
-  $num = $i+1;
-print <<<EOT
-<a class='dropdown-item' href='#' id='nodeSMhdh$num' onclick="buttonNodeSMhdh(this)">$name</a>
-EOT;
-}
-?>
-      </div>
-  </div>
-</div>
-
-<div class="input-group input-group-sm mb-3">
-  <div class="input-group-prepend">
-    <span class="input-group-text border-primary bg-primary text-white">TVB</span>
-  </div>
-  <div class="input-group-append">
-      <button id="nodeSMshowTVB" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
-      <div id="nodeSMtvb" class="dropdown-menu">
-<a class='dropdown-item' href='#' id='nodeSMtvb0' onclick="buttonNodeSMtvb(this)"> 默认代理 </a>
-<?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
-  $name = $de_GWDconf->v2node[$i]->name;
-  $num = $i+1;
-print <<<EOT
-<a class='dropdown-item' href='#' id='nodeSMtvb$num' onclick="buttonNodeSMtvb(this)">$name</a>
-EOT;
-}
-?>
-      </div>
-  </div>
-</div>
-
-<div class="input-group input-group-sm mb-3">
-  <div class="input-group-prepend">
-    <span class="input-group-text text-white" style="border-color: #3AC1DF;background-color: #3AC1DF;">巴哈姆特動畫瘋</span>
-  </div>
-  <div class="input-group-append">
-      <button id="nodeSMshowBahamut" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
-      <div id="nodeSMbahamut" class="dropdown-menu">
-<a class='dropdown-item' href='#' id='nodeSMbahamut0' onclick="buttonNodeSMbahamut(this)"> 默认代理 </a>
-<?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
-  $name = $de_GWDconf->v2node[$i]->name;
-  $num = $i+1;
-print <<<EOT
-<a class='dropdown-item' href='#' id='nodeSMbahamut$num' onclick="buttonNodeSMbahamut(this)">$name</a>
-EOT;
-}
-?>
-      </div>
-  </div>
-</div>
-
-<div class="input-group input-group-sm mb-3">
-  <div class="input-group-prepend">
     <span class="input-group-text text-white" style="border-color: #75A99C;background-color: #75A99C;">OpenAI</span>
   </div>
   <div class="input-group-append">
@@ -1149,37 +1063,9 @@ $('#nodeSMshowYoutube').html(NodeSMyoutubeName)
 $('#nodeSMshowYoutube').val(NodeSMyoutubeIndex)
 }
 
-function buttonNodeSMnetflix(buttonNodeSMnetflix){
-var NodeSMnetflixOBJ = $(buttonNodeSMnetflix).parent().find('a')
-var NodeSMnetflixIndex = NodeSMnetflixOBJ.index($(buttonNodeSMnetflix))
-var NodeSMnetflixName = $('#nodeSMnetflix'+NodeSMnetflixIndex).html()
-$('#nodeSMshowNetflix').html(NodeSMnetflixName)
-$('#nodeSMshowNetflix').val(NodeSMnetflixIndex)
-}
 
-function buttonNodeSMhdh(buttonNodeSMhdh){
-var NodeSMhdhOBJ = $(buttonNodeSMhdh).parent().find('a')
-var NodeSMhdhIndex = NodeSMhdhOBJ.index($(buttonNodeSMhdh))
-var NodeSMhdhName = $('#nodeSMhdh'+NodeSMhdhIndex).html()
-$('#nodeSMshowHDH').html(NodeSMhdhName)
-$('#nodeSMshowHDH').val(NodeSMhdhIndex)
-}
 
-function buttonNodeSMtvb(buttonNodeSMtvb){
-var NodeSMtvbOBJ = $(buttonNodeSMtvb).parent().find('a')
-var NodeSMtvbIndex = NodeSMtvbOBJ.index($(buttonNodeSMtvb))
-var NodeSMtvbName = $('#nodeSMtvb'+NodeSMtvbIndex).html()
-$('#nodeSMshowTVB').html(NodeSMtvbName)
-$('#nodeSMshowTVB').val(NodeSMtvbIndex)
-}
 
-function buttonNodeSMbahamut(buttonNodeSMbahamut){
-var NodeSMbahamutOBJ = $(buttonNodeSMbahamut).parent().find('a')
-var NodeSMbahamutIndex = NodeSMbahamutOBJ.index($(buttonNodeSMbahamut))
-var NodeSMbahamutName = $('#nodeSMbahamut'+NodeSMbahamutIndex).html()
-$('#nodeSMshowBahamut').html(NodeSMbahamutName)
-$('#nodeSMshowBahamut').val(NodeSMbahamutIndex)
-}
 
 function buttonNodeSMopenai(buttonNodeSMopenai){
 var NodeSMopenaiOBJ = $(buttonNodeSMopenai).parent().find('a')
@@ -1337,14 +1223,6 @@ $.get("./act/pingTCPDoG.php", function(data) { $('#pingDoG').text(data) })
 $('#submitNodeSMrulesClear').click(function(){
 $('#nodeSMshowYoutube').html(' 默认代理 ')
 $('#nodeSMshowYoutube').val('0')
-$('#nodeSMshowNetflix').html(' 默认代理 ')
-$('#nodeSMshowNetflix').val('0')
-$('#nodeSMshowHDH').html(' 默认代理 ')
-$('#nodeSMshowHDH').val('0')
-$('#nodeSMshowTVB').html(' 默认代理 ')
-$('#nodeSMshowTVB').val('0')
-$('#nodeSMshowBahamut').html(' 默认代理 ')
-$('#nodeSMshowBahamut').val('0')
 $('#nodeSMshowOpenai').html(' 默认代理 ')
 $('#nodeSMshowOpenai').val('0')
 $('#nodeSMshowApple').html(' 直连 ')
@@ -1374,10 +1252,6 @@ $('#nodeSMshowTwitter').val('0')
 $('#submitNodeSMrules').click(function(){
 $("#submitNodeSMrulesLoading").attr("class", "spinner-border spinner-border-sm ml-2")
 nodeSMshowYoutube=$('#nodeSMshowYoutube').val()
-nodeSMshowNetflix=$('#nodeSMshowNetflix').val()
-nodeSMshowHDH=$('#nodeSMshowHDH').val()
-nodeSMshowTVB=$('#nodeSMshowTVB').val()
-nodeSMshowBahamut=$('#nodeSMshowBahamut').val()
 nodeSMshowOpenai=$('#nodeSMshowOpenai').val()
 nodeSMshowApple=$('#nodeSMshowApple').val()
 nodeSMshowSteam=$('#nodeSMshowSteam').val()
@@ -1390,7 +1264,7 @@ nodeSMshowGithub=$('#nodeSMshowGithub').val()
 nodeSMshowDiscord=$('#nodeSMshowDiscord').val()
 nodeSMshowTelegram=$('#nodeSMshowTelegram').val()
 nodeSMshowTwitter=$('#nodeSMshowTwitter').val()
-$.get('./act/NodeSMrules.php', {nodeSMshowYoutube:nodeSMshowYoutube, nodeSMshowNetflix:nodeSMshowNetflix, nodeSMshowHDH:nodeSMshowHDH, nodeSMshowTVB:nodeSMshowTVB, nodeSMshowBahamut:nodeSMshowBahamut, nodeSMshowOpenai:nodeSMshowOpenai, nodeSMshowApple:nodeSMshowApple, nodeSMshowSteam:nodeSMshowSteam, nodeSMshowClaude:nodeSMshowClaude, nodeSMshowGemini:nodeSMshowGemini, nodeSMshowGrok:nodeSMshowGrok, nodeSMshowWikipedia:nodeSMshowWikipedia, nodeSMshowReddit:nodeSMshowReddit, nodeSMshowGithub:nodeSMshowGithub, nodeSMshowDiscord:nodeSMshowDiscord, nodeSMshowTelegram:nodeSMshowTelegram, nodeSMshowTwitter:nodeSMshowTwitter}, function(result){
+$.get('./act/NodeSMrules.php', {nodeSMshowYoutube:nodeSMshowYoutube, nodeSMshowOpenai:nodeSMshowOpenai, nodeSMshowApple:nodeSMshowApple, nodeSMshowSteam:nodeSMshowSteam, nodeSMshowClaude:nodeSMshowClaude, nodeSMshowGemini:nodeSMshowGemini, nodeSMshowGrok:nodeSMshowGrok, nodeSMshowWikipedia:nodeSMshowWikipedia, nodeSMshowReddit:nodeSMshowReddit, nodeSMshowGithub:nodeSMshowGithub, nodeSMshowDiscord:nodeSMshowDiscord, nodeSMshowTelegram:nodeSMshowTelegram, nodeSMshowTwitter:nodeSMshowTwitter}, function(result){
   $("#submitNodeSMrulesLoading").removeClass()
   $("#nodeSMrules").modal('hide')
   window.location.reload()
@@ -1550,97 +1424,69 @@ let youtubeName = SMarray[1]
 if (youtubeName == "-none-") {
     youtubeName = " 默认代理 "
 }
-let netflixNum = SMarray[2]
-let netflixName = SMarray[3]
-if (netflixName == "-none-") {
-    netflixName = " 默认代理 "
-}
-let hdhNum = SMarray[4]
-let hdhName = SMarray[5]
-if (hdhName == "-none-") {
-    hdhName = " 默认代理 "
-}
-let tvbNum = SMarray[6]
-let tvbName = SMarray[7]
-if (tvbName == "-none-") {
-    tvbName = " 默认代理 "
-}
-let bahamutNum = SMarray[8]
-let bahamutName = SMarray[9]
-if (bahamutName == "-none-") {
-    bahamutName = " 默认代理 "
-}
-let openaiNum = SMarray[10]
-let openaiName = SMarray[11]
+let openaiNum = SMarray[2]
+let openaiName = SMarray[3]
 if (openaiName == "-none-") {
     openaiName = " 默认代理 "
 }
-let appleNum = SMarray[12]
-let appleName = SMarray[13]
+let appleNum = SMarray[4]
+let appleName = SMarray[5]
 if (appleName == "-none-") {
     appleName = " 直连 "
 }
-let steamNum = SMarray[14]
-let steamName = SMarray[15]
+let steamNum = SMarray[6]
+let steamName = SMarray[7]
 if (steamName == "-none-") {
     steamName = " 直连 "
 }
-let claudeNum = SMarray[16]
-let claudeName = SMarray[17]
+let claudeNum = SMarray[8]
+let claudeName = SMarray[9]
 if (claudeName == "-none-") {
     claudeName = " 默认代理 "
 }
-let geminiNum = SMarray[18]
-let geminiName = SMarray[19]
+let geminiNum = SMarray[10]
+let geminiName = SMarray[11]
 if (geminiName == "-none-") {
     geminiName = " 默认代理 "
 }
-let grokNum = SMarray[20]
-let grokName = SMarray[21]
+let grokNum = SMarray[12]
+let grokName = SMarray[13]
 if (grokName == "-none-") {
     grokName = " 默认代理 "
 }
-let wikipediaNum = SMarray[22]
-let wikipediaName = SMarray[23]
+let wikipediaNum = SMarray[14]
+let wikipediaName = SMarray[15]
 if (wikipediaName == "-none-") {
     wikipediaName = " 默认代理 "
 }
-let redditNum = SMarray[24]
-let redditName = SMarray[25]
+let redditNum = SMarray[16]
+let redditName = SMarray[17]
 if (redditName == "-none-") {
     redditName = " 默认代理 "
 }
-let githubNum = SMarray[26]
-let githubName = SMarray[27]
+let githubNum = SMarray[18]
+let githubName = SMarray[19]
 if (githubName == "-none-") {
     githubName = " 默认代理 "
 }
-let discordNum = SMarray[28]
-let discordName = SMarray[29]
+let discordNum = SMarray[20]
+let discordName = SMarray[21]
 if (discordName == "-none-") {
     discordName = " 默认代理 "
 }
-let telegramNum = SMarray[30]
-let telegramName = SMarray[31]
+let telegramNum = SMarray[22]
+let telegramName = SMarray[23]
 if (telegramName == "-none-") {
     telegramName = " 默认代理 "
 }
-let twitterNum = SMarray[32]
-let twitterName = SMarray[33]
+let twitterNum = SMarray[24]
+let twitterName = SMarray[25]
 if (twitterName == "-none-") {
     twitterName = " 默认代理 "
 }
 
 $('#nodeSMshowYoutube').val(youtubeNum)
 $('#nodeSMshowYoutube').html(youtubeName)
-$('#nodeSMshowNetflix').val(netflixNum)
-$('#nodeSMshowNetflix').html(netflixName)
-$('#nodeSMshowHDH').val(hdhNum)
-$('#nodeSMshowHDH').html(hdhName)
-$('#nodeSMshowTVB').val(tvbNum)
-$('#nodeSMshowTVB').html(tvbName)
-$('#nodeSMshowBahamut').val(bahamutNum)
-$('#nodeSMshowBahamut').html(bahamutName)
 $('#nodeSMshowOpenai').val(openaiNum)
 $('#nodeSMshowOpenai').html(openaiName)
 $('#nodeSMshowApple').val(appleNum)
