@@ -120,7 +120,7 @@ view=$(extraInboundsStatus)
 [[ $view == *'vless.example:2096'* ]] || fail "view menu missing VLESS WS address"
 [[ $view == *'node.example:18443'* ]] || fail "view menu missing REALITY address"
 [[ $view == *'18080 -> 127.0.0.1:80'* ]] || fail "view menu missing dokodemo rule"
-[[ $view == *'view only'* ]] || fail "view menu did not mark itself read-only"
+[[ $view == *'Extra inbounds'* ]] || fail "view menu missing Extra inbounds header"
 printf '%s\n' '{"tunnelPort":10086,"tunnelUUID":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","clients":[],"mappings":[{"port":10087,"protocol":"tcp"}]}' >"$data_dir/rproxys.json"
 rs=$(rproxySstatus)
 [[ $rs == *'10086'* ]] || fail "RproxyS status missing tunnel port"

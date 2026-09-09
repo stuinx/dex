@@ -2005,7 +2005,7 @@ local f legacy ruuid rport rdomain rflow rsni rpbk rsid vuuid vport vdomain vpat
 : "${DE_GWD_DATA_DIR:=/opt/de_GWD}"
 legacy=$DE_GWD_DATA_DIR/extra-inbounds.json
 echo -e "${BLUE}-------------------------------------------------- ${cRES}"
-echo -e "${GREEN}Extra inbounds (view only, main VMess unchanged)${cRES}"
+echo -e "${GREEN}Extra inbounds${cRES}"
 f=$DE_GWD_DATA_DIR/extra-reality.json
 if extraJsonEnabled "$f"; then
   rdomain=$(jq -r '.domain' "$f"); rport=$(jq -r '.port' "$f"); ruuid=$(jq -r '.uuid' "$f")
@@ -2088,9 +2088,7 @@ changeVLESSReality(){
 local settings="$DE_GWD_DATA_DIR/extra-reality.json" sw domain extraPort uuid dest sni flow yn keyPair priv pub shortId
 echo -e "${GREEN}================================ ${cRES}"
 echo -e "${GREEN} VLESS + REALITY${cRES}"
-echo -e "${GREEN} 独立公网端口；不改主 VMess。默认 dest=本机 nginx TLS，Vision 默认开。${cRES}"
-echo -e "${GREEN} 启用后菜单 11 打印 vless:// （pbk/sid/sni/flow）${cRES}"
-echo -e "${GREEN}[1]: Enable VLESS + REALITY${cRES}"
+echo -e "${GREEN}[1]: Enable${cRES}"
 echo -e "${GREEN}[2]: Disable${cRES}"
 echo -e "${GREEN}================================ ${cRES}"
 read -s -n 1 sw
@@ -2106,7 +2104,6 @@ domain=$(extraGetDomain)
 [[ -n $domain ]] || { echo -e "${RED}Server domain unavailable${cRES}"; return 1; }
 echo -e "${GREEN}=============================== ${cRES}"
 echo -e "${GREEN} Listen port  (empty = 8443)${cRES}"
-echo -e "${GREEN} 勿占用 nginx/80/443/9890/9891/Rproxy/HAProxy${cRES}"
 echo -e "${GREEN}=============================== ${cRES}"
 read extraPort
 extraPort=${extraPort:-8443}
@@ -2126,7 +2123,7 @@ echo -e "${GREEN}=============================== ${cRES}"
 read sniIn
 sni=${sniIn:-$sni}
 echo -e "${GREEN}=============================== ${cRES}"
-echo -e "${GREEN} Enable Vision? [Y/n]  (empty = Y)${cRES}"
+echo -e "${GREEN} Vision? [Y/n]  (empty = Y)${cRES}"
 echo -e "${GREEN}=============================== ${cRES}"
 read yn
 yn=${yn:-Y}
@@ -2148,7 +2145,6 @@ extraXrayApply || return 1
 echo -e "${BLUE}Address:    ${YELLOW}$domain:$extraPort${cRES}"
 echo -e "${BLUE}UUID:       ${YELLOW}$uuid${cRES}"
 echo -e "${BLUE}Flow:       ${YELLOW}${flow:-none}${cRES}"
-echo -e "${BLUE}Dest:       ${YELLOW}$dest${cRES}"
 echo -e "${BLUE}SNI:        ${YELLOW}$sni${cRES}"
 echo -e "${BLUE}PublicKey:  ${YELLOW}$pub${cRES}"
 echo -e "${BLUE}ShortId:    ${YELLOW}$shortId${cRES}"
@@ -2158,10 +2154,8 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}VLESS REALITY 
 changeVLESSWS(){
 local settings="$DE_GWD_DATA_DIR/extra-vlessws.json" sw vpsdomainP parsed domain extraPort uuid path mainPath addr
 echo -e "${GREEN}================================ ${cRES}"
-echo -e "${GREEN} VLESS + WS + TLS（按主 VMess 逻辑生成）${cRES}"
-echo -e "${GREEN} 像安装一样填写域名:端口；可与主节点同域名，端口必须不同。nginx 单独写 vless-ws.conf。${cRES}"
-echo -e "${GREEN} UUID/path 自动生成；不改主 VMess / default.conf。${cRES}"
-echo -e "${GREEN}[1]: Enable VLESS + WS + TLS${cRES}"
+echo -e "${GREEN} VLESS + WS + TLS${cRES}"
+echo -e "${GREEN}[1]: Enable${cRES}"
 echo -e "${GREEN}[2]: Disable${cRES}"
 echo -e "${GREEN}================================ ${cRES}"
 read -s -n 1 sw
@@ -2175,7 +2169,6 @@ fi
 [[ $sw = "1" ]] || return
 echo -e "${GREEN}================== ${cRES}"
 echo -e "${GREEN} Input VPS domain${cRES}"
-echo -e "${GREEN} 可同域名；端口必须与主 VMess 不同${cRES}"
 echo -e "${GREEN}================== ${cRES}"
 read vpsdomainP
 parsed=$(extraParseInstallAddr "$vpsdomainP") || { echo -e "${RED}Invalid domain${cRES}"; return 1; }
@@ -2200,7 +2193,6 @@ if [[ $showPort = "443" ]]; then addr=$showDomain; else addr=$showDomain:$showPo
 echo -e "${BLUE}Address: ${YELLOW}$addr${cRES}"
 echo -e "${BLUE}UUID:    ${YELLOW}$showUuid${cRES}"
 echo -e "${BLUE}Path:    ${YELLOW}$showPath${cRES}"
-echo -e "${BLUE}Nginx:   ${YELLOW}${DE_GWD_VLESS_NGINX_CONF:-/etc/nginx/conf.d/vless-ws.conf}${cRES}"
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}VLESS WS TLS ${GREEN}Enabled${cRES}"
 }
 
@@ -2208,8 +2200,7 @@ changeSocks5(){
 local settings="$DE_GWD_DATA_DIR/extra-socks5.json" sw domain extraPort user pass
 echo -e "${GREEN}============================ ${cRES}"
 echo -e "${GREEN} SOCKS5${cRES}"
-echo -e "${GREEN} 独立端口，密码认证，UDP 开。不改主 VMess。${cRES}"
-echo -e "${GREEN}[1]: Enable SOCKS5${cRES}"
+echo -e "${GREEN}[1]: Enable${cRES}"
 echo -e "${GREEN}[2]: Disable${cRES}"
 echo -e "${GREEN}============================ ${cRES}"
 read -s -n 1 sw
@@ -2253,10 +2244,9 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}SOCKS5 ${GREEN
 changeDokodemo(){
 local settings="$DE_GWD_DATA_DIR/extra-dokodemo.json" sw listenPort targetInput parsed target targetPort network
 echo -e "${GREEN}================================ ${cRES}"
-echo -e "${GREEN} dokodemo-door 多规则 TCP/UDP${cRES}"
-echo -e "${GREEN} 本机 listen 端口转发到目标 host:port。默认 tcp,udp。不改主 VMess。${cRES}"
-echo -e "${GREEN}[1]: Add dokodemo-door rule${cRES}"
-echo -e "${GREEN}[2]: Delete one / all${cRES}"
+echo -e "${GREEN} dokodemo-door${cRES}"
+echo -e "${GREEN}[1]: Add${cRES}"
+echo -e "${GREEN}[2]: Delete${cRES}"
 echo -e "${GREEN}[3]: Disable all${cRES}"
 echo -e "${GREEN}================================ ${cRES}"
 read -s -n 1 sw
@@ -2315,12 +2305,12 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}dokodemo-door 
 changeXrayNode(){
 local num
 echo -e "${GREEN}================================ ${cRES}"
-echo -e "${GREEN} 55. Extra inbounds（主 VMess 不变）${cRES}"
-echo -e "${GREEN}[0]: View current extras${cRES}"
-echo -e "${GREEN}[1]: VLESS + REALITY (Vision optional)${cRES}"
+echo -e "${GREEN} 55. Extra inbounds${cRES}"
+echo -e "${GREEN}[0]: View${cRES}"
+echo -e "${GREEN}[1]: VLESS + REALITY${cRES}"
 echo -e "${GREEN}[2]: VLESS + WS + TLS${cRES}"
 echo -e "${GREEN}[3]: SOCKS5${cRES}"
-echo -e "${GREEN}[4]: dokodemo-door TCP/UDP${cRES}"
+echo -e "${GREEN}[4]: dokodemo-door${cRES}"
 echo -e "${GREEN}================================ ${cRES}"
 extraStatusPrint
 read -s -n 1 num
