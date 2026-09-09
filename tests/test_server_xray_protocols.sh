@@ -82,6 +82,8 @@ mapped=$(extraRproxyParseMapping '22200 443 22201' '22200')
 [[ $(jq -c '[.[].port]' <<<"$mapped") = '["22201"]' ]] || fail "mapping did not skip tunnel/nginx ports"
 mapped=$(extraRproxyParseMapping '' '22200')
 [[ $(jq 'length' <<<"$mapped") = 0 ]] || fail "empty mapping should be []"
+merged=$(jq -nc --argjson a '[{"port":"22201","protocol":"tcp,udp"}]' --argjson b "$(extraRproxyParseMapping '22201,22202' '22200')" '$a+$b|unique_by(.port|tostring)|map(.port)')
+[[ $merged = '["22201","22202"]' ]] || fail "mapping merge unique_by port failed"
 
 parsed=$(extraParseInstallAddr 'node.example:2096') || fail "install-style domain:port parse failed"
 [[ $parsed = "node.example 2096" ]] || fail "install-style domain:port mismatch"

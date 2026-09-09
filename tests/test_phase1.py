@@ -230,9 +230,9 @@ def test_server_rproxy_matches_client_schema():
     server = (ROOT / 'server').read_text()
     assert '22. RproxyS' in server
     assert '    22)\n    installRproxyS' in server
-    assert 'Extra UUID for' in server
-    assert 'default tcp+udp' in server
-    assert 'mapProto="tcp,udp"' in server
+    assert '[3]: Add mapping' in server
+    assert '[4]: Delete mapping' in server
+    assert '[0]: Back' in server
     assert 'address": "$domain"' in client_c
     assert '"network": "tcp"' in client_c
     assert '/rpws' not in client_c

@@ -2095,9 +2095,11 @@ echo -e "${GREEN}================================ ${cRES}"
 echo -e "${GREEN} VLESS + REALITY${cRES}"
 echo -e "${GREEN}[1]: Enable${cRES}"
 echo -e "${GREEN}[2]: Disable${cRES}"
+echo -e "${GREEN}[0]: Back${cRES}"
 echo -e "${GREEN}================================ ${cRES}"
 read -s -n 1 sw
 echo
+[[ $sw = "0" || -z $sw ]] && return
 if [[ $sw = "2" ]]; then
   jq '{enabled:false}' >"$settings" 2>/dev/null || printf '%s\n' '{"enabled":false}' >"$settings"
   extraXrayApply || return 1
@@ -2107,29 +2109,21 @@ fi
 [[ $sw = "1" ]] || return
 domain=$(extraGetDomain)
 [[ -n $domain ]] || { echo -e "${RED}Server domain unavailable${cRES}"; return 1; }
-echo -e "${GREEN}=============================== ${cRES}"
 echo -e "${GREEN} Listen port  (empty = 8443)${cRES}"
-echo -e "${GREEN}=============================== ${cRES}"
 read extraPort
 extraPort=${extraPort:-8443}
 [[ $extraPort =~ ^[1-9][0-9]{0,4}$ ]] && (( extraPort <= 65535 )) || { echo -e "${RED}Invalid port${cRES}"; return 1; }
 tcppf_port_available "$extraPort" || { echo -e "${RED}Port $extraPort conflicts${cRES}"; return 1; }
 uuid=$(cat /proc/sys/kernel/random/uuid)
 dest="127.0.0.1:$(extraGetPort)"
-echo -e "${GREEN}=============================== ${cRES}"
 echo -e "${GREEN} REALITY dest  (empty = $dest)${cRES}"
-echo -e "${GREEN}=============================== ${cRES}"
 read destIn
 dest=${destIn:-$dest}
 sni=$domain
-echo -e "${GREEN}=============================== ${cRES}"
 echo -e "${GREEN} serverName/SNI  (empty = $sni)${cRES}"
-echo -e "${GREEN}=============================== ${cRES}"
 read sniIn
 sni=${sniIn:-$sni}
-echo -e "${GREEN}=============================== ${cRES}"
 echo -e "${GREEN} Vision? [Y/n]  (empty = Y)${cRES}"
-echo -e "${GREEN}=============================== ${cRES}"
 read yn
 yn=${yn:-Y}
 if [[ $yn = [Yy] ]]; then flow="xtls-rprx-vision"; else flow=""; fi
@@ -2162,9 +2156,11 @@ echo -e "${GREEN}================================ ${cRES}"
 echo -e "${GREEN} VLESS + WS + TLS${cRES}"
 echo -e "${GREEN}[1]: Enable${cRES}"
 echo -e "${GREEN}[2]: Disable${cRES}"
+echo -e "${GREEN}[0]: Back${cRES}"
 echo -e "${GREEN}================================ ${cRES}"
 read -s -n 1 sw
 echo
+[[ $sw = "0" || -z $sw ]] && return
 if [[ $sw = "2" ]]; then
   jq '{enabled:false}' >"$settings" 2>/dev/null || printf '%s\n' '{"enabled":false}' >"$settings"
   extraXrayApply || return 1
@@ -2172,9 +2168,7 @@ if [[ $sw = "2" ]]; then
   return
 fi
 [[ $sw = "1" ]] || return
-echo -e "${GREEN}================== ${cRES}"
 echo -e "${GREEN} Input VPS domain${cRES}"
-echo -e "${GREEN}================== ${cRES}"
 read vpsdomainP
 parsed=$(extraParseInstallAddr "$vpsdomainP") || { echo -e "${RED}Invalid domain${cRES}"; return 1; }
 read -r domain extraPort <<<"$parsed"
@@ -2207,9 +2201,11 @@ echo -e "${GREEN}============================ ${cRES}"
 echo -e "${GREEN} SOCKS5${cRES}"
 echo -e "${GREEN}[1]: Enable${cRES}"
 echo -e "${GREEN}[2]: Disable${cRES}"
+echo -e "${GREEN}[0]: Back${cRES}"
 echo -e "${GREEN}============================ ${cRES}"
 read -s -n 1 sw
 echo
+[[ $sw = "0" || -z $sw ]] && return
 if [[ $sw = "2" ]]; then
   printf '%s\n' '{"enabled":false}' >"$settings"
   extraXrayApply || return 1
@@ -2218,23 +2214,17 @@ if [[ $sw = "2" ]]; then
 fi
 [[ $sw = "1" ]] || return
 domain=$(extraGetDomain)
-echo -e "${GREEN}=============================== ${cRES}"
 echo -e "${GREEN} SOCKS5 port  (empty = 1080)${cRES}"
-echo -e "${GREEN}=============================== ${cRES}"
 read extraPort
 extraPort=${extraPort:-1080}
 [[ $extraPort =~ ^[1-9][0-9]{0,4}$ ]] && (( extraPort <= 65535 )) || { echo -e "${RED}Invalid port${cRES}"; return 1; }
 tcppf_port_available "$extraPort" || { echo -e "${RED}Port $extraPort conflicts${cRES}"; return 1; }
 user=xray$(cat /proc/sys/kernel/random/uuid | tr -d '-' | cut -c1-8)
 pass=$(cat /proc/sys/kernel/random/uuid | tr -d '-' | cut -c1-16)
-echo -e "${GREEN}=============================== ${cRES}"
 echo -e "${GREEN} User  (empty = $user)${cRES}"
-echo -e "${GREEN}=============================== ${cRES}"
 read userIn
 user=${userIn:-$user}
-echo -e "${GREEN}=============================== ${cRES}"
 echo -e "${GREEN} Password  (empty = $pass)${cRES}"
-echo -e "${GREEN}=============================== ${cRES}"
 read passIn
 pass=${passIn:-$pass}
 jq -n --arg domain "$domain" --argjson port "$extraPort" --arg user "$user" --arg password "$pass" \
@@ -2248,19 +2238,22 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}SOCKS5 ${GREEN
 
 changeDokodemo(){
 local settings="$DE_GWD_DATA_DIR/extra-dokodemo.json" sw listenPort targetInput parsed target targetPort network
+while true; do
 echo -e "${GREEN}================================ ${cRES}"
 echo -e "${GREEN} dokodemo-door${cRES}"
 echo -e "${GREEN}[1]: Add${cRES}"
 echo -e "${GREEN}[2]: Delete${cRES}"
 echo -e "${GREEN}[3]: Disable all${cRES}"
+echo -e "${GREEN}[0]: Back${cRES}"
 echo -e "${GREEN}================================ ${cRES}"
 read -s -n 1 sw
 echo
+[[ $sw = "0" || -z $sw ]] && return
 if [[ $sw = "3" ]]; then
   printf '%s\n' '{"enabled":false,"rules":[]}' >"$settings"
   extraXrayApply || return 1
   echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}dokodemo-door ${RED}Disabled${cRES}"
-  return
+  continue
 fi
 if [[ ! -f $settings ]]; then
   printf '%s\n' '{"enabled":true,"rules":[]}' >"$settings"
@@ -2277,24 +2270,18 @@ if [[ $sw = "2" ]]; then
   fi
   extraXrayApply || return 1
   echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}dokodemo-door ${GREEN}Updated${cRES}"
-  return
+  continue
 fi
-[[ $sw = "1" ]] || return
-echo -e "${GREEN}=============================== ${cRES}"
+[[ $sw = "1" ]] || continue
 echo -e "${GREEN} Listen port${cRES}"
-echo -e "${GREEN}=============================== ${cRES}"
 read listenPort
-[[ $listenPort =~ ^[1-9][0-9]{0,4}$ ]] || { echo -e "${RED}Invalid port${cRES}"; return 1; }
-tcppf_port_available "$listenPort" || { echo -e "${RED}Port $listenPort conflicts${cRES}"; return 1; }
-echo -e "${GREEN}=============================== ${cRES}"
+[[ $listenPort =~ ^[1-9][0-9]{0,4}$ ]] || { echo -e "${RED}Invalid port${cRES}"; continue; }
+tcppf_port_available "$listenPort" || { echo -e "${RED}Port $listenPort conflicts${cRES}"; continue; }
 echo -e "${GREEN} Target host:port${cRES}"
-echo -e "${GREEN}=============================== ${cRES}"
 read targetInput
-parsed=$(parseDomainPort "$targetInput" 2>/dev/null) || { echo -e "${RED}Invalid target${cRES}"; return 1; }
+parsed=$(parseDomainPort "$targetInput" 2>/dev/null) || { echo -e "${RED}Invalid target${cRES}"; continue; }
 read -r target targetPort <<<"$parsed"
-echo -e "${GREEN}=============================== ${cRES}"
 echo -e "${GREEN} Network tcp / udp / tcp,udp  (empty = tcp,udp)${cRES}"
-echo -e "${GREEN}=============================== ${cRES}"
 read network
 network=${network:-tcp,udp}
 [[ $network = "tcp" || $network = "udp" || $network = "tcp,udp" ]] || network="tcp,udp"
@@ -2305,10 +2292,12 @@ echo -e "${BLUE}Listen:  ${YELLOW}$listenPort${cRES}"
 echo -e "${BLUE}Target:  ${YELLOW}$target:$targetPort${cRES}"
 echo -e "${BLUE}Network: ${YELLOW}$network${cRES}"
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}dokodemo-door ${GREEN}Added${cRES}"
+done
 }
 
 changeXrayNode(){
 local num
+while true; do
 echo -e "${GREEN}================================ ${cRES}"
 echo -e "${GREEN} 55. Extra inbounds${cRES}"
 echo -e "${GREEN}[0]: View${cRES}"
@@ -2316,11 +2305,13 @@ echo -e "${GREEN}[1]: VLESS + REALITY${cRES}"
 echo -e "${GREEN}[2]: VLESS + WS + TLS${cRES}"
 echo -e "${GREEN}[3]: SOCKS5${cRES}"
 echo -e "${GREEN}[4]: dokodemo-door${cRES}"
+echo -e "${GREEN}[9]: Back${cRES}"
 echo -e "${GREEN}================================ ${cRES}"
 extraStatusPrint
 read -s -n 1 num
 echo
 case "$num" in
+  9|"") return ;;
   0) extraInboundsStatus ;;
   1) changeVLESSReality ;;
   2) changeVLESSWS ;;
@@ -2328,6 +2319,7 @@ case "$num" in
   4) changeDokodemo ;;
   *) echo -e "${RED}Wrong number${cRES}" ;;
 esac
+done
 }
 
 # Menu 44: multi-rule HAProxy TCP forwarding (localPort -> host:port).
@@ -2736,18 +2728,22 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}All TCP Port F
 
 changeTCPPF(){
 local tcpPFsw
+while true; do
 tcppf_list || true
 echo -e "${GREEN}============================ ${cRES}"
-echo -e "${GREEN}[1]: Add TCP Port Forward${cRES}"
-echo -e "${GREEN}[2]: Delete TCP Port Forward${cRES}"
+echo -e "${GREEN}[1]: Add${cRES}"
+echo -e "${GREEN}[2]: Delete${cRES}"
+echo -e "${GREEN}[0]: Back${cRES}"
 echo -e "${GREEN}============================ ${cRES}"
 read -s -n 1 tcpPFsw
-echo -e "${WHITE}[...${WHITE}]\c" && echo -e "\t${WHITE}Modifying TCP Port Forward settings${cRES}\r\c"
+echo
+[[ $tcpPFsw = "0" || -z $tcpPFsw ]] && return
 if [[ $tcpPFsw = "1" ]]; then
   tcppf_add
 elif [[ $tcpPFsw = "2" ]]; then
   tcppf_del
 fi
+done
 }
 
 
@@ -3169,74 +3165,131 @@ done
 printf '%s\n' "$mapping"
 }
 
-installRproxyS(){
-echo -e "${GREEN}================================ ${cRES}"
-echo -e "${GREEN} 22. RproxyS${cRES}"
-echo -e "${GREEN}[1]: Apply${cRES}"
-echo -e "${GREEN}[2]: Stop${cRES}"
-echo -e "${GREEN}[3]: Status${cRES}"
-echo -e "${GREEN}================================ ${cRES}"
-read -s -n 1 rps
-echo
-case "$rps" in
-  3) rproxySstatus; return ;;
-  2) rproxySstop; return ;;
-  1) ;;
-  *) echo -e "${RED}Wrong number${cRES}"; return 1 ;;
-esac
+rproxySconf(){
+printf '%s\n' "${DE_GWD_DATA_DIR:-/opt/de_GWD}/0conf"
+}
 
-domain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
-oldPort=$(jq -r '.FORWARD.Rproxy.server.tunnel.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-oldUUID=$(jq -r '.FORWARD.Rproxy.server.tunnel.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+rproxyScommit(){
+local conf
+conf=$(rproxySconf)
+[[ -f $conf ]] || echo '{}' >"$conf"
+if [[ ${DE_GWD_TEST_MODE:-0} != 1 ]]; then
+  chown root:www-data "$conf" 2>/dev/null || true
+  chmod 0660 "$conf" 2>/dev/null || true
+  rproxySsave || return 1
+fi
+return 0
+}
 
-echo -e "${GREEN}================================ ${cRES}"
-echo -e "${GREEN}[1] Tunnel port  (empty = ${oldPort:-55444})${cRES}"
-echo -e "${GREEN}================================ ${cRES}"
+rproxyStunnelPort(){
+jq -r '.FORWARD.Rproxy.server.tunnel.port // empty' "$(rproxySconf)" 2>/dev/null | grep -v '^null$'
+}
+
+rproxySaddMapping(){
+local conf tunnelPort mapLine add
+conf=$(rproxySconf)
+tunnelPort=$(rproxyStunnelPort)
+[[ -n $tunnelPort ]] || { echo -e "${RED}Set tunnel first${cRES}"; return 1; }
+echo -e "${GREEN} Mapping${cRES}"
+read mapLine
+[[ -n $mapLine ]] || return 0
+add=$(extraRproxyParseMapping "$mapLine" "$tunnelPort")
+[[ $(jq 'length' <<<"$add") -gt 0 ]] || { echo -e "${RED}Invalid mapping${cRES}"; return 1; }
+jq --argjson add "$add" '
+  .FORWARD = (.FORWARD // {}) |
+  .FORWARD.Rproxy = (.FORWARD.Rproxy // {}) |
+  .FORWARD.Rproxy.server.mapping = ((.FORWARD.Rproxy.server.mapping // []) + $add | unique_by(.port|tostring)) |
+  .FORWARD.Rproxy.server.mappingStatus = (if (.FORWARD.Rproxy.server.mapping|length)>0 then "on" else "off" end)
+' "$conf" | sponge "$conf"
+rproxyScommit
+}
+
+rproxySdelMapping(){
+local conf tunnelPort mapLine del
+conf=$(rproxySconf)
+tunnelPort=$(rproxyStunnelPort)
+jq -r '.FORWARD.Rproxy.server.mapping[]? | "  "+(.port|tostring)+" "+(.protocol // "tcp,udp")' "$conf" 2>/dev/null
+echo -e "${GREEN} Mapping to delete, or all${cRES}"
+read mapLine
+[[ -n $mapLine ]] || return 0
+if [[ $mapLine = all ]]; then
+  jq '.FORWARD.Rproxy.server.mapping=[] | .FORWARD.Rproxy.server.mappingStatus="off"' "$conf" | sponge "$conf"
+else
+  del=$(extraRproxyParseMapping "$mapLine" "$tunnelPort")
+  jq --argjson del "$del" '
+    .FORWARD.Rproxy.server.mapping = ((.FORWARD.Rproxy.server.mapping // []) | map(select((.port|tostring) as $p | ($del | map(.port|tostring) | index($p) | not)))) |
+    .FORWARD.Rproxy.server.mappingStatus = (if (.FORWARD.Rproxy.server.mapping|length)>0 then "on" else "off" end)
+  ' "$conf" | sponge "$conf"
+fi
+rproxyScommit
+}
+
+rproxySsetTunnel(){
+local conf oldPort oldUUID tunnelPort tunnelUUID
+conf=$(rproxySconf)
+mkdir -p "$(dirname "$conf")"
+[[ -f $conf ]] || echo '{}' >"$conf"
+oldPort=$(jq -r '.FORWARD.Rproxy.server.tunnel.port // empty' "$conf" 2>/dev/null | grep -v '^null$')
+oldUUID=$(jq -r '.FORWARD.Rproxy.server.tunnel.uuid // empty' "$conf" 2>/dev/null | grep -v '^null$')
+echo -e "${GREEN} Tunnel port  (empty = ${oldPort:-55444})${cRES}"
 read tunnelPort
 [[ -z $tunnelPort ]] && tunnelPort="${oldPort:-55444}"
 if [[ $tunnelPort = "55443" || $tunnelPort = "443" || $tunnelPort = "80" ]]; then
   echo -e "${RED}$tunnelPort is nginx${cRES}"
   return 1
 fi
-
-echo -e "${GREEN}================================ ${cRES}"
-echo -e "${GREEN}[2] Tunnel UUID  (empty = generate)${cRES}"
-echo -e "${GREEN}================================ ${cRES}"
+echo -e "${GREEN} Tunnel UUID  (empty = keep/generate)${cRES}"
 read tunnelUUID
 [[ -z $tunnelUUID ]] && tunnelUUID="${oldUUID:-$(cat /proc/sys/kernel/random/uuid)}"
-
-inUUID='[]'
-inStatus=off
-
-echo -e "${GREEN}================================ ${cRES}"
-echo -e "${GREEN}[3] Mapping  (empty = none)${cRES}"
-echo -e "${GREEN}================================ ${cRES}"
-read mapLine
-mapping=$(extraRproxyParseMapping "$mapLine" "$tunnelPort")
-if [[ $(jq 'length' <<<"$mapping") -gt 0 ]]; then mapStatus=on; else mapStatus=off; fi
-
-mkdir -p /opt/de_GWD
-[[ -f /opt/de_GWD/0conf ]] || echo '{}' >/opt/de_GWD/0conf
-jq --arg port "$tunnelPort" --arg uuid "$tunnelUUID" --arg inStatus "$inStatus" --arg mapStatus "$mapStatus" --argjson inUUID "$inUUID" --argjson mapping "$mapping" '
+jq --arg port "$tunnelPort" --arg uuid "$tunnelUUID" '
   .FORWARD = (.FORWARD // {}) |
   .FORWARD.Rproxy = (.FORWARD.Rproxy // {}) |
-  .FORWARD.Rproxy.server.inStatus = $inStatus |
-  .FORWARD.Rproxy.server.mappingStatus = $mapStatus |
+  .FORWARD.Rproxy.server.inStatus = (.FORWARD.Rproxy.server.inStatus // "off") |
+  .FORWARD.Rproxy.server.inUUID = (.FORWARD.Rproxy.server.inUUID // []) |
+  .FORWARD.Rproxy.server.mapping = (.FORWARD.Rproxy.server.mapping // []) |
+  .FORWARD.Rproxy.server.mappingStatus = (if (.FORWARD.Rproxy.server.mapping|length)>0 then "on" else "off" end) |
   .FORWARD.Rproxy.server.tunnel.port = $port |
-  .FORWARD.Rproxy.server.tunnel.uuid = $uuid |
-  .FORWARD.Rproxy.server.inUUID = $inUUID |
-  .FORWARD.Rproxy.server.mapping = $mapping
-' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chown root:www-data /opt/de_GWD/0conf
-chmod 0660 /opt/de_GWD/0conf
+  .FORWARD.Rproxy.server.tunnel.uuid = $uuid
+' "$conf" | sponge "$conf"
+rproxyScommit
+}
 
-if rproxySsave; then
-  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}RproxyS ${GREEN}Applied${cRES}"
-else
-  echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${WHITE}RproxyS 0conf saved, helper missing${cRES}"
-fi
-echo -e "${GREEN} Client RproxyC address: ${YELLOW}${domain}:${tunnelPort}${cRES}"
-echo -e "${GREEN} UUID: ${YELLOW}${tunnelUUID}${cRES}"
+installRproxyS(){
+local rps domain
+while true; do
+echo -e "${GREEN}================================ ${cRES}"
+echo -e "${GREEN} 22. RproxyS${cRES}"
+echo -e "${GREEN}[1]: Status${cRES}"
+echo -e "${GREEN}[2]: Tunnel${cRES}"
+echo -e "${GREEN}[3]: Add mapping${cRES}"
+echo -e "${GREEN}[4]: Delete mapping${cRES}"
+echo -e "${GREEN}[5]: Stop${cRES}"
+echo -e "${GREEN}[0]: Back${cRES}"
+echo -e "${GREEN}================================ ${cRES}"
+read -s -n 1 rps
+echo
+case "$rps" in
+  0|"") return ;;
+  1) rproxySstatus ;;
+  2)
+    rproxySsetTunnel || continue
+    domain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
+    echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}RproxyS ${GREEN}Tunnel${cRES}"
+    echo -e "${GREEN} Client RproxyC: ${YELLOW}${domain}:$(rproxyStunnelPort)${cRES}"
+    echo -e "${GREEN} UUID: ${YELLOW}$(jq -r '.FORWARD.Rproxy.server.tunnel.uuid' "$(rproxySconf)")${cRES}"
+    ;;
+  3)
+    rproxySaddMapping || continue
+    echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}RproxyS mapping ${GREEN}Added${cRES}"
+    ;;
+  4)
+    rproxySdelMapping || continue
+    echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}RproxyS mapping ${GREEN}Deleted${cRES}"
+    ;;
+  5) rproxySstop ;;
+  *) echo -e "${RED}Wrong number${cRES}" ;;
+esac
+done
 }
 
 
