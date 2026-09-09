@@ -3136,10 +3136,25 @@ echo -e "${BLUE}-------------------------------------------------- ${cRES}"
 }
 
 
+extraRproxyParseMapping(){
+local line=$1 tunnelPort=$2 tok port proto mapping='[]'
+line=${line//,/ }
+for tok in $line; do
+  [[ -z $tok ]] && continue
+  port=${tok%%/*}
+  proto=${tok#*/}
+  [[ $proto = "$port" || -z $proto ]] && proto="tcp,udp"
+  [[ $proto = "tcp+udp" ]] && proto="tcp,udp"
+  [[ $port =~ ^[1-9][0-9]{0,4}$ ]] && (( port <= 65535 )) || continue
+  [[ $port = "55443" || $port = "443" || $port = "80" || $port = "$tunnelPort" ]] && continue
+  mapping=$(jq --arg p "$port" --arg n "$proto" '. + [{"port":$p,"protocol":$n}]' <<<"$mapping")
+done
+printf '%s\n' "$mapping"
+}
+
 installRproxyS(){
 echo -e "${GREEN}================================ ${cRES}"
 echo -e "${GREEN} 22. RproxyS${cRES}"
-echo -e "${GREEN} 字段与客户端 RproxyC 一致。顺序：隧道 → UUID → 代理型 → 映射${cRES}"
 echo -e "${GREEN}[1]: Apply${cRES}"
 echo -e "${GREEN}[2]: Stop${cRES}"
 echo -e "${GREEN}[3]: Status${cRES}"
@@ -3159,7 +3174,6 @@ oldUUID=$(jq -r '.FORWARD.Rproxy.server.tunnel.uuid' /opt/de_GWD/0conf 2>/dev/nu
 
 echo -e "${GREEN}================================ ${cRES}"
 echo -e "${GREEN}[1] Tunnel port  (empty = ${oldPort:-55444})${cRES}"
-echo -e "${GREEN}    勿占用 nginx TLS / 80 / 443${cRES}"
 echo -e "${GREEN}================================ ${cRES}"
 read tunnelPort
 [[ -z $tunnelPort ]] && tunnelPort="${oldPort:-55444}"
@@ -3175,32 +3189,13 @@ read tunnelUUID
 [[ -z $tunnelUUID ]] && tunnelUUID="${oldUUID:-$(cat /proc/sys/kernel/random/uuid)}"
 
 inUUID='[]'
-echo -e "${GREEN}================================ ${cRES}"
-echo -e "${GREEN}[3] Extra UUID 代理型  (empty line = skip/end)${cRES}"
-echo -e "${GREEN}================================ ${cRES}"
-while true; do
-  read extraUUID
-  [[ -z $extraUUID ]] && break
-  echo -e "${GREEN}    Mark (optional)${cRES}"
-  read extraMark
-  inUUID=$(jq --arg u "$extraUUID" --arg m "$extraMark" '. + [{"RproxyS0uuid":$u,"RproxyS0mark":$m}]' <<<"$inUUID")
-done
-if [[ $(jq 'length' <<<"$inUUID") -gt 0 ]]; then inStatus=on; else inStatus=off; fi
+inStatus=off
 
-mapping='[]'
 echo -e "${GREEN}================================ ${cRES}"
-echo -e "${GREEN}[4] Mapping  port  [protocol]  (empty line = skip/end)${cRES}"
-echo -e "${GREEN}    protocol 默认 tcp,udp；勿占用 nginx / 隧道口${cRES}"
+echo -e "${GREEN}[3] Mapping  (empty = none)${cRES}"
 echo -e "${GREEN}================================ ${cRES}"
-while true; do
-  read mapLine
-  [[ -z $mapLine ]] && break
-  mapPort=$(awk '{print $1}' <<<"$mapLine")
-  mapProto=$(awk '{print $2}' <<<"$mapLine")
-  [[ -z $mapProto || $mapProto = "tcp+udp" ]] && mapProto="tcp,udp"
-  [[ $mapPort = "55443" || $mapPort = "443" || $mapPort = "80" || $mapPort = "$tunnelPort" ]] && echo -e "${YELLOW}skip $mapPort${cRES}" && continue
-  mapping=$(jq --arg p "$mapPort" --arg n "$mapProto" '. + [{"port":$p,"protocol":$n}]' <<<"$mapping")
-done
+read mapLine
+mapping=$(extraRproxyParseMapping "$mapLine" "$tunnelPort")
 if [[ $(jq 'length' <<<"$mapping") -gt 0 ]]; then mapStatus=on; else mapStatus=off; fi
 
 mkdir -p /opt/de_GWD

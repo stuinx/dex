@@ -67,7 +67,17 @@ type extraParseInstallAddr >/dev/null 2>&1 || fail "server did not define extraP
 type extraStatusPrint >/dev/null 2>&1 || fail "server did not define extraStatusPrint"
 type extraInboundsStatus >/dev/null 2>&1 || fail "server did not define extraInboundsStatus"
 type rproxySstatus >/dev/null 2>&1 || fail "server did not define rproxySstatus"
+type extraRproxyParseMapping >/dev/null 2>&1 || fail "server did not define extraRproxyParseMapping"
 type changeXrayNode >/dev/null 2>&1 || fail "server did not define changeXrayNode"
+
+mapped=$(extraRproxyParseMapping '22201' '22200')
+[[ $(jq -c . <<<"$mapped") = '[{"port":"22201","protocol":"tcp,udp"}]' ]] || fail "single mapping port parse failed"
+mapped=$(extraRproxyParseMapping '22201,22202 22203/tcp' '22200')
+[[ $(jq -c '[.[].port]' <<<"$mapped") = '["22201","22202","22203"]' ]] || fail "multi mapping parse failed"
+mapped=$(extraRproxyParseMapping '22200 443 22201' '22200')
+[[ $(jq -c '[.[].port]' <<<"$mapped") = '["22201"]' ]] || fail "mapping did not skip tunnel/nginx ports"
+mapped=$(extraRproxyParseMapping '' '22200')
+[[ $(jq 'length' <<<"$mapped") = 0 ]] || fail "empty mapping should be []"
 
 parsed=$(extraParseInstallAddr 'node.example:2096') || fail "install-style domain:port parse failed"
 [[ $parsed = "node.example 2096" ]] || fail "install-style domain:port mismatch"
