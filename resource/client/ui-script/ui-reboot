@@ -25,7 +25,8 @@ EOF
 fi
 
 jq --arg localAddrCIDR "$localAddrCIDR" '.address.localIP=$localAddrCIDR' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chmod 0640 /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf
+chmod 0660 /opt/de_GWD/0conf
 
 sleep 1
 reboot

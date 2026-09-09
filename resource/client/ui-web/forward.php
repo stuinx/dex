@@ -906,14 +906,15 @@ $('#buttonGenCER').click(function(){
 cfdomain=$('#CFdomain').val()
 cfapikey=$('#CFapikey').val().trim()
 cfemail=$('#CFemail').val()
-$.get('./act/genCER.php', {CFdomain:cfdomain, CFapikey:cfapikey, CFemail:cfemail}, function(){})
-var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
-var timer = setInterval(function() { 
+$.get('./act/genCER.php', {CFdomain:cfdomain, CFapikey:cfapikey, CFemail:cfemail}, function(){
+  var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
+  var timer = setInterval(function() {
     if(win.closed) {
         clearInterval(timer);
         $.get('./act/installZ.php', function(result){window.location.reload()})
     }
-}, 300);
+  }, 300);
+})
 })
 
 $('#buttonCheckCER').click(function(){

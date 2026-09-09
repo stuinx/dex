@@ -15,7 +15,8 @@ jq --arg tls "$tls" '.update.v2node.tls=$tls' |\
 jq --arg port "$port" '.update.v2node.port=$port' |\
 jq --arg uuid "$uuid" '.update.v2node.uuid=$uuid' |\
 jq --arg path "$path" '.update.v2node.path=$path' | sponge /opt/de_GWD/0conf
-chmod 0640 /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf
+chmod 0660 /opt/de_GWD/0conf
 
 if [[ -z $path ]]; then
 OBdefault=`cat << EOF

@@ -21,5 +21,6 @@ if [[ -n $(cat /opt/de_GWD/0conf) ]]; then
 	cp -f /opt/de_GWD/0conf /opt/de_GWD/0conf_bak
 elif [[ -z $(cat /opt/de_GWD/0conf) ]]; then
 	cp -f /opt/de_GWD/0conf_bak /opt/de_GWD/0conf
-	chmod 0640 /opt/de_GWD/0conf
+	chown root:www-data /opt/de_GWD/0conf
+	chmod 0660 /opt/de_GWD/0conf
 fi

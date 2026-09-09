@@ -49,6 +49,8 @@ chmod +x client
 
 Release：https://github.com/stuinx/dex/releases
 
+Server 菜单 **55 Extra inbounds**（主 VMess 不变）：VLESS+REALITY、VLESS+WS+TLS（可同域名、端口必须不同，nginx 单独写 `vless-ws.conf`，UUID/path 按主 VMess 生成）、SOCKS5、dokodemo 多规则。操作流程：[docs/server-menu-55.md](docs/server-menu-55.md)。进入 `bash /opt/de_GWD/server` → 55，`[0]` 查看已添加项。
+
 ## Thanks to
 
 * [ XTLS/Xray-core ](https://github.com/XTLS/Xray-core)

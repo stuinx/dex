@@ -33,6 +33,7 @@ routingIP=$(echo $(jq -R -s -c 'split("\n")' < /tmp/routingIP) | jq -c '.[:-1]')
 jq '.v2nodeDIV.nodeCU.status="on"' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 
 [[ $1 = "r" ]] && systemctl restart vtrui >/dev/null
-chmod 0640 /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf
+chmod 0660 /opt/de_GWD/0conf
 rm -rf /tmp/routingDomain
 rm -rf /tmp/routingIP

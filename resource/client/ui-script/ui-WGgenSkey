@@ -9,6 +9,7 @@ spublickey=$(cat /etc/wireguard/spublickey)
 
 jq --arg sprivatekey "$sprivatekey" '.wireguard.server.sprivatekey=$sprivatekey' /opt/de_GWD/0conf |\
 jq --arg spublickey "$spublickey" '.wireguard.server.spublickey=$spublickey' | sponge /opt/de_GWD/0conf
-chmod 0640 /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf
+chmod 0660 /opt/de_GWD/0conf
 
 rm -rf /etc/wireguard/s*key

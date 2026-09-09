@@ -100,7 +100,8 @@ jellyfinDockerRun
 jellyfinNginxConf
 
 jq '.app.jellyfin="installed"' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chmod 0640 /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf
+chmod 0660 /opt/de_GWD/0conf
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install Jellyfin${cRES}"
 }
@@ -119,7 +120,8 @@ systemctl force-reload nginx >/dev/null
 
 rm -rf /opt/jellyfin
 jq 'del(.app.jellyfin)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chmod 0640 /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf
+chmod 0660 /opt/de_GWD/0conf
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Uninstall Jellyfin${cRES}"
 }

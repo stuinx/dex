@@ -112,7 +112,8 @@ EOF
 
 if [[ -z $(jq -r '.dns.china' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$') ]]; then
   jq --arg dnsChina "114.114.114.114 114.114.115.115 119.29.29.29 119.28.28.28 180.76.76.76 223.5.5.5 223.6.6.6" '.dns.china=$dnsChina' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-  chmod 0640 /opt/de_GWD/0conf
+  chown root:www-data /opt/de_GWD/0conf
+  chmod 0660 /opt/de_GWD/0conf
 fi
 
 for dnsChina in $(jq -r '.dns.china' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$'); do

@@ -69,7 +69,8 @@ fi
 if [[ $1 = "f" ]]; then
   jq '.v2nodeDIV.nodeCU.status="off"' /opt/de_GWD/0conf |\
   jq '.v2nodeDIV.nodeDT.status="off"' | sponge /opt/de_GWD/0conf
-  chmod 0640 /opt/de_GWD/0conf
+  chown root:www-data /opt/de_GWD/0conf
+  chmod 0660 /opt/de_GWD/0conf
 fi
 
 if [[ $2 = "r" ]]; then

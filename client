@@ -13,7 +13,7 @@ chmod 1777 /tmp
 architecture=$(dpkg --print-architecture)
 export DEBIAN_FRONTEND=noninteractive
 TTYD_Ver="1.7.3"
-branch="main"
+branch="dev"
 
 if [[ $architecture != "amd64" ]]; then
   echo -e "${RED}only work on x86_64${cRES}"
@@ -22,7 +22,7 @@ fi
 
 
 installCMD=`cat << EOF
-bash <(wget --no-check-certificate -qO- https://ghfast.top/https://raw.githubusercontent.com/stuinx/dex/main/client)
+bash <(wget --no-check-certificate -qO- https://ghfast.top/https://raw.githubusercontent.com/stuinx/dex/dev/client)
 EOF
 `
 
@@ -239,10 +239,10 @@ fi
 if [[ -f "./de_GWD_$architecture.zip" ]]; then
     mv -f ./de_GWD_$architecture.zip /opt/de_GWD/.repo/de_GWD.zip
 else
-    sha256sum_de_GWD=$(curl_gh https://raw.githubusercontent.com/stuinx/dex/main/de_GWD_"$architecture".zip.sha256sum)
+    sha256sum_de_GWD=$(curl_gh https://raw.githubusercontent.com/stuinx/dex/dev/de_GWD_"$architecture".zip.sha256sum)
     if [[ -n $sha256sum_de_GWD ]] && [[ $(checkSum /opt/de_GWD/.repo/de_GWD.zip $sha256sum_de_GWD) = "false" ]]; then
     rm -rf /tmp/de_GWD.zip
-    wget_gh /tmp/de_GWD.zip https://raw.githubusercontent.com/stuinx/dex/main/de_GWD_"$architecture".zip
+    wget_gh /tmp/de_GWD.zip https://raw.githubusercontent.com/stuinx/dex/dev/de_GWD_"$architecture".zip
     [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && rm -rf /tmp/de_GWD.zip && wget_gh /tmp/de_GWD.zip https://github.com/stuinx/dex/releases/latest/download/de_GWD_"$architecture".zip
     [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit
     [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "true" ]] && mv -f /tmp/de_GWD.zip /opt/de_GWD/.repo/de_GWD.zip
@@ -300,11 +300,11 @@ wget_gh /tmp/client.zip https://raw.githubusercontent.com/stuinx/dex/$branch/res
 fi
 
 localVer=$(awk 'NR==1' /opt/de_GWD/.repo/version.php 2>/dev/null)
-remoteVer=$(curl_gh https://raw.githubusercontent.com/stuinx/dex/main/version.php | head -n 1)
+remoteVer=$(curl_gh https://raw.githubusercontent.com/stuinx/dex/dev/version.php | head -n 1)
 
 if [[ $localVer != $remoteVer ]] || [[ ! -f '/opt/de_GWD/.repo/version.php' ]]; then
 rm -rf /opt/de_GWD/.repo/version.php
-wget_gh /opt/de_GWD/.repo/version.php https://raw.githubusercontent.com/stuinx/dex/main/version.php
+wget_gh /opt/de_GWD/.repo/version.php https://raw.githubusercontent.com/stuinx/dex/dev/version.php
 [[ $? -ne 0 ]] && echo -e "${WHITE}Version file${RED} Download Failed${cRES}" && exit
 fi
 
@@ -2578,7 +2578,8 @@ rm -rf /opt/de_GWD/update
 
 if [[ -f /opt/de_GWD/0conf ]]; then
 jq --arg updateCMD "$installCMD" '.update.updateCMD=$updateCMD' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chmod 0640 /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf
+chmod 0660 /opt/de_GWD/0conf
 fi
 
 if [[ $(dpkg --list | grep linux-image | wc -l) != "1" ]] && [[ $(uname -r) != *zabbly* ]]; then
@@ -2589,7 +2590,7 @@ fi
 
 
 installkernel(){
-bash <(curl_gh https://raw.githubusercontent.com/stuinx/dex/main/resource/kernel/installkernel)
+bash <(curl_gh https://raw.githubusercontent.com/stuinx/dex/dev/resource/kernel/installkernel)
 }
 
 
@@ -2639,9 +2640,15 @@ changePWD(){
 
 docker exec pihole pihole setpassword "$newPW"
 
-piholePW=$(php -r "echo hash('sha256', hash('sha256', '$newPW'));")
+piholePW=$(NEWPW="$newPW" python3 - <<'PY'
+import hashlib, os
+p = os.environ["NEWPW"].encode()
+print(hashlib.sha256(hashlib.sha256(p).hexdigest().encode()).hexdigest())
+PY
+)
 jq --arg piholePW "$piholePW" '.address.PWD = $piholePW' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chmod 0640 /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf
+chmod 0660 /opt/de_GWD/0conf
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Password ${GREEN}Changed${cRES}"
 }
@@ -2759,7 +2766,8 @@ jq --arg uuid "$uuid" '.update.v2node.uuid=$uuid' |\
 jq --arg path "$path" '.update.v2node.path=$path' | sponge /opt/de_GWD/0conf
 [[ -n $DoG ]] && jq --arg DoG "$DoG" '.dns.DoG=$DoG' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 [[ -n $doh1 ]] && jq --arg doh1 "$doh1" '.dns.doh+=[$doh1]' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chmod 0640 /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf
+chmod 0660 /opt/de_GWD/0conf
 
 updateAPT
 

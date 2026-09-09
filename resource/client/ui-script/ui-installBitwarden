@@ -102,7 +102,8 @@ cat << EOF >/etc/logrotate.d/bitwarden
 }
 EOF
 jq '.app.bitwarden="installed"' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chmod 0640 /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf
+chmod 0660 /opt/de_GWD/0conf
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install Bitwarden${cRES}"
 }
@@ -130,7 +131,8 @@ systemctl force-reload nginx
 rm -rf /etc/logrotate.d/bitwarden
 jq 'del(.app.bitwardenrs)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 jq 'del(.app.bitwarden)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chmod 0640 /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf
+chmod 0660 /opt/de_GWD/0conf
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Uninstall Bitwarden${cRES}"
 }

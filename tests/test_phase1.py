@@ -100,7 +100,14 @@ def test_no_journal_wiping():
 def test_conf_permissions_0640():
     source = (ROOT / 'client').read_text()
     assert 'chmod 666 /opt/de_GWD/0conf' not in source
-    assert 'chmod 0640 /opt/de_GWD/0conf' in source
+    assert 'chmod 0660 /opt/de_GWD/0conf' in source
+    assert 'chown root:www-data /opt/de_GWD/0conf' in source
+    pwd = function('client', 'changePWD')
+    assert 'chown root:www-data /opt/de_GWD/0conf' in pwd
+    assert 'python3' in pwd
+    gencer = (ROOT / 'resource/client/ui-web/act/genCER.php').read_text()
+    assert "sudo nohup /usr/bin/ttyd" not in gencer
+    assert "sudo /usr/bin/ttyd" in gencer
 
 
 def test_tcp_time_does_not_use_http_date():
@@ -190,6 +197,21 @@ def test_runtime_does_not_fetch_original_repo():
     assert 'raw.githubusercontent.com/stuinx/dex' in client
     assert 'raw.githubusercontent.com/stuinx/dex' in server
     assert 'github.com/stuinx/dex/releases' in (ROOT / 'resource/client/ui-web/index.php').read_text()
+
+
+def test_server_tcppf_multi_rule():
+    result = subprocess.run(
+        ['bash', str(ROOT / 'tests' / 'test_server_tcppf.sh')],
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'PASS:' in result.stdout
+    server = (ROOT / 'server').read_text()
+    assert 'tcppf_add' in server
+    assert 'frontend $name' in server or 'frontend p${localP}' in server
+    assert 'mode                  tcp' in server
+    assert 'Input local port to delete, or all' in server
 
 
 def test_server_rproxy_matches_client_schema():
