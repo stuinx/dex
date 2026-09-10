@@ -75,6 +75,15 @@ def test_sudoers_no_wildcard_nopasswd():
     source = (ROOT / 'client').read_text()
     assert 'NOPASSWD:ALL' not in source
     assert '/etc/sudoers.d/degwd' in source
+    assert '/opt/de_GWD/ui_*' in source
+    assert '/bin/cp' in source
+    assert '/bin/rm' in source
+    assert '/bin/cat' in source
+    assert '/usr/bin/zip' in source
+    assert '/usr/bin/curl' in source
+    assert '/var/lib/php/sessions' in source
+    assert 'client_max_body_size 100M;' in source
+    assert 'sudo [[' not in (ROOT / 'resource/client/ui-web/act/checkWG.php').read_text()
 
 
 def test_nftables_isolated_and_no_flush_ruleset():
@@ -102,6 +111,8 @@ def test_conf_permissions_0640():
     assert 'chmod 666 /opt/de_GWD/0conf' not in source
     assert 'chmod 0660 /opt/de_GWD/0conf' in source
     assert 'chown root:www-data /opt/de_GWD/0conf' in source
+    assert 'ensure0confPerms' in source
+    assert 'chmod 755 /opt/de_GWD' in source
     pwd = function('client', 'changePWD')
     assert 'chown root:www-data /opt/de_GWD/0conf' in pwd
     assert 'python3' in pwd

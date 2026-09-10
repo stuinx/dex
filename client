@@ -10,6 +10,13 @@ WHITE='\E[1;37m'
 cRES='\E[0m'
 
 chmod 1777 /tmp
+ensure0confPerms(){
+chmod 755 /opt/de_GWD 2>/dev/null || true
+if [[ -f /opt/de_GWD/0conf ]]; then
+  chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+  chmod 0660 /opt/de_GWD/0conf 2>/dev/null || true
+fi
+}
 architecture=$(dpkg --print-architecture)
 export DEBIAN_FRONTEND=noninteractive
 TTYD_Ver="1.7.3"
@@ -519,6 +526,7 @@ rm -rf /etc/systemd/system/rc_online.service
 systemctl daemon-reload >/dev/null
 fi
 
+ensure0confPerms
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Clean-up${cRES}"
 }
 
@@ -664,6 +672,8 @@ fi
 
 preInstall(){
 sync; echo 3 >/proc/sys/vm/drop_caches >/dev/null 2>&1
+chmod 755 /opt/de_GWD 2>/dev/null || true
+ensure0confPerms
 
 if [[ $(systemctl is-active swap.target) != "active" ]]; then
 systemctl unmask swap.target >/dev/null 2>&1
@@ -1928,9 +1938,13 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Dependencies${cRES}\r\c"
 sed -i "/www-data/d" /etc/sudoers
 mkdir -p /etc/sudoers.d
 cat << 'EOF' >/etc/sudoers.d/degwd
-www-data ALL=(root) NOPASSWD: /opt/de_GWD/ui-*, /opt/de_GWD/autoUpdate, /usr/bin/ttyd, /bin/systemctl, /usr/bin/systemctl, /usr/bin/dpkg, /bin/uname, /usr/bin/uname, /usr/sbin/showmount, /usr/sbin/nfsstat
+www-data ALL=(root) NOPASSWD: /opt/de_GWD/ui-*, /opt/de_GWD/ui_*, /opt/de_GWD/autoUpdate, /usr/bin/ttyd, /bin/systemctl, /usr/bin/systemctl, /usr/bin/dpkg, /bin/uname, /usr/bin/uname, /usr/sbin/showmount, /usr/sbin/nfsstat, /bin/cp, /usr/bin/cp, /bin/rm, /usr/bin/rm, /bin/cat, /usr/bin/cat, /usr/bin/zip, /usr/bin/curl
 EOF
 chmod 0440 /etc/sudoers.d/degwd
+
+mkdir -p /var/lib/php/sessions
+chown -R www-data:www-data /var/lib/php/sessions 2>/dev/null || true
+chmod 730 /var/lib/php/sessions 2>/dev/null || true
 
 pkgDEP1
 
@@ -2147,6 +2161,7 @@ fi
 
 [[ -z $(echo $webUIport | grep '^[[:digit:]]*$') ]] && webUIport="443"
 jq --arg webUIport $webUIport '.address.webUIport=$webUIport' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+ensure0confPerms
 
 if [[ $webUIport = 443 ]]; then
 cat << EOF >/etc/nginx/conf.d/80.conf
@@ -2213,6 +2228,7 @@ server {
   server_name $serverName;
   root /var/www/html;
   index index.php index.html index.htm;
+  client_max_body_size 100M;
   error_page 497 https://\$host:$webUIport\$request_uri;
 
   include /etc/nginx/conf.d/.HSTS;
@@ -2308,7 +2324,9 @@ mv -f /tmp/ui-web/* /var/www/html >/dev/null
 mkdir -p /var/www/html/restore
 chown -R www-data:www-data /var/www/html
 chmod -R +x /var/www/html
+chmod 755 /opt/de_GWD
 chmod +x /opt/de_GWD/*
+ensure0confPerms
 
 if [[ $TTYD_UPDATE = "true" ]]; then
 [[ -z $(echo $updatePort | grep '^[[:digit:]]*$') ]] && updatePort="3000"
@@ -2645,6 +2663,7 @@ sed -i "/ExecStart=/c\ExecStart=/usr/bin/ttyd -p $updatePort -o /opt/de_GWD/upda
 systemctl daemon-reload >/dev/null
 
 jq --arg updatePort $updatePort '.update.updatePort=$updatePort' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+ensure0confPerms
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Web UI Port & Web update Port ${GREEN}Updated${cRES}"
 }
