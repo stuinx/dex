@@ -1840,6 +1840,32 @@ location $vlessPath {
 EOF
 }
 
+# Same camouflage as main nginx: site root for GET /, WS path still 404 unless Upgrade.
+extraVlessWsNginxSite(){
+local sock
+cat << EOF
+  root /var/www/html;
+  index index.php index.html index.htm;
+  location / {
+    try_files \$uri \$uri/ /index.html;
+  }
+EOF
+sock=$(ls /run/php/php*-fpm.sock 2>/dev/null | head -n1)
+[[ -n $sock ]] || return 0
+cat << EOF
+location ~ [^/]\.php(/|$) {
+  fastcgi_split_path_info ^(.+?\.php)(/.*)$;
+  if (!-f \$document_root\$fastcgi_script_name) {
+      return 404;
+  }
+  include               fastcgi_params;
+  fastcgi_param         SCRIPT_FILENAME   \$document_root\$fastcgi_script_name;
+  fastcgi_pass          unix:$sock;
+  fastcgi_index         index.php;
+}
+EOF
+}
+
 # Standalone vhost: /etc/nginx/conf.d/vless-ws.conf (not mixed into default.conf).
 extraVlessWsNginxConf(){
 local vlessPath vDomain vPort nginxDir
@@ -1862,6 +1888,7 @@ server {
   error_page 497 https://\$host:$vPort\$request_uri;
   include $nginxDir/.HSTS;
   include $nginxDir/.ssl_certs;
+$(extraVlessWsNginxSite)
 $(extraVlessWsNginxLocation "$vlessPath")
 }
 EOF
@@ -1924,8 +1951,11 @@ if extraJsonEnabled "$DE_GWD_DATA_DIR/extra-dokodemo.json"; then
   for (( i=0; i<n; i++ )); do
     listenPort=$(jq -r --argjson i "$i" '.rules[$i].port' "$DE_GWD_DATA_DIR/extra-dokodemo.json")
     target=$(jq -r --argjson i "$i" '.rules[$i].target' "$DE_GWD_DATA_DIR/extra-dokodemo.json")
+    target=${target#\[}
+    target=${target%\]}
     targetPort=$(jq -r --argjson i "$i" '.rules[$i].targetPort' "$DE_GWD_DATA_DIR/extra-dokodemo.json")
     network=$(jq -r --argjson i "$i" '.rules[$i].network' "$DE_GWD_DATA_DIR/extra-dokodemo.json")
+    [[ -z $network || $network = null ]] && network=tcp,udp
     inbound=$(jq -nc --argjson port "$listenPort" --arg target "$target" --argjson targetPort "$targetPort" --arg network "$network" --arg tag "extra-dokodemo-$i" \
       '{tag:$tag,listen:"0.0.0.0",port:$port,protocol:"dokodemo-door",settings:{address:$target,port:$targetPort,network:$network}}')
     jq --argjson ib "$inbound" '.inbounds += [$ib]' "$conf" | sponge "$conf"
@@ -2078,7 +2108,7 @@ echo
 f=$DE_GWD_DATA_DIR/extra-dokodemo.json
 if extraJsonEnabled "$f"; then
   echo -e "${GREEN}dokodemo-door${cRES}"
-  jq -r '.rules[]? | "  "+(.port|tostring)+" -> "+.target+":"+(.targetPort|tostring)+" "+.network' "$f"
+  extraDokodemoJqTarget "$f"
 elif [[ -f $legacy && $(jq '.dokodemo.rules | length' "$legacy" 2>/dev/null) -gt 0 ]]; then
   echo -e "${GREEN}dokodemo-door${cRES}"
   jq -r '.dokodemo.rules[]? | "  "+((.listenPort // .port)|tostring)+" -> "+(.address // .target)+":"+((.port // .targetPort)|tostring)+" "+(.network // "")' "$legacy"
@@ -2257,7 +2287,7 @@ if [[ ! -f $settings ]]; then
   printf '%s\n' '{"enabled":true,"rules":[]}' >"$settings"
 fi
 if [[ $sw = "2" ]]; then
-  jq -r '.rules[]? | "\(.port) -> \(.target):\(.targetPort) \(.network)"' "$settings"
+  extraDokodemoJqTarget "$settings"
   echo -e "${GREEN}Listen port to delete, or all${cRES}"
   read delID
   if [[ $delID = all ]]; then
@@ -2279,14 +2309,14 @@ echo -e "${GREEN} Target host:port${cRES}"
 read targetInput
 parsed=$(parseDomainPort "$targetInput" 2>/dev/null) || { echo -e "${RED}Invalid target${cRES}"; continue; }
 read -r target targetPort <<<"$parsed"
-echo -e "${GREEN} Network tcp / udp / tcp,udp${cRES}"
+echo -e "${GREEN} Network tcp / udp / tcp,udp (empty = tcp,udp)${cRES}"
 read network
-[[ $network = "tcp" || $network = "udp" || $network = "tcp,udp" ]] || { echo -e "${RED}Invalid network${cRES}"; continue; }
+network=$(extraDokodemoNormalizeNetwork "$network") || { echo -e "${RED}Invalid network${cRES}"; continue; }
 jq '.enabled=true' "$settings" | jq --argjson port "$listenPort" --arg target "$target" --argjson targetPort "$targetPort" --arg network "$network" \
   '.rules += [{port:$port,target:$target,targetPort:$targetPort,network:$network}]' | sponge "$settings"
 extraXrayApply || return 1
 echo -e "${BLUE}Listen:  ${YELLOW}$listenPort${cRES}"
-echo -e "${BLUE}Target:  ${YELLOW}$target:$targetPort${cRES}"
+echo -e "${BLUE}Target:  ${YELLOW}$(formatDomainPort "$target" "$targetPort")${cRES}"
 echo -e "${BLUE}Network: ${YELLOW}$network${cRES}"
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}dokodemo-door ${GREEN}Added${cRES}"
 done
@@ -2342,17 +2372,37 @@ else
   port=${input##*:}
   [[ $host == *:* ]] && return 1
 fi
+host=${host#\[}
+host=${host%\]}
 [[ -n $host && $port =~ ^[0-9]+$ ]] || return 1
 printf '%s %s\n' "$host" "$port"
 }
 
 formatDomainPort(){
 local host=$1 port=$2
+host=${host#\[}
+host=${host%\]}
 if [[ $host == *:* ]]; then
   printf '[%s]:%s\n' "$host" "$port"
 else
   printf '%s:%s\n' "$host" "$port"
 fi
+}
+
+# Empty network = tcp,udp. Accept tcp / udp / tcp,udp and a few aliases.
+extraDokodemoNormalizeNetwork(){
+local n=${1-}
+n=$(printf '%s' "$n" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+[[ -z $n ]] && n=tcp,udp
+case $n in
+  tcp|udp|tcp,udp) printf '%s\n' "$n" ;;
+  tcp+udp|tcp/udp|tcpudp|both|all) printf 'tcp,udp\n' ;;
+  *) return 1 ;;
+esac
+}
+
+extraDokodemoJqTarget(){
+jq -r '.rules[]? | "  "+(.port|tostring)+" -> "+(if (.target|contains(":")) then "["+.target+"]:" else .target+":" end)+(.targetPort|tostring)+" "+.network' "$1"
 }
 
 tcppf_write_settings(){
@@ -2567,6 +2617,25 @@ if ! systemctl is-active --quiet haproxy; then
 fi
 }
 
+tcppf_runtime_matches(){
+local json_ports cfg_ports
+json_ports=$(jq -r '[.[].localPort | tonumber] | sort | map(tostring) | join(",")' <<<"${TCPPFrules:-[]}" 2>/dev/null)
+if [[ ! -f $DE_GWD_HAPROXY_CONFIG ]]; then
+  [[ -z $json_ports ]] && return 0
+  return 1
+fi
+cfg_ports=$(awk '$1 == "bind" {print $2}' "$DE_GWD_HAPROXY_CONFIG" 2>/dev/null | awk -F: '{print $NF}' | sort -n | awk '{p=p $0 ","} END {sub(/,$/, "", p); print p}')
+[[ $json_ports = "$cfg_ports" ]]
+}
+
+# JSON is source of truth. Rewrite HAProxy if bind ports drifted (legacy relay0, etc).
+tcppf_sync_runtime(){
+tcppf_load || return 1
+tcppf_validate_rules || return 1
+tcppf_runtime_matches && return 0
+tcppf_apply_runtime
+}
+
 tcppf_apply_transaction(){
 local candidate=$1 bak_settings bak_cfg had_settings=0 had_cfg=0
 bak_settings=$(mktemp /tmp/de_GWD-tcppf-bak-settings.XXXXXX) || return 1
@@ -2617,7 +2686,7 @@ fi
 }
 
 tcppf_add(){
-local upDomainP localP parsed host upPort candidate
+local upDomainP localP parsed host upPort candidate domain
 tcppf_load || return 1
 tcppf_validate_rules || return 1
 echo -e "${GREEN}======================= ${cRES}"
@@ -2666,9 +2735,11 @@ if ! tcppf_apply_transaction "$candidate"; then
   rm -f -- "$candidate"
   return 1
 fi
+domain=$(awk '/server_name/ {gsub(/;/, "", $2); print $2; exit}' "$DE_GWD_NGINX_CONF_DIR/default.conf" 2>/dev/null)
+[[ -n $domain ]] || domain="0.0.0.0"
 echo -e "${BLUE}------------------------------------------------ ${cRES}"
 echo -e "${GREEN}TCP Port Forward${cRES}"
-echo -e "${BLUE}Address:       ${YELLOW}$localP${cRES}"
+echo -e "${BLUE}Address:       ${YELLOW}$domain:$localP${cRES}"
 echo -e "${BLUE}Upstream:      ${YELLOW}$upDomainP${cRES}"
 echo -e "${BLUE}------------------------------------------------ ${cRES}"
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}TCP Port Forward ${GREEN}Added${cRES}"
@@ -2726,6 +2797,7 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}All TCP Port F
 changeTCPPF(){
 local tcpPFsw
 while true; do
+tcppf_sync_runtime >/dev/null 2>&1 || true
 tcppf_list || true
 echo -e "${GREEN}============================ ${cRES}"
 echo -e "${GREEN}[1]: Add${cRES}"
@@ -2758,16 +2830,18 @@ fi
 path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 uuids=$(jq -r '.inbounds[0].settings.clients[].id' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 
+tcppf_sync_runtime >/dev/null 2>&1 || true
 if tcppf_load 2>/dev/null && [[ $(jq 'length' <<<"${TCPPFrules:-[]}") -gt 0 ]]; then
 echo -e "${BLUE}-------------------------------------------------- ${cRES}"
-echo -e "${GREEN}HAProxy TCP Port Forward${cRES}"
 echo
 n=$(jq 'length' <<<"$TCPPFrules")
+domain=$vpsdomain
+echo -e "${GREEN}HAProxy TCP Port Forward${cRES}"
+echo
 for (( i=0; i<n; i++ )); do
 localPort=$(jq -r --argjson i "$i" '.[$i].localPort' <<<"$TCPPFrules")
 upDomainP=$(jq -r --argjson i "$i" '.[$i].upstream' <<<"$TCPPFrules")
-echo -e "${BLUE}Address:       ${YELLOW}$vpsdomain:$localPort${cRES}"
-echo -e "${BLUE}Link:          ${YELLOW}$vpsdomain:$localPort${cRES}"
+echo -e "${BLUE}Address:       ${YELLOW}$domain:$localPort${cRES}"
 echo -e "${BLUE}Upstream:      ${YELLOW}$upDomainP${cRES}"
 echo
 done
@@ -2780,7 +2854,6 @@ localPort=$(awk -v name="$feName" '$1=="frontend" && $2==name {inside=1; next} i
 localPort=${localPort##*:}
 upDomainP=$(awk -v name="$feName" '$1=="backend" && $2==name {inside=1; next} inside && $1=="server" {print $3; exit}' /etc/haproxy/haproxy.cfg)
 echo -e "${BLUE}Address:       ${YELLOW}$vpsdomain:$localPort${cRES}"
-echo -e "${BLUE}Link:          ${YELLOW}$vpsdomain:$localPort${cRES}"
 echo -e "${BLUE}Upstream:      ${YELLOW}$upDomainP${cRES}"
 echo
 done
@@ -2840,7 +2913,7 @@ if extraJsonEnabled "$DE_GWD_DATA_DIR/extra-socks5.json"; then
 fi
 if extraJsonEnabled "$DE_GWD_DATA_DIR/extra-dokodemo.json"; then
   echo -e "${GREEN}Extra dokodemo-door${cRES}"
-  jq -r --arg d "$vpsdomain" '.rules[]? | "  "+$d+":"+(.port|tostring)+" -> "+.target+":"+(.targetPort|tostring)+" "+.network' "$DE_GWD_DATA_DIR/extra-dokodemo.json"
+  jq -r --arg d "$vpsdomain" '.rules[]? | "  "+$d+":"+(.port|tostring)+" -> "+(if (.target|contains(":")) then "["+.target+"]:" else .target+":" end)+(.targetPort|tostring)+" "+.network' "$DE_GWD_DATA_DIR/extra-dokodemo.json"
   echo
 fi
 echo -e "${BLUE}-------------------------------------------------- ${cRES}"

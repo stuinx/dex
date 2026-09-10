@@ -31,30 +31,38 @@ EOF
 apt-key del 2FB2CD80 >/dev/null 2>&1
 apt-key del 33F8024D >/dev/null 2>&1
 apt-key del E734E623 >/dev/null 2>&1
-rm -rf /etc/apt/trusted.gpg.d/liquorix-keyring.gpg
-rm -rf /usr/share/keyrings/xanmod-kernel-archive-keyring.gpg
-rm -rf /etc/apt/sources.list.d/liquorix.list
-rm -rf /etc/apt/sources.list.d/xanmod-kernel.list
-
-
+# Drop leftover third-party kernel lists so apt update is not blocked by NO_PUBKEY.
+for src in /etc/apt/sources.list /etc/apt/sources.list.d/*; do
+  [[ -f $src ]] || continue
+  grep -Eq 'xanmod\.org|liquorix\.net|pkgs\.zabbly\.com' "$src" 2>/dev/null && rm -f -- "$src"
+done
+rm -f /etc/apt/keyrings/xanmod* \
+      /etc/apt/keyrings/liquorix* \
+      /etc/apt/keyrings/zabbly* \
+      /usr/share/keyrings/xanmod* \
+      /etc/apt/trusted.gpg.d/liquorix* \
+      /etc/apt/trusted.gpg.d/xanmod*
 
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober') ]] && apt remove --purge os-prober
 
+mkdir -p /boot/grub /etc/apt/keyrings
+rm -f /var/cache/apt/archives/lock /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend
+dpkg --configure -a
+
 unset aptPKG
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^gnupg2$') ]] && aptPKG+=(gnupg2)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^curl$') ]] && aptPKG+=(curl)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^python3$') ]] && aptPKG+=(python3)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^cron$') ]] && aptPKG+=(cron)
+command -v gpg >/dev/null || aptPKG+=(gnupg)
+command -v curl >/dev/null || aptPKG+=(curl)
+command -v wget >/dev/null || aptPKG+=(wget)
+command -v python3 >/dev/null || aptPKG+=(python3)
+command -v crontab >/dev/null || aptPKG+=(cron)
+dpkg -l ca-certificates 2>/dev/null | grep -q '^ii' || aptPKG+=(ca-certificates)
 [[ -z $(which 'update-grub') ]] && [[ -d "/sys/firmware/efi" ]] && aptPKG+=(grub-efi)
 [[ -z $(which 'update-grub') ]] && [[ ! -d "/sys/firmware/efi" ]] && aptPKG+=(grub2-common)
-[[ -n $aptPKG ]] && apt update && apt install -y $(echo ${aptPKG[@]})
+if [[ -n $aptPKG ]]; then
+  apt-get update || apt-get update -o Dir::Etc::sourceparts=/dev/null
+  apt-get install -y "${aptPKG[@]}"
+fi
 systemctl enable --now cron >/dev/null 2>&1 || true
-mkdir -p /boot/grub /etc/apt/keyrings
-rm -f /var/cache/apt/archives/lock
-rm -f /var/lib/apt/lists/lock
-rm -f /var/lib/dpkg/lock
-rm -f /var/lib/dpkg/lock-frontend
-dpkg --configure -a
 
 
 
@@ -85,12 +93,16 @@ done
 EOF
 chmod +x /etc/rc_kernel.local
 
-crontab -l 2>/dev/null >/tmp/now.cron
-sed -i '/\/opt\/de_GWD\/clearKernel/d' /tmp/now.cron
-sed -i '/\/etc\/rc_kernel.local/d' /tmp/now.cron
-echo '@reboot sleep 15 && /etc/rc_kernel.local' >>/tmp/now.cron
-crontab /tmp/now.cron
-rm -rf /tmp/now.cron
+if command -v crontab >/dev/null; then
+  crontab -l 2>/dev/null >/tmp/now.cron || true
+  sed -i '/\/opt\/de_GWD\/clearKernel/d' /tmp/now.cron
+  sed -i '/\/etc\/rc_kernel.local/d' /tmp/now.cron
+  echo '@reboot sleep 15 && /etc/rc_kernel.local' >>/tmp/now.cron
+  crontab /tmp/now.cron
+  rm -rf /tmp/now.cron
+else
+  printf '%s\n' '@reboot root sleep 15 && /etc/rc_kernel.local' >/etc/cron.d/de_gwd_kernel
+fi
 
 
 
@@ -99,20 +111,11 @@ cleanOldKernels() {
   local kernel_type=$1
   
 if [[ $kernel_type == "zabbly" ]]; then
-  rm -rf /etc/apt/sources.list.d/xanmod-kernel.list
-  rm -rf /etc/apt/keyrings/xanmod.gpg
-  rm -rf /etc/apt/sources.list.d/liquorix-kernel.list
-  rm -rf /etc/apt/keyrings/liquorix.gpg
+  rm -f /etc/apt/sources.list.d/*xanmod* /etc/apt/keyrings/xanmod* /etc/apt/sources.list.d/*liquorix* /etc/apt/keyrings/liquorix*
 elif [[ $kernel_type == "xanmod" ]]; then
-  rm -rf /etc/apt/sources.list.d/zabbly-kernel.list
-  rm -rf /etc/apt/keyrings/zabbly.gpg
-  rm -rf /etc/apt/sources.list.d/liquorix-kernel.list
-  rm -rf /etc/apt/keyrings/liquorix.gpg
+  rm -f /etc/apt/sources.list.d/*zabbly* /etc/apt/keyrings/zabbly* /etc/apt/sources.list.d/*liquorix* /etc/apt/keyrings/liquorix*
 elif [[ $kernel_type == "liquorix" ]]; then
-  rm -rf /etc/apt/sources.list.d/zabbly-kernel.list
-  rm -rf /etc/apt/keyrings/zabbly.gpg
-  rm -rf /etc/apt/sources.list.d/xanmod-kernel.list
-  rm -rf /etc/apt/keyrings/xanmod.gpg
+  rm -f /etc/apt/sources.list.d/*zabbly* /etc/apt/keyrings/zabbly* /etc/apt/sources.list.d/*xanmod* /etc/apt/keyrings/xanmod*
 fi
   
   dpkg --list | awk '{print $2}' | grep 'linux-image' | sed "/$kernel_type/d" | while read line; do
@@ -130,6 +133,50 @@ fi
 }
 
 
+
+kernelCodename(){
+. /etc/os-release
+printf '%s\n' "${VERSION_CODENAME:-bookworm}"
+}
+
+# Remove any apt source that mentions these hosts, not just one filename.
+kernelDropRepoHost(){
+local host=$1 f
+for f in /etc/apt/sources.list /etc/apt/sources.list.d/*; do
+  [[ -f $f ]] || continue
+  grep -Fq "$host" "$f" 2>/dev/null && rm -f -- "$f"
+done
+}
+
+kernelDropForeignRepos(){
+local keep=${1-}
+[[ $keep = xanmod ]] || kernelDropRepoHost xanmod.org
+[[ $keep = liquorix ]] || kernelDropRepoHost liquorix.net
+[[ $keep = zabbly ]] || kernelDropRepoHost pkgs.zabbly.com
+}
+
+# Unsigned leftover kernel repos must not abort installing the selected kernel.
+kernelAptInstall(){
+local keep=$1
+shift
+kernelDropForeignRepos "$keep"
+apt-get update || true
+apt-get install -y "$@"
+}
+
+# ASCII-armored keys are dearmored; binary keyrings are copied as-is.
+kernelInstallKeyring(){
+local src=$1 dest=$2
+[[ -s $src ]] || return 1
+command -v gpg >/dev/null || return 1
+mkdir -p -- "$(dirname -- "$dest")"
+if grep -q 'BEGIN PGP' "$src" 2>/dev/null; then
+  gpg --batch --yes --dearmor -o "$dest" "$src" || return 1
+else
+  cp -- "$src" "$dest" || return 1
+fi
+chmod 0644 -- "$dest"
+}
 
 installZabbly(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Zabbly kernel${cRES}\r\c"
@@ -179,9 +226,9 @@ ZBqN6R8SuRc5NWWPDcSdr1myXY2YpB0AVEV8zGtF
 =tHYp
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
-echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] https://pkgs.zabbly.com/kernel/stable $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) main" >/etc/apt/sources.list.d/zabbly-kernel.list
+echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] https://pkgs.zabbly.com/kernel/stable $(kernelCodename) main" >/etc/apt/sources.list.d/zabbly-kernel.list
 
-apt update && apt install -y linux-zabbly
+kernelAptInstall zabbly linux-zabbly
 
 if [[ -n $(dpkg --list | grep linux-image | grep zabbly) ]]; then
   cleanOldKernels "zabbly"
@@ -236,42 +283,18 @@ if [[ $architecture != "amd64" ]]; then
   echo -e "${RED}only work on x86_64${cRES}"
 elif [[ $architecture == "amd64" ]]; then
 get_cpu_arch_level
-cat << EOF >/tmp/xanmod.gpg.key
------BEGIN PGP PUBLIC KEY BLOCK-----
-Version: GnuPG v2
+local xanCodename xanKey
+xanCodename=$(kernelCodename)
+xanKey=/tmp/xanmod.archive.key
+rm -f "$xanKey"
+curl -fsSLo "$xanKey" --connect-timeout 8 --max-time 30 https://dl.xanmod.org/archive.key || true
+if ! kernelInstallKeyring "$xanKey" /etc/apt/keyrings/xanmod.gpg; then
+  echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}XanMod kernel ${RED}key install failed${cRES}"
+  return 1
+fi
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/xanmod.gpg] http://deb.xanmod.org $xanCodename main" >/etc/apt/sources.list.d/xanmod-kernel.list
 
-mQENBFhxW04BCAC61HuxBVf1XJiQjXu/DSAtVcnuK38geDoDjcqFtHskFy32NgJG
-X118EFNym6noF+oibaSftI9yjHthWvMnYZ/+DPwd7YZhbAjBvxMIQCsP6cFVxrgc
-VV8g+uh4TCfbpalDBFoncRhQCgkmDN9Vd4kIWRh6BHJuzpKB/h2KxUHZVEKgWlK2
-dR1xUtbrc+kp8gLwPbxTgC3tZ4x2uMMMlnbyCMSRa5oJ/AvoW4W1XphKL9ivsFHM
-PSQkUBDvgv2RPw+0XBxPy8SYE0r0onx0ZIpjJRTODt3bSV6/0owwlpNogV9bT8HY
-kl3+w3mTwax6S1akHZuJtLkZS0uUBz1BHt5bABEBAAG0IVhhbk1vZCBLZXJuZWwg
-PGtlcm5lbEB4YW5tb2Qub3JnPokBNwQTAQgAIQUCWHFbTgIbAwULCQgHAgYVCAkK
-CwIEFgIDAQIeAQIXgAAKCRCG99Ce5zTmIwTmB/9/S4rmwU6efDgEaBDwBDbOfLBA
-P2+kDpabjG4K+V4NSvDqlPN49KrI7C21jHghAa2VuTPbSZVQ9ziUd5DjX9OuXov8
-CYVG+rrlG1UadHS8SBpgw0gNylEvo9/U6u0hl8mrbVOlpzu+eE+e4cMTHax2y580
-fC2xmnM8wKgyRFEyVc6ilWU+UNTAeUFlg0YfU3cV1Ut4DzVFfamtNYg0p7Q/9MSy
-VgFpt5C2U5prk4wi++51OgrtaNhMrUhzYXLINWVF6IrXhQ+mkI/FWXUZ0oyVo55v
-+dQzuds/gos90q+tKyE514pYAmwQSftSjf+RmHOMpPQyMZZKSywrz4vlfveDuQEN
-BFhxW04BCACs5bXq73MDb2+AsvNL2XkkbnzmE4K3k0gejB9OxrO+puAZn3wWyYIk
-b0Op8qVUh+/FIiW/uFfmdFD8BypC3YkCNfg6e74f5TT3qQciccpMGy62teo3jfhT
-T8E1OL1i76ALq7eNbByJKiKLBrTUDM6BDIeRZBWXQMase4+aqUAP47Kd/ByPsmCh
-/pzb6yPdDPKwkspELssdPXYI7enddjQsCPoBko0j8CTPgKqMTeCuKMXCtD2gtRBN
-eoVj4cbjZoZvBh8oJktzbYA8FX8eKdxIXhSP9MoVOPSWhxIQdwzkzUPK+0vUV8jA
-NBTnGOkrRJPOHGPJWFWnTUGrzvcwi7czABEBAAGJAR8EGAEIAAkFAlhxW04CGwwA
-CgkQhvfQnuc05iMIswgAmzSpCHFGKdkFLdC673FidJcL8adKFTO5Mpyholc5N8vG
-ROJbpso+DpssF14NKoBfBWqPRgHxYzHakxHiNf0R2+EEwXH3rblzpx3PXzB0OgNe
-T9T0UStrGgc9nZ8nZVURHZZ2z5zakEWS+rB2TiSxz3YArR3wiTHQW49G09uZvfp6
-5Mim2w+eUxbQ689eT0DlDI1d2eDP/j5lrv1elsg3kBE2Awzdvi8DdGUpMFrSsYJw
-WS85uZrwbeAs/nPO62wNIvAbbRsWnDg3AV3vc02eRvy52tTBY1W/67N02M4AxgPd
-ukDDFZMifwa03yTHD/a57O4dFOnzsEVojBnbzQ7W7w==
-=HKlF
------END PGP PUBLIC KEY BLOCK-----
-EOF
-cat /tmp/xanmod.gpg.key | gpg --dearmor >/etc/apt/keyrings/xanmod.gpg
-echo "deb [signed-by=/etc/apt/keyrings/xanmod.gpg] http://deb.xanmod.org releases main" >/etc/apt/sources.list.d/xanmod-kernel.list
-
-apt update && apt install -y linux-xanmod-x64$CPU_LEVEL
+kernelAptInstall xanmod linux-xanmod-x64$CPU_LEVEL
 
 if [[ -n $(dpkg --list | grep linux-image | grep xanmod) ]]; then
   # 清理旧内核
@@ -302,11 +325,14 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Liquorix kernel${cRES}\r\c"
 if [[ $architecture != "amd64" ]]; then
   echo -e "${RED}only work on x86_64${cRES}"
 elif [[ $architecture == "amd64" ]]; then
-curl -fsSLo /tmp/liquorix.gpg.key https://liquorix.net/liquorix-keyring.gpg
-cat /tmp/liquorix.gpg.key | gpg --dearmor >/etc/apt/keyrings/liquorix.gpg
-echo "deb [signed-by=/etc/apt/keyrings/liquorix.gpg] http://liquorix.net/debian $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) main" >/etc/apt/sources.list.d/liquorix-kernel.list
+curl -fsSLo /tmp/liquorix.gpg.key --connect-timeout 8 --max-time 30 https://liquorix.net/liquorix-keyring.gpg || true
+if ! kernelInstallKeyring /tmp/liquorix.gpg.key /etc/apt/keyrings/liquorix.gpg; then
+  echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Liquorix kernel ${RED}key install failed${cRES}"
+  return 1
+fi
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/liquorix.gpg] https://liquorix.net/debian $(kernelCodename) main" >/etc/apt/sources.list.d/liquorix-kernel.list
 
-apt update && apt install -y linux-image-liquorix-amd64 linux-headers-liquorix-amd64
+kernelAptInstall liquorix linux-image-liquorix-amd64 linux-headers-liquorix-amd64
 
 if [[ -n $(dpkg --list | grep linux-image | grep liquorix) ]]; then
   cleanOldKernels "liquorix"

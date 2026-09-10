@@ -141,6 +141,21 @@ def test_packaged_ui_matches_source():
         assert archive.read('ui-web/index.php') == (ROOT / 'resource/client/ui-web/index.php').read_bytes()
 
 
+def test_installkernel_bootstraps_keys_and_codename():
+    source = (ROOT / 'resource/kernel/installkernel').read_text()
+    assert 'dl.xanmod.org/archive.key' in source
+    assert 'deb.xanmod.org releases main' not in source
+    assert 'kernelDropRepoHost' in source
+    assert 'kernelAptInstall' in source
+    assert 'apt update && apt install' not in source
+    assert 'command -v gpg' in source
+    assert 'command -v crontab' in source
+    assert 'kernelCodename' in source
+    client = (ROOT / 'client').read_text()
+    assert 'resource/kernel/installkernel' in client
+    assert 'xanmod\\.org|liquorix\\.net' in client
+
+
 def test_client_github_downloads_use_proxy():
     source = (ROOT / 'client').read_text()
     assert 'gh_candidates' in source
@@ -185,7 +200,7 @@ def test_runtime_does_not_fetch_original_repo():
     for path in ROOT.rglob('*'):
         if not path.is_file() or path.suffix.lower() in skip_suffixes or path.name in skip_names:
             continue
-        if '.git' in path.parts or 'tests' in path.parts:
+        if '.git' in path.parts or 'tests' in path.parts or 'docs' in path.parts:
             continue
         text = path.read_text(errors='ignore')
         for token in banned:
@@ -242,9 +257,11 @@ def test_acme_issues_full_domain_not_last_two_labels():
     cer = (ROOT / 'resource/client/ui-script/ui-installCER').read_text()
     srv = (ROOT / 'server').read_text()
     for source in (cer, srv):
-        assert '--issue --dns dns_cf -d $domain -d *.$domain' in source
-        assert '--installcert -d $domain' in source
+        assert 'acmeWildcardNames' in source
+        assert '--issue --dns dns_cf -d "$n1" -d "$n2"' in source
+        assert '--installcert -d "$n1"' in source
         assert '-d $topDomain -d *.$topDomain' not in source
+        assert '-d $domain -d *.$domain' not in source
 
 
 if __name__ == '__main__':

@@ -11,7 +11,7 @@
 1. 55 → `[2]` → `[1]` Enable。
 2. 与安装 server 相同：提示 `Input VPS domain`，填写 `域名` 或 `域名:端口`（不写端口则为 443）。**可以同域名**，端口不能与主 VMess 的 nginx 监听口相同（同端口会和 `reuseport` 冲突）。
 3. UUID/path 仍按主 VMess 规则自动生成：新 UUID，`path=/` + UUID 后 6 位；与主 path 冲突则重抽。无需手填。
-4. nginx **单独**写入 `/etc/nginx/conf.d/vless-ws.conf`（`upstream vlessws` + 独立 `server`）。主站 `default.conf` 不加 VLESS location。同一套证书（`.ssl_certs`）。非 websocket 返回 404。
+4. nginx **单独**写入 `/etc/nginx/conf.d/vless-ws.conf`（`upstream vlessws` + 独立 `server`）。主站 `default.conf` 不加 VLESS location。同一套证书（`.ssl_certs`）。`GET /` 走 `/var/www/html` 伪装页（与 443 一样不要空 404）；仅 VLESS path 在非 websocket 时返回 404。
 5. Xray 只听 `127.0.0.1:9891`，`security: none`（TLS 由 nginx 终结）。
 6. 菜单 11 取填写的域名:端口 和 `vless://`。客户端 SNI/Host 用填写的域名。
 7. 关闭：55 → `[2]` → `[2]` Disable，删除 `vless-ws.conf`。主 VMess path/UUID 不变。
@@ -33,7 +33,7 @@
 
 ## 4. dokodemo 多规则 TCP/UDP
 
-1. 55 → `[4]` → `[1]` 添加：Listen port、目标 `host:port`、网络（`tcp` / `udp` / `tcp,udp`）均需填写。
+1. 55 → `[4]` → `[1]` 添加：Listen port、目标 `host:port` 或 `[ipv6]:port`（例 `[2a01:4f9:6b:4a8f:6c::a]:22`）。网络填 `tcp` / `udp` / `tcp,udp`，空回车视为 `tcp,udp`。
 2. 删除一条：`[2]` 后输入该 listen port；输入 `all` 或选 `[3]` 关闭全部。
 3. 菜单 11 打印 `host:listen -> target:port network`。
 

@@ -67,6 +67,22 @@ assert_contains 'frontend p20002' "$DE_GWD_HAPROXY_CONFIG" "second frontend was 
 assert_contains 'server endpoint upstream-two.example:9443' "$DE_GWD_HAPROXY_CONFIG" "second upstream was not rendered"
 assert_contains 'mode                  tcp' "$DE_GWD_HAPROXY_CONFIG" "HAProxy was not forced to mode tcp"
 
+cat >"$DE_GWD_HAPROXY_CONFIG" <<'EOF'
+frontend relay0
+  bind :20960
+  default_backend relay0
+backend relay0
+  server endpoint hnn.example:32096 check resolvers local init-addr none
+EOF
+tcppf_load
+if tcppf_runtime_matches; then
+  fail "stale HAProxy config was treated as in sync with tcppf.json"
+fi
+tcppf_sync_runtime >/dev/null
+assert_contains 'frontend p20001' "$DE_GWD_HAPROXY_CONFIG" "sync did not restore json frontends"
+assert_contains 'frontend p20002' "$DE_GWD_HAPROXY_CONFIG" "sync did not restore second frontend"
+assert_not_contains 'frontend relay0' "$DE_GWD_HAPROXY_CONFIG" "sync left legacy frontend"
+
 if printf '%s\n' 'duplicate.example:443' '20002' | tcppf_add >/dev/null 2>&1; then
   fail "duplicate local port was accepted"
 fi

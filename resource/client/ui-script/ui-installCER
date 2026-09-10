@@ -42,8 +42,22 @@ if ! curl -fsSL --connect-timeout 8 --max-time 30 https://get.acme.sh | sh; then
 fi
 "/root/.acme.sh"/acme.sh --force --upgrade  --auto-upgrade
 "/root/.acme.sh"/acme.sh --force --set-default-ca  --server letsencrypt
-"/root/.acme.sh"/acme.sh --force --issue --dns dns_cf -d $domain -d *.$domain -k ec-256 --dnssleep 180
-"/root/.acme.sh"/acme.sh --force --installcert -d $domain \
+acmeWildcardNames(){
+local d=$1 parent n
+[[ -n $d ]] || return 1
+n=$(awk -F. '{print NF}' <<<"$d")
+(( n >= 2 )) || return 1
+if (( n >= 3 )); then
+  parent=${d#*.}
+  printf '%s %s\n' "*.$parent" "*.$d"
+else
+  printf '%s %s\n' "$d" "*.$d"
+fi
+}
+read -r n1 n2 <<<"$(acmeWildcardNames "$domain")"
+[[ -n $n1 && -n $n2 ]] || return 1
+"/root/.acme.sh"/acme.sh --force --issue --dns dns_cf -d "$n1" -d "$n2" -k ec-256 --dnssleep 180
+"/root/.acme.sh"/acme.sh --force --installcert -d "$n1" \
                --key-file       /var/www/ssl/de_GWD.key  \
                --fullchain-file /var/www/ssl/de_GWD.cer \
                --reloadcmd     "chmod 644 /var/www/ssl/*.key && systemctl force-reload nginx" \

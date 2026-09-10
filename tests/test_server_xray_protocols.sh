@@ -85,6 +85,17 @@ mapped=$(extraRproxyParseMapping '' '22200')
 merged=$(jq -nc --argjson a '[{"port":"22201","protocol":"tcp,udp"}]' --argjson b "$(extraRproxyParseMapping '22201,22202' '22200')" '$a+$b|unique_by(.port|tostring)|map(.port)')
 [[ $merged = '["22201","22202"]' ]] || fail "mapping merge unique_by port failed"
 
+parsed=$(parseDomainPort '[2a01:4f9:6b:4a8f:6c::a]:22') || fail "dokodemo ipv6 target parse failed"
+[[ $parsed = "2a01:4f9:6b:4a8f:6c::a 22" ]] || fail "dokodemo ipv6 target mismatch"
+[[ $(formatDomainPort '2a01:4f9:6b:4a8f:6c::a' '22') = '[2a01:4f9:6b:4a8f:6c::a]:22' ]] || fail "dokodemo ipv6 format mismatch"
+[[ $(extraDokodemoNormalizeNetwork '') = 'tcp,udp' ]] || fail "empty dokodemo network should default to tcp,udp"
+[[ $(extraDokodemoNormalizeNetwork 'TCP') = tcp ]] || fail "dokodemo network case fold failed"
+[[ $(extraDokodemoNormalizeNetwork 'tcp, udp') = 'tcp,udp' ]] || fail "dokodemo network tcp,udp spacing failed"
+[[ $(extraDokodemoNormalizeNetwork 'tcp/udp') = 'tcp,udp' ]] || fail "dokodemo network tcp/udp alias failed"
+if extraDokodemoNormalizeNetwork 'tcp / udp / tcp,udp' >/dev/null 2>&1; then
+  fail "prompt text was accepted as dokodemo network"
+fi
+
 parsed=$(extraParseInstallAddr 'node.example:2096') || fail "install-style domain:port parse failed"
 [[ $parsed = "node.example 2096" ]] || fail "install-style domain:port mismatch"
 if extraParseInstallAddr 'node.example' >/dev/null 2>&1; then
@@ -118,14 +129,14 @@ jq -n --arg uuid "$vless_uuid" --arg path "$vless_path" \
 jq -n '{enabled:true,domain:"node.example",port:18443,uuid:"11111111-2222-3333-4444-555555555555",flow:"xtls-rprx-vision",dest:"127.0.0.1:443",serverName:"node.example",privateKey:"priv",publicKey:"pub",shortId:"abcd1234"}' \
   >"$data_dir/extra-reality.json"
 jq -n '{enabled:true,domain:"node.example",port:11080,user:"u1",password:"p1"}' >"$data_dir/extra-socks5.json"
-jq -n '{enabled:true,rules:[{port:18080,target:"127.0.0.1",targetPort:80,network:"tcp,udp"},{port:18081,target:"10.0.0.1",targetPort:443,network:"tcp"}]}' \
+jq -n '{enabled:true,rules:[{port:18080,target:"127.0.0.1",targetPort:80,network:"tcp,udp"},{port:18081,target:"10.0.0.1",targetPort:443,network:"tcp"},{port:11222,target:"2a01:4f9:6b:4a8f:6c::a",targetPort:22,network:"tcp"}]}' \
   >"$data_dir/extra-dokodemo.json"
 
 extraInboundsAppend
 assert_main_vmess "appending extras changed main VMess inbound[0]"
 
 jq -e '
-  [.inbounds[] | select(.tag != null) | .tag] == ["extra-vless-ws","extra-vless-reality","extra-socks5","extra-dokodemo-0","extra-dokodemo-1"]
+  [.inbounds[] | select(.tag != null) | .tag] == ["extra-vless-ws","extra-vless-reality","extra-socks5","extra-dokodemo-0","extra-dokodemo-1","extra-dokodemo-2"]
 ' "$xray_dir/config.json" >/dev/null || fail "extra inbound tags mismatch"
 
 status=$(extraStatusPrint)
@@ -137,6 +148,7 @@ view=$(extraInboundsStatus)
 [[ $view == *'vless.example:2096'* ]] || fail "view menu missing VLESS WS address"
 [[ $view == *'node.example:18443'* ]] || fail "view menu missing REALITY address"
 [[ $view == *'18080 -> 127.0.0.1:80'* ]] || fail "view menu missing dokodemo rule"
+[[ $view == *'11222 -> [2a01:4f9:6b:4a8f:6c::a]:22'* ]] || fail "view menu missing ipv6 dokodemo rule"
 [[ $view == *'Extra inbounds'* ]] || fail "view menu missing Extra inbounds header"
 printf '%s\n' '{"tunnelPort":10086,"tunnelUUID":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","clients":[],"mappings":[{"port":10087,"protocol":"tcp"}]}' >"$data_dir/rproxys.json"
 rs=$(rproxySstatus)
@@ -168,11 +180,17 @@ jq -e '
 ' "$xray_dir/config.json" >/dev/null || fail "SOCKS5 inbound mismatch"
 
 jq -e '
-  [.inbounds[] | select(.protocol=="dokodemo-door") | .port] == [18080,18081]
+  [.inbounds[] | select(.protocol=="dokodemo-door") | .port] == [18080,18081,11222]
 ' "$xray_dir/config.json" >/dev/null || fail "dokodemo multi-rule mismatch"
+jq -e '
+  .inbounds[] | select(.tag=="extra-dokodemo-2") |
+  .settings.address=="2a01:4f9:6b:4a8f:6c::a"
+  and .settings.port==22
+  and .settings.network=="tcp"
+' "$xray_dir/config.json" >/dev/null || fail "ipv6 dokodemo inbound mismatch"
 
 extraInboundsAppend
-[[ $(jq '[.inbounds[] | select((.tag // "") | startswith("extra-"))] | length' "$xray_dir/config.json") = 5 ]] || fail "second append duplicated extra inbounds"
+[[ $(jq '[.inbounds[] | select((.tag // "") | startswith("extra-"))] | length' "$xray_dir/config.json") = 6 ]] || fail "second append duplicated extra inbounds"
 assert_main_vmess "second append changed main VMess inbound[0]"
 
 extraVlessWsWriteNginx
@@ -186,6 +204,8 @@ conf=$(cat "$DE_GWD_VLESS_NGINX_CONF")
 [[ $conf == *'server_name vless.example;'* ]] || fail "standalone VLESS nginx missing server_name"
 [[ $conf == *"location $vless_path"* ]] || fail "standalone VLESS nginx missing WS location"
 [[ $conf == *'if ($http_upgrade != "websocket") { return 404; }'* ]] || fail "standalone VLESS nginx did not copy VMess WS 404 guard"
+[[ $conf == *'root /var/www/html;'* ]] || fail "standalone VLESS nginx missing camouflage root"
+[[ $conf == *'try_files $uri $uri/ /index.html;'* ]] || fail "standalone VLESS nginx missing GET / camouflage"
 [[ $conf == *'proxy_pass                  http://vlessws;'* ]] || fail "standalone VLESS nginx proxy_pass mismatch"
 assert_not_contains(){
   if grep -F -- "$1" "$2" >/dev/null 2>&1; then fail "$3"; fi
