@@ -1564,10 +1564,16 @@ bash <(wget --show-progress -cqO- https://raw.githubusercontent.com/stuinx/dex/d
 
 
 changeDomain(){
+    local curDomain
+    curDomain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
+    if [[ -n $curDomain ]]; then
+      echo -e "${BLUE}Current domain: ${YELLOW}$curDomain${cRES}"
+    fi
     echo -e "${GREEN}================== ${cRES}"
     echo -e "${GREEN} Input new domain${cRES}"
     echo -e "${GREEN}================== ${cRES}"
     read vpsdomainP
+    [[ -n $vpsdomainP ]] || { echo -e "${YELLOW}Cancelled${cRES}"; return 0; }
 
 domain=$(echo $vpsdomainP | cut -d: -f1)
 topDomain=$(echo $domain | rev | awk -F. '{print $1"."$2}' | rev)
@@ -1580,11 +1586,13 @@ path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui/con
     echo -e "${GREEN} Cloudflare API KEY${cRES}"
     echo -e "${GREEN}=============================== ${cRES}"
     read CFapikey
+    [[ -n $CFapikey ]] || { echo -e "${RED}API KEY cannot be empty${cRES}"; return 1; }
 
     echo -e "${GREEN}=============================== ${cRES}"
     echo -e "${GREEN} Cloudflare Email${cRES}"
     echo -e "${GREEN}=============================== ${cRES}"
     read CFemail
+    [[ -n $CFemail ]] || { echo -e "${RED}Email cannot be empty${cRES}"; return 1; }
 
 makeSSL_D
 
@@ -1598,15 +1606,31 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Domain and Cer
 
 
 changeXrayVerify(){
-    echo -e "${GREEN}========== ${cRES}"
-    echo -e "${GREEN} New UUID${cRES}"
-    echo -e "${GREEN}========== ${cRES}"
+    local curUUID curPath nuuid npath defaultPath
+    curUUID=$(jq -r '.inbounds[0].settings.clients[0].id // empty' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+    curPath=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // empty' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+    echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+    echo -e "${GREEN}Current UUID: ${YELLOW}${curUUID:-none}${cRES}"
+    echo -e "${GREEN}Current Path: ${YELLOW}${curPath:-none}${cRES}"
+    echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+    if [[ -n $curUUID ]]; then
+      echo -e "${GREEN} New UUID  (empty = generate)${cRES}"
+    else
+      echo -e "${GREEN} New UUID${cRES}"
+    fi
     read nuuid
+    [[ -z $nuuid ]] && nuuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null)
+    [[ -n $nuuid ]] || { echo -e "${RED}Invalid UUID${cRES}"; return 1; }
 
-    echo -e "${GREEN}========== ${cRES}"
-    echo -e "${GREEN} New Path${cRES}"
-    echo -e "${GREEN}========== ${cRES}"
+    defaultPath="/$(echo $nuuid | awk '{print substr($0,length($1)-5)}')"
+    if [[ -n $curPath ]]; then
+      echo -e "${GREEN} New Path  (empty = $defaultPath)${cRES}"
+    else
+      echo -e "${GREEN} New Path  (empty = $defaultPath)${cRES}"
+    fi
     read npath
+    [[ -z $npath ]] && npath="$defaultPath"
+    [[ $npath =~ ^/ ]] || npath="/$npath"
 
 domain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf | sed 's/.$//')
 topDomain=$(echo $domain | rev | awk -F. '{print $1"."$2}' | rev)
@@ -1631,11 +1655,23 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Xray UUID & Pa
 
 
 changeWGCF(){
+    local svc WGCFswitch
+    svc=$(systemctl is-active wg-quick@wgcf 2>/dev/null || echo inactive)
+    echo -e "${BLUE}------------------------------------------------------------- ${cRES}"
+    echo -e "${GREEN}Cloudflare wireguard upstream (WARP) status: ${YELLOW}$svc${cRES}"
+    echo -e "${BLUE}------------------------------------------------------------- ${cRES}"
     echo -e "${GREEN}================================================ ${cRES}"
     echo -e "${GREEN}[1]: Enable Cloudflare wireguard upstream (WARP) ${cRES}"
     echo -e "${GREEN}[2]: Delete Cloudflare wireguard upstream (WARP) ${cRES}"
+    echo -e "${GREEN}[0]: Back${cRES}"
     echo -e "${GREEN}================================================ ${cRES}"
     read -s -n 1 WGCFswitch
+    echo
+    [[ $WGCFswitch = "0" || -z $WGCFswitch ]] && return
+    if [[ $WGCFswitch != "1" && $WGCFswitch != "2" ]]; then
+      echo -e "${RED}Wrong number${cRES}"
+      return
+    fi
     echo -e "${WHITE}[...${WHITE}]\c" && echo -e "\t${WHITE}Switching Cloudflare wireguard upstream (WARP)${cRES}\r\c"
 
 if [[ $WGCFswitch = "1" ]]; then
@@ -2265,8 +2301,16 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}SOCKS5 ${GREEN
 }
 
 changeDokodemo(){
-local settings="$DE_GWD_DATA_DIR/extra-dokodemo.json" sw listenPort targetInput parsed target targetPort network
+local settings="$DE_GWD_DATA_DIR/extra-dokodemo.json" sw listenPort targetInput parsed target targetPort network delID curCount
 while true; do
+echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+echo -e "${GREEN}dokodemo-door rules${cRES}"
+if [[ -f $settings ]] && [[ $(jq '.rules | length' "$settings" 2>/dev/null || echo 0) -gt 0 ]]; then
+  extraDokodemoJqTarget "$settings"
+else
+  echo -e "${YELLOW}No dokodemo-door rules${cRES}"
+fi
+echo -e "${BLUE}-------------------------------------------------- ${cRES}"
 echo -e "${GREEN}================================ ${cRES}"
 echo -e "${GREEN} dokodemo-door${cRES}"
 echo -e "${GREEN}[1]: Add${cRES}"
@@ -2278,6 +2322,11 @@ read -s -n 1 sw
 echo
 [[ $sw = "0" || -z $sw ]] && return
 if [[ $sw = "3" ]]; then
+  curCount=$(jq '.rules | length' "$settings" 2>/dev/null || echo 0)
+  if [[ ! $curCount =~ ^[0-9]+$ ]] || (( curCount == 0 )); then
+    echo -e "${YELLOW}No dokodemo-door rules to disable${cRES}"
+    continue
+  fi
   printf '%s\n' '{"enabled":false,"rules":[]}' >"$settings"
   extraXrayApply || return 1
   echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}dokodemo-door ${RED}Disabled${cRES}"
@@ -2287,17 +2336,29 @@ if [[ ! -f $settings ]]; then
   printf '%s\n' '{"enabled":true,"rules":[]}' >"$settings"
 fi
 if [[ $sw = "2" ]]; then
-  extraDokodemoJqTarget "$settings"
+  curCount=$(jq '.rules | length' "$settings" 2>/dev/null || echo 0)
+  if [[ ! $curCount =~ ^[0-9]+$ ]] || (( curCount == 0 )); then
+    echo -e "${YELLOW}No dokodemo-door rules to delete${cRES}"
+    continue
+  fi
   echo -e "${GREEN}Listen port to delete, or all${cRES}"
   read delID
+  [[ -n $delID ]] || continue
   if [[ $delID = all ]]; then
     printf '%s\n' '{"enabled":false,"rules":[]}' >"$settings"
-  else
+  elif [[ $delID =~ ^[0-9]+$ ]]; then
+    if ! jq -e --argjson p "$delID" '.rules[] | select(.port == $p)' "$settings" >/dev/null 2>&1; then
+      echo -e "${RED}Port $delID not found in rules${cRES}"
+      continue
+    fi
     jq --argjson p "$delID" '.rules |= map(select(.port != $p))' "$settings" | sponge "$settings"
-    [[ $(jq '.rules | length' "$settings") -eq 0 ]] && jq '.enabled=false' "$settings" | sponge "$settings"
+    [[ $(jq '.rules | length' "$settings" 2>/dev/null || echo 0) -eq 0 ]] && jq '.enabled=false' "$settings" | sponge "$settings"
+  else
+    echo -e "${RED}Invalid port${cRES}"
+    continue
   fi
   extraXrayApply || return 1
-  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}dokodemo-door ${GREEN}Updated${cRES}"
+  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}dokodemo-door ${GREEN}Deleted${cRES}"
   continue
 fi
 [[ $sw = "1" ]] || continue
@@ -2395,8 +2456,9 @@ local n=${1-}
 n=$(printf '%s' "$n" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
 [[ -z $n ]] && n=tcp,udp
 case $n in
-  tcp|udp|tcp,udp) printf '%s\n' "$n" ;;
-  tcp+udp|tcp/udp|tcpudp|both|all) printf 'tcp,udp\n' ;;
+  1|tcp) printf 'tcp\n' ;;
+  2|udp) printf 'udp\n' ;;
+  3|tcp,udp|udp,tcp|tcp+udp|tcp/udp|tcpudp|both|all) printf 'tcp,udp\n' ;;
   *) return 1 ;;
 esac
 }

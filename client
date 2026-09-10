@@ -2644,17 +2644,30 @@ docker restart pihole
 
 
 changeWP(){
+    local curWebUIport curUpdatePort
+    curWebUIport=$(jq -r '.address.webUIport // empty' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+    [[ -z $curWebUIport ]] && curWebUIport=$(awk '/listen .* reuseport/ {print $2; exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | grep '^[[:digit:]]*$')
+    [[ -z $curWebUIport ]] && curWebUIport="443"
+
+    curUpdatePort=$(jq -r '.update.updatePort // empty' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+    [[ -z $curUpdatePort ]] && curUpdatePort=$(awk -F'-p ' '/ttyd -p/ {print $2}' /etc/systemd/system/updateGWD.service 2>/dev/null | awk '{print $1}' | grep '^[[:digit:]]*$')
+    [[ -z $curUpdatePort ]] && curUpdatePort="2345"
+
     echo -e "${GREEN}=========================== ${cRES}"
-    echo -e "${GREEN} Web UI Port${cRES}"
+    echo -e "${GREEN} Web UI Port  (empty = $curWebUIport)${cRES}"
     echo -e "${GREEN}=========================== ${cRES}"
     read webUIport
+    [[ -z $webUIport ]] && webUIport="$curWebUIport"
+    [[ $webUIport =~ ^[1-9][0-9]{0,4}$ ]] && (( webUIport <= 65535 )) || { echo -e "${RED}Invalid Web UI port${cRES}"; return 1; }
 
     echo -e "${GREEN}=========================== ${cRES}"
-    echo -e "${GREEN} Web update Port${cRES}"
+    echo -e "${GREEN} Web update Port  (empty = $curUpdatePort)${cRES}"
     echo -e "${GREEN}=========================== ${cRES}"
     read updatePort
+    [[ -z $updatePort ]] && updatePort="$curUpdatePort"
+    [[ $updatePort =~ ^[1-9][0-9]{0,4}$ ]] && (( updatePort <= 65535 )) || { echo -e "${RED}Invalid update port${cRES}"; return 1; }
 
-serverName=$(jq -r '.address.serverName' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+serverName=$(jq -r '.address.serverName // empty' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 
 nginxSet
 systemctl force-reload nginx >/dev/null
@@ -2662,7 +2675,7 @@ systemctl force-reload nginx >/dev/null
 sed -i "/ExecStart=/c\ExecStart=/usr/bin/ttyd -p $updatePort -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
 systemctl daemon-reload >/dev/null
 
-jq --arg updatePort $updatePort '.update.updatePort=$updatePort' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+jq --arg updatePort "$updatePort" '.update.updatePort=$updatePort' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 ensure0confPerms
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Web UI Port & Web update Port ${GREEN}Updated${cRES}"
@@ -2675,6 +2688,7 @@ changePWD(){
     echo -e "${GREEN} New Password${cRES}"
     echo -e "${GREEN}=========================== ${cRES}"
     read newPW
+    [[ -n $newPW ]] || { echo -e "${YELLOW}Cancelled: password cannot be empty${cRES}"; return 1; }
 
 docker exec pihole pihole setpassword "$newPW"
 
