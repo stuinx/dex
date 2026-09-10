@@ -3210,14 +3210,26 @@ echo -e "${BLUE}-------------------------------------------------- ${cRES}"
 }
 
 
+extraRproxyNormalizeProtocol(){
+local n=${1-}
+n=$(printf '%s' "$n" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+[[ -z $n ]] && n=tcp,udp
+case $n in
+  1|tcp) printf 'tcp\n' ;;
+  2|udp) printf 'udp\n' ;;
+  3|tcp,udp|udp,tcp|tcp+udp|tcp/udp|tcpudp|both|all) printf 'tcp,udp\n' ;;
+  *) return 1 ;;
+esac
+}
+
 extraRproxyParseMapping(){
-local line=$1 tunnelPort=$2 tok port proto mapping='[]'
+local line=$1 tunnelPort=$2 defaultProto=${3:-tcp,udp} tok port proto mapping='[]'
 line=${line//,/ }
 for tok in $line; do
   [[ -z $tok ]] && continue
   port=${tok%%/*}
   proto=${tok#*/}
-  [[ $proto = "$port" || -z $proto ]] && proto="tcp,udp"
+  [[ $proto = "$port" || -z $proto ]] && proto="$defaultProto"
   [[ $proto = "tcp+udp" ]] && proto="tcp,udp"
   [[ $port =~ ^[1-9][0-9]{0,4}$ ]] && (( port <= 65535 )) || continue
   [[ $port = "55443" || $port = "443" || $port = "80" || $port = "$tunnelPort" ]] && continue
@@ -3247,7 +3259,7 @@ jq -r '.FORWARD.Rproxy.server.tunnel.port // empty' "$(rproxySconf)" 2>/dev/null
 }
 
 rproxySaddMapping(){
-local conf tunnelPort mapLine add
+local conf tunnelPort mapPort mapProto normProto add
 conf=$(rproxySconf)
 tunnelPort=$(rproxyStunnelPort)
 if [[ -z $tunnelPort ]]; then
@@ -3256,11 +3268,14 @@ if [[ -z $tunnelPort ]]; then
   tunnelPort=$(rproxyStunnelPort)
   [[ -n $tunnelPort ]] || return 1
 fi
-echo -e "${GREEN} Mapping port(s) (e.g. 22201 or 22201,22202 or 22203/tcp)${cRES}"
-read mapLine
-[[ -n $mapLine ]] || return 1
-add=$(extraRproxyParseMapping "$mapLine" "$tunnelPort")
-[[ $(jq 'length' <<<"$add") -gt 0 ]] || { echo -e "${RED}Invalid mapping port${cRES}"; return 1; }
+echo -e "${GREEN} Mapping port${cRES}"
+read mapPort
+[[ -n $mapPort ]] || return 1
+echo -e "${GREEN} Protocol tcp / udp / tcp,udp (empty = tcp,udp)${cRES}"
+read mapProto
+normProto=$(extraRproxyNormalizeProtocol "$mapProto") || { echo -e "${RED}Invalid protocol${cRES}"; return 1; }
+add=$(extraRproxyParseMapping "$mapPort" "$tunnelPort" "$normProto")
+[[ $(jq 'length' <<<"$add") -gt 0 ]] || { echo -e "${RED}Invalid port${cRES}"; return 1; }
 jq --argjson add "$add" '
   .FORWARD = (.FORWARD // {}) |
   .FORWARD.Rproxy = (.FORWARD.Rproxy // {}) |
@@ -3280,7 +3295,7 @@ if [[ ! $curCount =~ ^[0-9]+$ ]] || (( curCount == 0 )); then
   return 1
 fi
 jq -r '.FORWARD.Rproxy.server.mapping[]? | "  "+(.port|tostring)+" "+(.protocol // "tcp,udp")' "$conf" 2>/dev/null
-echo -e "${GREEN} Mapping port(s) to delete, or all (e.g. 22201 or 22201,22202 or all)${cRES}"
+echo -e "${GREEN} Mapping port to delete, or all${cRES}"
 read mapLine
 [[ -n $mapLine ]] || return 1
 if [[ $mapLine = all ]]; then

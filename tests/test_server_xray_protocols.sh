@@ -82,6 +82,14 @@ mapped=$(extraRproxyParseMapping '22200 443 22201' '22200')
 [[ $(jq -c '[.[].port]' <<<"$mapped") = '["22201"]' ]] || fail "mapping did not skip tunnel/nginx ports"
 mapped=$(extraRproxyParseMapping '' '22200')
 [[ $(jq 'length' <<<"$mapped") = 0 ]] || fail "empty mapping should be []"
+mapped=$(extraRproxyParseMapping '22201' '22200' 'tcp')
+[[ $(jq -c . <<<"$mapped") = '[{"port":"22201","protocol":"tcp"}]' ]] || fail "mapping port with tcp protocol parse failed"
+mapped=$(extraRproxyParseMapping '22201' '22200' 'udp')
+[[ $(jq -c . <<<"$mapped") = '[{"port":"22201","protocol":"udp"}]' ]] || fail "mapping port with udp protocol parse failed"
+[[ $(extraRproxyNormalizeProtocol 'tcp') = 'tcp' ]] || fail "normalize tcp failed"
+[[ $(extraRproxyNormalizeProtocol '1') = 'tcp' ]] || fail "normalize 1 failed"
+[[ $(extraRproxyNormalizeProtocol '2') = 'udp' ]] || fail "normalize 2 failed"
+[[ $(extraRproxyNormalizeProtocol '') = 'tcp,udp' ]] || fail "normalize empty failed"
 merged=$(jq -nc --argjson a '[{"port":"22201","protocol":"tcp,udp"}]' --argjson b "$(extraRproxyParseMapping '22201,22202' '22200')" '$a+$b|unique_by(.port|tostring)|map(.port)')
 [[ $merged = '["22201","22202"]' ]] || fail "mapping merge unique_by port failed"
 
