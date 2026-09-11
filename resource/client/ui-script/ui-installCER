@@ -38,6 +38,7 @@ if ! curl -fsSL --connect-timeout 8 --max-time 30 https://get.acme.sh | sh; then
   rm -rf /tmp/acme.sh-master /tmp/acme.sh-master.zip
   wget --no-check-certificate --connect-timeout=4 -qO /tmp/acme.sh-master.zip https://gh-proxy.com/https://github.com/acmesh-official/acme.sh/archive/refs/heads/master.zip \
     || wget --no-check-certificate --connect-timeout=4 -qO /tmp/acme.sh-master.zip https://ghproxy.net/https://github.com/acmesh-official/acme.sh/archive/refs/heads/master.zip \
+    || wget --no-check-certificate --connect-timeout=4 -qO /tmp/acme.sh-master.zip https://gh.stuinx.eu.org/https://github.com/acmesh-official/acme.sh/archive/refs/heads/master.zip \
     || wget --no-check-certificate --connect-timeout=4 -qO /tmp/acme.sh-master.zip https://ghfast.top/https://github.com/acmesh-official/acme.sh/archive/refs/heads/master.zip
   unzip -qo /tmp/acme.sh-master.zip -d /tmp
   /tmp/acme.sh-master/acme.sh --install -m "$CF_Email"

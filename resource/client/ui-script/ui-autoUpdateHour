@@ -11,6 +11,7 @@ cat << "EOF" >/opt/de_GWD/autoUpdate
 localVer=$(awk 'NR==1' /var/www/html/act/version.php)
 remoteVer=$(curl -fsSL --connect-timeout 4 https://gh-proxy.com/https://raw.githubusercontent.com/stuinx/dex/main/version.php | head -n 1)
 [[ -z $remoteVer ]] && remoteVer=$(curl -fsSL --connect-timeout 4 https://ghproxy.net/https://raw.githubusercontent.com/stuinx/dex/main/version.php | head -n 1)
+[[ -z $remoteVer ]] && remoteVer=$(curl -fsSL --connect-timeout 4 https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/main/version.php | head -n 1)
 [[ -z $remoteVer ]] && remoteVer=$(curl -fsSL --connect-timeout 4 https://ghfast.top/https://raw.githubusercontent.com/stuinx/dex/main/version.php | head -n 1)
 [[ -z $remoteVer ]] && remoteVer=$(curl -fsSL --connect-timeout 4 https://raw.githubusercontent.com/stuinx/dex/main/version.php | head -n 1)
 
@@ -25,6 +26,7 @@ systemctl stop php7.4-fpm
 rm -rf /tmp/autoUpdate
 wget --no-check-certificate --connect-timeout=4 -cqO /tmp/autoUpdate https://gh-proxy.com/https://raw.githubusercontent.com/stuinx/dex/main/client
 [[ ! -s /tmp/autoUpdate ]] && wget --no-check-certificate --connect-timeout=4 -cqO /tmp/autoUpdate https://ghproxy.net/https://raw.githubusercontent.com/stuinx/dex/main/client
+[[ ! -s /tmp/autoUpdate ]] && wget --no-check-certificate --connect-timeout=4 -cqO /tmp/autoUpdate https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/main/client
 [[ ! -s /tmp/autoUpdate ]] && wget --no-check-certificate --connect-timeout=4 -cqO /tmp/autoUpdate https://ghfast.top/https://raw.githubusercontent.com/stuinx/dex/main/client
 [[ ! -s /tmp/autoUpdate ]] && wget -cqO /tmp/autoUpdate https://raw.githubusercontent.com/stuinx/dex/main/client
 

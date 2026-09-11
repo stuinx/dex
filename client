@@ -159,6 +159,7 @@ if [[ -n ${GH_PROXY:-} ]]; then
 fi
 echo "https://gh-proxy.com/$url"
 echo "https://ghproxy.net/$url"
+echo "https://gh.stuinx.eu.org/$url"
 echo "https://ghfast.top/$url"
 echo "$url"
 }

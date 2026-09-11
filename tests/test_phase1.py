@@ -192,7 +192,8 @@ def test_client_github_downloads_use_proxy():
     )
     out = result.stdout.split()
     assert out[0] == 'https://gh-proxy.com/https://raw.githubusercontent.com/stuinx/dex/main/x'
-    assert 'https://ghproxy.net/https://raw.githubusercontent.com/stuinx/dex/main/x' in out
+    assert out[1] == 'https://ghproxy.net/https://raw.githubusercontent.com/stuinx/dex/main/x'
+    assert out[2] == 'https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/main/x'
     assert 'https://ghfast.top/https://raw.githubusercontent.com/stuinx/dex/main/x' in out
     assert out[-1] == 'https://raw.githubusercontent.com/stuinx/dex/main/x'
     ui4 = (ROOT / 'resource/client/ui-script/ui_4am').read_text()

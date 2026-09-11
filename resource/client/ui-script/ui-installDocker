@@ -52,6 +52,7 @@ fi
 composeApi="https://api.github.com/repos/docker/compose/releases/latest"
 dockerComposeVer=$(curl -fsSL --connect-timeout 4 "https://gh-proxy.com/$composeApi" | jq -r .tag_name | grep -v '^null$')
 [[ -z $dockerComposeVer || $dockerComposeVer = null ]] && dockerComposeVer=$(curl -fsSL --connect-timeout 4 "https://ghproxy.net/$composeApi" | jq -r .tag_name | grep -v '^null$')
+[[ -z $dockerComposeVer || $dockerComposeVer = null ]] && dockerComposeVer=$(curl -fsSL --connect-timeout 4 "https://gh.stuinx.eu.org/$composeApi" | jq -r .tag_name | grep -v '^null$')
 [[ -z $dockerComposeVer || $dockerComposeVer = null ]] && dockerComposeVer=$(curl -fsSL --connect-timeout 4 "https://ghfast.top/$composeApi" | jq -r .tag_name | grep -v '^null$')
 [[ -z $dockerComposeVer || $dockerComposeVer = null ]] && dockerComposeVer=$(curl -fsSL --connect-timeout 4 "$composeApi" | jq -r .tag_name | grep -v '^null$')
 [[ -z $dockerComposeVer || $dockerComposeVer = null ]] && dockerComposeVer=$dockerComposeVer_reserved
@@ -59,6 +60,7 @@ dockerComposeVer=$(curl -fsSL --connect-timeout 4 "https://gh-proxy.com/$compose
 composeBin="https://github.com/docker/compose/releases/download/$dockerComposeVer/docker-compose-$(uname -s)-$(uname -m)"
 curl -L --connect-timeout 4 --max-time 180 "https://gh-proxy.com/$composeBin" >/usr/local/bin/docker-compose \
   || curl -L --connect-timeout 4 --max-time 180 "https://ghproxy.net/$composeBin" >/usr/local/bin/docker-compose \
+  || curl -L --connect-timeout 4 --max-time 180 "https://gh.stuinx.eu.org/$composeBin" >/usr/local/bin/docker-compose \
   || curl -L --connect-timeout 4 --max-time 180 "https://ghfast.top/$composeBin" >/usr/local/bin/docker-compose \
   || curl -L --connect-timeout 4 --max-time 180 "$composeBin" >/usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
