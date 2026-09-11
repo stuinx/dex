@@ -120,18 +120,28 @@ elif [[ $kernel_type == "bpo" || $kernel_type == "backports" ]]; then
   rm -f /etc/apt/sources.list.d/*zabbly* /etc/apt/keyrings/zabbly* /etc/apt/sources.list.d/*xanmod* /etc/apt/keyrings/xanmod* /etc/apt/sources.list.d/*liquorix* /etc/apt/keyrings/liquorix*
 fi
   
-  dpkg --list | awk '{print $2}' | grep '^linux-image' | grep -vE "^linux-image-amd64\$|$kernel_type" | while read line; do
-    apt autoremove --purge -y $line
-  done
-
-  dpkg --list | awk '{print $2}' | grep '^linux-headers' | grep -vE "^linux-headers-amd64\$|$kernel_type" | while read line; do
-    apt autoremove --purge -y $line
-  done
-  
-  apt autoremove --purge -y && apt clean -y && apt autoclean -y
-  
+  # Keep running/old kernels until after reboot as safety fallback.
+  # /etc/rc_kernel.local automatically cleans old kernels on successful boot.
   update-initramfs -u -k all 2>/dev/null || true
   update-grub 2>/dev/null || true
+}
+
+verifyGrubAndReboot(){
+  local kernel_name=$1
+  update-initramfs -u -k all
+  if ! update-grub; then
+    echo -e "${RED}Error: update-grub failed! Aborting reboot to prevent boot failure.${cRES}"
+    return 1
+  fi
+  if [[ ! -s /boot/grub/grub.cfg ]] || ! grep -q 'menuentry' /boot/grub/grub.cfg; then
+    echo -e "${RED}Error: /boot/grub/grub.cfg is missing or has no boot entries! Aborting reboot.${cRES}"
+    return 1
+  fi
+  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}$kernel_name ${GREEN}Installed${cRES}"
+  echo -e "${YELLOW}System will reboot in 5 seconds (Press Ctrl+C to cancel)...${cRES}"
+  sleep 5
+  reboot
+  exit 0
 }
 
 
@@ -234,12 +244,7 @@ kernelAptInstall zabbly linux-zabbly
 
 if [[ -n $(dpkg --list | grep linux-image | grep zabbly) ]]; then
   cleanOldKernels "zabbly"
-
-  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Zabbly kernel ${GREEN}Installed${cRES}"
-  echo -e "${YELLOW}System will reboot in 5 seconds (Press Ctrl+C to cancel)...${cRES}"
-  sleep 5
-  reboot
-  exit
+  verifyGrubAndReboot "Zabbly kernel"
 else
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Zabbly kernel ${RED}Install Failed${cRES}"
 
@@ -342,12 +347,7 @@ kernelAptInstall xanmod "$xanPkg"
 
 if [[ -n $(dpkg --list | grep linux-image | grep xanmod) ]]; then
   cleanOldKernels "xanmod"
-
-  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}XanMod kernel ($CPU_LEVEL) ${GREEN}Installed${cRES}"
-  echo -e "${YELLOW}System will reboot in 5 seconds (Press Ctrl+C to cancel)...${cRES}"
-  sleep 5
-  reboot
-  exit
+  verifyGrubAndReboot "XanMod kernel ($CPU_LEVEL)"
 else
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}XanMod kernel ${RED}Install Failed${cRES}"
 
@@ -388,12 +388,7 @@ kernelAptInstall liquorix linux-image-liquorix-amd64 linux-headers-liquorix-amd6
 
 if [[ -n $(dpkg --list | grep linux-image | grep liquorix) ]]; then
   cleanOldKernels "liquorix"
-
-  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Liquorix kernel ${GREEN}Installed${cRES}"
-  echo -e "${YELLOW}System will reboot in 5 seconds (Press Ctrl+C to cancel)...${cRES}"
-  sleep 5
-  reboot
-  exit
+  verifyGrubAndReboot "Liquorix kernel"
 else
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Liquorix kernel ${RED}Install Failed${cRES}"
 
@@ -440,12 +435,7 @@ apt-get install -y -t "${codename}-backports" linux-image-amd64 linux-headers-am
 
 if dpkg --list | awk '$2 ~ /^linux-image/ {print $0}' | grep -Eq 'bpo|backports'; then
   cleanOldKernels "bpo"
-
-  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Debian Backports kernel ${GREEN}Installed${cRES}"
-  echo -e "${YELLOW}System will reboot in 5 seconds (Press Ctrl+C to cancel)...${cRES}"
-  sleep 5
-  reboot
-  exit
+  verifyGrubAndReboot "Debian Backports kernel"
 else
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Debian Backports kernel ${RED}Install Failed${cRES}"
   echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Clear up & Exit${cRES}"
