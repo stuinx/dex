@@ -91,7 +91,7 @@ def test_nftables_isolated_and_no_flush_ruleset():
         source = (ROOT / script).read_text()
         assert 'ExecStop=/usr/sbin/nft flush ruleset' not in source
         assert 'rm -rf /lib/systemd/system/nftables.service' not in source
-        assert 'degwd-nftables.service' in source
+        assert 'de-nftables.service' in source
 
 
 def test_tmp_permission_is_1777():

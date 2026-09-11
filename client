@@ -853,6 +853,7 @@ ip route flush table 220 >/dev/null 2>&1
 ip route flush cache >/dev/null 2>&1
 ip route del local default dev lo table 220 >/dev/null 2>&1
 
+[[ -n $(systemctl cat de-nftables 2>/dev/null) ]] && systemctl stop de-nftables >/dev/null 2>&1
 [[ -n $(systemctl cat degwd-nftables 2>/dev/null) ]] && systemctl stop degwd-nftables >/dev/null 2>&1
 [[ -n $(systemctl cat vtrui 2>/dev/null) ]] && systemctl stop vtrui >/dev/null 2>&1
 
@@ -1886,7 +1887,10 @@ table ip de_GWD {
 EOF
 chmod +x /opt/de_GWD/nftables/nftables
 
-cat << EOF >/etc/systemd/system/degwd-nftables.service
+systemctl disable --now degwd-nftables >/dev/null 2>&1
+rm -f /etc/systemd/system/degwd-nftables.service
+
+cat << EOF >/etc/systemd/system/de-nftables.service
 [Unit]
 Description=de_GWD nftables service
 Wants=network-pre.target
@@ -1900,22 +1904,22 @@ RemainAfterExit=yes
 StandardInput=null
 ProtectSystem=full
 ProtectHome=true
-ExecStart=/bin/bash -c '/etc/rc_online.local 2>/dev/null || true' ; /bin/bash -c '/opt/de_GWD/nftables/flowtable_eth.sh 2>/dev/null || true' ; /usr/sbin/nft -f /opt/de_GWD/nftables/nftables ; /bin/bash -c '$(which ip) route add local default dev lo scope host table 220 2>/dev/null || true' ; /bin/bash -c '$(which ip) rule add fwmark 0x9 table 220 prio 100 2>/dev/null || true'
-ExecStop=/usr/sbin/nft delete table ip de_GWD 2>/dev/null ; /usr/sbin/nft delete table inet bypassflow 2>/dev/null ; /bin/bash -c '$(which ip) rule del table 220 2>/dev/null || true' ; /bin/bash -c '$(which ip) route del local default dev lo table 220 2>/dev/null || true'
+ExecStart=/bin/bash -c '/etc/rc_online.local 2>/dev/null || true' ; /bin/bash -c '/opt/de_GWD/nftables/flowtable_eth.sh 2>/dev/null || true' ; /usr/sbin/nft -f /opt/de_GWD/nftables/nftables ; /bin/bash -c 'ip route add local default dev lo scope host table 220 2>/dev/null || true' ; /bin/bash -c 'ip rule add fwmark 0x9 table 220 prio 100 2>/dev/null || true'
+ExecStop=/usr/sbin/nft delete table ip de_GWD 2>/dev/null ; /usr/sbin/nft delete table inet bypassflow 2>/dev/null ; /bin/bash -c 'ip rule del table 220 2>/dev/null || true' ; /bin/bash -c 'ip route del local default dev lo table 220 2>/dev/null || true'
 
 [Install]
 WantedBy=sysinit.target
 EOF
 systemctl daemon-reload >/dev/null
-systemctl enable degwd-nftables >/dev/null 2>&1
-systemctl restart degwd-nftables
+systemctl enable de-nftables >/dev/null 2>&1
+systemctl restart de-nftables
 
-if [[ $(systemctl is-active 'degwd-nftables') != "active" ]]; then
+if [[ $(systemctl is-active 'de-nftables') != "active" ]]; then
   rm -rf /opt/de_GWD/nftables/flowtable.nft >/dev/null 2>&1
-  systemctl restart degwd-nftables
+  systemctl restart de-nftables
 fi
 
-if ! systemctl is-active --quiet degwd-nftables; then
+if ! systemctl is-active --quiet de-nftables; then
   echo -e "${WHITE}nftables${RED} Start Failed${cRES}"
   return 1
 fi
@@ -1927,17 +1931,29 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Deploy nftable
 
 updateAPT(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Debian Updated${cRES}\r\c"
+# If debian sources are not configured, use chnAPTsource
+if [[ ! -s /etc/apt/sources.list && ! -s /etc/apt/sources.list.d/debian.sources ]]; then
 cat << EOF >/etc/apt/sources.list
-deb http://cloudfront.debian.net/debian bookworm main contrib non-free non-free-firmware
-deb http://cloudfront.debian.net/debian-security bookworm-security main contrib non-free non-free-firmware
-deb http://cloudfront.debian.net/debian bookworm-updates main contrib non-free non-free-firmware
-deb http://cloudfront.debian.net/debian bookworm-backports main contrib non-free non-free-firmware
+deb http://$chnAPTsource/debian bookworm main contrib non-free non-free-firmware
+deb http://$chnAPTsource/debian bookworm-updates main contrib non-free non-free-firmware
+deb http://$chnAPTsource/debian bookworm-backports main contrib non-free non-free-firmware
+deb http://$chnAPTsource/debian-security bookworm-security main contrib non-free non-free-firmware
 EOF
+fi
 
-echo "deb [signed-by=/etc/apt/keyrings/deb.sury.org.gpg] https://packages.sury.org/php/ $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) main" >/etc/apt/sources.list.d/php.list
+phpCodename=$(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1)
+mkdir -p /etc/apt/keyrings /etc/apt/sources.list.d
 apt-key del 95BD4743 >/dev/null 2>&1
-curl -sSLo /etc/apt/keyrings/deb.sury.org.gpg https://packages.sury.org/php/apt.gpg
-[[ $? -ne 0 ]] && echo -e "${WHITE}PHP apt key${RED} Download Failed${cRES}"
+if ! curl -fsSLo /etc/apt/keyrings/deb.sury.org.gpg --connect-timeout 8 --max-time 30 https://mirrors.ustc.edu.cn/sury/php/apt.gpg; then
+  curl -fsSLo /etc/apt/keyrings/deb.sury.org.gpg --connect-timeout 8 --max-time 30 https://packages.sury.org/php/apt.gpg || true
+fi
+if [[ ! -s /etc/apt/keyrings/deb.sury.org.gpg ]]; then
+  echo -e "${WHITE}PHP apt key${RED} Download Failed${cRES}"
+fi
+
+cat << EOF >/etc/apt/sources.list.d/php.list
+deb [signed-by=/etc/apt/keyrings/deb.sury.org.gpg] https://mirrors.ustc.edu.cn/sury/php/ $phpCodename main
+EOF
 
 apt update --fix-missing && apt upgrade --allow-downgrades -y
 apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
@@ -2817,27 +2833,57 @@ apt update --fix-missing && apt upgrade --allow-downgrades -y
 apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
 
 mkdir -p /opt/de_GWD
-echo "{}" >/opt/de_GWD/0conf
-jq '.address={}' /opt/de_GWD/0conf |\
-jq '.dns={}' |\
-jq '.v2node=[]' |\
-jq '.update={}' |\
-jq --arg localIP "$localAddrCIDR" '.address.localIP=$localIP' |\
-jq --arg upstreamIP "$gatewayAddr" '.address.upstreamIP=$upstreamIP' |\
-jq --arg domain "$v2addr" '.v2node[0].domain=$domain' |\
-jq --arg name "$v2addr" '.v2node[0].name=$name' |\
-jq --arg uuid "$uuid" '.v2node[0].uuid=$uuid' |\
-jq --arg path "$path" '.v2node[0].path=$path' |\
-jq --arg updateAddr "$localAddr" '.update.updateAddr=$updateAddr' |\
-jq --arg updatePort "3000" '.update.updatePort=$updatePort' |\
-jq --arg updateCMD "$installCMD" '.update.updateCMD=$updateCMD' |\
-jq --arg domain "$domain" '.update.v2node.domain=$domain' |\
-jq --arg port "$port" '.update.v2node.port=$port' |\
-jq --arg tls "$tls" '.update.v2node.tls=$tls' |\
-jq --arg uuid "$uuid" '.update.v2node.uuid=$uuid' |\
-jq --arg path "$path" '.update.v2node.path=$path' | sponge /opt/de_GWD/0conf
-[[ -n $DoG ]] && jq --arg DoG "$DoG" '.dns.DoG=$DoG' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-[[ -n $doh1 ]] && jq --arg doh1 "$doh1" '.dns.doh+=[$doh1]' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+CONF_LOCAL_IP="$localAddrCIDR" \
+CONF_UPSTREAM_IP="$gatewayAddr" \
+CONF_V2_ADDR="$v2addr" \
+CONF_UUID="$uuid" \
+CONF_PATH="$path" \
+CONF_LOCAL_ADDR="$localAddr" \
+CONF_INSTALL_CMD="$installCMD" \
+CONF_DOMAIN="$domain" \
+CONF_PORT="$port" \
+CONF_TLS="$tls" \
+CONF_DOG="${DoG:-}" \
+CONF_DOH="${doh1:-}" \
+python3 - <<'PY'
+import json, os
+
+data = {
+    "address": {
+        "localIP": os.environ.get("CONF_LOCAL_IP", ""),
+        "upstreamIP": os.environ.get("CONF_UPSTREAM_IP", "")
+    },
+    "dns": {},
+    "v2node": [{
+        "domain": os.environ.get("CONF_V2_ADDR", ""),
+        "name": os.environ.get("CONF_V2_ADDR", ""),
+        "uuid": os.environ.get("CONF_UUID", ""),
+        "path": os.environ.get("CONF_PATH", "")
+    }],
+    "update": {
+        "updateAddr": os.environ.get("CONF_LOCAL_ADDR", ""),
+        "updatePort": "3000",
+        "updateCMD": os.environ.get("CONF_INSTALL_CMD", ""),
+        "v2node": {
+            "domain": os.environ.get("CONF_DOMAIN", ""),
+            "port": os.environ.get("CONF_PORT", "443"),
+            "tls": os.environ.get("CONF_TLS", ""),
+            "uuid": os.environ.get("CONF_UUID", ""),
+            "path": os.environ.get("CONF_PATH", "")
+        }
+    }
+}
+dog = os.environ.get("CONF_DOG", "").strip()
+doh = os.environ.get("CONF_DOH", "").strip()
+if dog:
+    data["dns"]["DoG"] = dog
+if doh:
+    data["dns"]["doh"] = [doh]
+
+with open("/opt/de_GWD/0conf", "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
 chown root:www-data /opt/de_GWD/0conf
 chmod 0660 /opt/de_GWD/0conf
 
