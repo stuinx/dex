@@ -2511,6 +2511,7 @@ with open("/opt/de_GWD/pihole/pihole.toml", "w") as f:
     toml.dump(data, f)
 EOF
 
+chown -R 1000:1000 /opt/de_GWD/pihole 2>/dev/null || true
 chmod -R u+rwX,g+rX,o-rwx /opt/de_GWD/pihole
 
 cat << EOF >/etc/dnsmasq.d/00-extra.conf
@@ -2655,9 +2656,20 @@ local tmp=/tmp/de_GWD-installkernel src
 # Leftover unsigned XanMod/Liquorix lists abort apt update for every kernel.
 for src in /etc/apt/sources.list /etc/apt/sources.list.d/*; do
   [[ -f $src ]] || continue
-  grep -Eq 'xanmod\.org|liquorix\.net' "$src" 2>/dev/null && rm -f -- "$src"
+  if grep -Eq 'xanmod\.org|liquorix\.net' "$src" 2>/dev/null; then
+    sed -i -E '/xanmod\.org|liquorix\.net/d' "$src" 2>/dev/null || true
+    [[ $src != "/etc/apt/sources.list" && ! -s $src ]] && rm -f -- "$src"
+  fi
 done
+local chk_url="https://raw.githubusercontent.com/stuinx/dex/$branch/resource/kernel/installkernel.sha256sum"
+local expected_sha
+expected_sha=$(curl_gh "$chk_url" 2>/dev/null | awk '{print $1}')
 if wget_gh "$tmp" "https://raw.githubusercontent.com/stuinx/dex/$branch/resource/kernel/installkernel" && [[ -s $tmp ]]; then
+  if [[ -n $expected_sha ]] && [[ $(checkSum "$tmp" "$expected_sha") = "false" ]]; then
+    echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}installkernel checksum mismatch${cRES}"
+    rm -f -- "$tmp"
+    return 1
+  fi
   mkdir -p /opt/de_GWD/.repo
   cp -f "$tmp" "$f"
   bash "$tmp"

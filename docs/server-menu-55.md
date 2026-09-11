@@ -9,7 +9,7 @@
 ## 2. VLESS + WS + TLS（像安装 server 一样填域名+端口）
 
 1. 55 → `[2]` → `[1]` Enable。
-2. 与安装 server 相同：提示 `Input VPS domain`，填写 `域名` 或 `域名:端口`（不写端口则为 443）。**可以同域名**，端口不能与主 VMess 的 nginx 监听口相同（同端口会和 `reuseport` 冲突）。
+2. 提示 `Input VPS domain`，必须填写 `域名:端口`；需要使用 443 时也要显式填写 `:443`。**可以同域名**，端口不能与主 VMess 的 nginx 监听口相同（同端口会和 `reuseport` 冲突）。
 3. UUID/path 仍按主 VMess 规则自动生成：新 UUID，`path=/` + UUID 后 6 位；与主 path 冲突则重抽。无需手填。
 4. nginx **单独**写入 `/etc/nginx/conf.d/vless-ws.conf`（`upstream vlessws` + 独立 `server`）。主站 `default.conf` 不加 VLESS location。同一套证书（`.ssl_certs`）。`GET /` 走 `/var/www/html` 伪装页（与 443 一样不要空 404）；仅 VLESS path 在非 websocket 时返回 404。
 5. Xray 只听 `127.0.0.1:9891`，`security: none`（TLS 由 nginx 终结）。

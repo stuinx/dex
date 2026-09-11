@@ -8,3 +8,5 @@ sha256sum ./resource/doh/doh_s_arm64 | awk '{print$1}' | tee ./resource/doh/doh_
 sha256sum ./resource/nginx/nginx_amd64 | awk '{print$1}' | tee ./resource/nginx/nginx_amd64.sha256sum
 sha256sum ./resource/nginx/nginx_arm64 | awk '{print$1}' | tee ./resource/nginx/nginx_arm64.sha256sum
 sha256sum ./resource/nginx/nginxConf.zip | awk '{print$1}' | tee ./resource/nginx/nginxConf.zip.sha256sum
+sha256sum ./resource/kernel/installkernel | awk '{print$1}' | tee ./resource/kernel/installkernel.sha256sum
+sha256sum ./resource/server/rproxyS-save | awk '{print$1}' | tee ./resource/server/rproxyS-save.sha256sum

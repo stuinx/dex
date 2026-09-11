@@ -199,7 +199,7 @@ def test_client_github_downloads_use_proxy():
     ui4 = (ROOT / 'resource/client/ui-script/ui_4am').read_text()
     assert 'wget_gh /tmp/geosite.dat' in ui4
     auto = (ROOT / 'resource/client/ui-script/ui-autoUpdateHour').read_text()
-    assert 'gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/main/client' in auto
+    assert 'gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/$branch/client' in auto
 
 
 def test_runtime_does_not_fetch_original_repo():
@@ -277,6 +277,53 @@ def test_acme_issues_full_domain_not_last_two_labels():
         assert '--installcert -d "$n1"' in source
         assert '-d $topDomain -d *.$topDomain' not in source
         assert '-d $domain -d *.$domain' not in source
+
+
+def test_findings_p1_and_p2_fixes():
+    # P1-9, P1-10: RproxyS permissions
+    rproxy_save = (ROOT / 'resource/server/rproxyS-save').read_text()
+    assert 'chmod 600 /opt/de_GWD/RproxyS/config.json' in rproxy_save
+    assert 'chmod 666 /opt/de_GWD/RproxyS/config.json' not in rproxy_save
+    assert 'chmod 600 /var/www/ssl/*.key' in rproxy_save
+    assert 'chmod 644 /var/www/ssl/*.key' not in rproxy_save
+
+    # P2-5, P2-6: RproxyS port range & protocol validation
+    assert 'tunnel port $RproxyStunnelPort must be an integer between 1 and 65535' in rproxy_save
+    assert 'port > 65535' in rproxy_save
+
+    # P1-6: Kernel dpkg lock wait
+    ik = (ROOT / 'resource/kernel/installkernel').read_text()
+    assert 'wait_for_dpkg_lock' in ik
+    assert 'rm -f /var/cache/apt/archives/lock' not in ik
+
+    # P1-7: Line-by-line foreign source cleaning
+    assert "sed -i -E '/xanmod\\.org|liquorix\\.net|pkgs\\.zabbly\\.com/d'" in ik
+    assert "[[ $src != \"/etc/apt/sources.list\" && ! -s $src ]] && rm -f -- \"$src\"" in ik
+
+    # P2-8: Backports bracket stripping
+    assert 'sub(/^deb +(\\[[^]]+\\] +)?/, "", line)' in ik
+
+    # P2-9: Pi-hole permissions & ownership
+    client_src = (ROOT / 'client').read_text()
+    assert 'chown -R 1000:1000 /opt/de_GWD/pihole' in client_src
+
+    # P2-4: installkernel sha256 checksum check
+    assert 'installkernel.sha256sum' in client_src
+    assert 'installkernel checksum mismatch' in client_src
+
+    # P1-1 & P1-2: Server SSL strict exit & rollback
+    server_src = (ROOT / 'server').read_text()
+    assert 'chmod 600 /var/www/ssl/*.key' in server_src
+    assert 'chmod 644 /var/www/ssl/*.key' not in server_src
+    assert 'if ! makeSSL_D; then' in server_src
+    assert 'systemctl restart vtrui >/dev/null 2>&1 || true' in server_src
+
+    # P1-8: Dedicated HAProxy comment
+    assert '[de_GWD] Dedicated Managed HAProxy Configuration' in server_src
+
+    # P2-10: README menu hotkey documentation
+    readme = (ROOT / 'README.md').read_text()
+    assert '`[5]` 查看已添加项，`[0]` 返回。' in readme
 
 
 if __name__ == '__main__':

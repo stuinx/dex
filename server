@@ -87,6 +87,7 @@ sha256sum_don_server=$(curl -fsSLo- https://raw.githubusercontent.com/stuinx/dex
 sha256sum_nginx=$(curl -fsSLo- https://raw.githubusercontent.com/stuinx/dex/$branch/resource/nginx/nginx_"$architecture".sha256sum)
 sha256sum_nginxConf=$(curl -fsSLo- https://raw.githubusercontent.com/stuinx/dex/$branch/resource/nginx/nginxConf.zip.sha256sum)
 sha256sum_sample=$(curl -fsSLo- https://raw.githubusercontent.com/stuinx/dex/$branch/resource/server/sample.zip.sha256sum)
+sha256sum_rproxyS=$(curl -fsSLo- https://raw.githubusercontent.com/stuinx/dex/$branch/resource/server/rproxyS-save.sha256sum 2>/dev/null || true)
 
 if [[ $(checkSum /opt/de_GWD/doh-server $sha256sum_don_server) = "false" ]]; then
 rm -rf /tmp/doh-server
@@ -133,9 +134,19 @@ wget --show-progress -cqO /tmp/version.php https://raw.githubusercontent.com/stu
 [[ $(du -sk /tmp/version.php 2>/dev/null | awk '{print$1}') -ge 4 ]] && mv -f /tmp/version.php /opt/de_GWD/version.php
 fi
 
-if [[ ! -s /opt/de_GWD/rproxyS-save ]]; then
-wget -t 5 -T 15 -cqO /opt/de_GWD/rproxyS-save "https://raw.githubusercontent.com/stuinx/dex/$branch/resource/server/rproxyS-save" 2>/dev/null || true
-[[ -s /opt/de_GWD/rproxyS-save ]] && chmod +x /opt/de_GWD/rproxyS-save
+if [[ -n $sha256sum_rproxyS ]]; then
+  if [[ $(checkSum /opt/de_GWD/rproxyS-save "$sha256sum_rproxyS") = "false" ]]; then
+    rm -rf /tmp/rproxyS-save
+    wget -t 5 -T 15 -cqO /tmp/rproxyS-save "https://raw.githubusercontent.com/stuinx/dex/$branch/resource/server/rproxyS-save" 2>/dev/null || true
+    if [[ $(checkSum /tmp/rproxyS-save "$sha256sum_rproxyS") = "true" ]]; then
+      mv -f /tmp/rproxyS-save /opt/de_GWD/rproxyS-save && chmod +x /opt/de_GWD/rproxyS-save
+    else
+      rm -rf /tmp/rproxyS-save
+    fi
+  fi
+elif [[ ! -s /opt/de_GWD/rproxyS-save ]]; then
+  wget -t 5 -T 15 -cqO /opt/de_GWD/rproxyS-save "https://raw.githubusercontent.com/stuinx/dex/$branch/resource/server/rproxyS-save" 2>/dev/null || true
+  [[ -s /opt/de_GWD/rproxyS-save ]] && chmod +x /opt/de_GWD/rproxyS-save
 fi
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Repository${cRES}"
@@ -1130,7 +1141,7 @@ fi
                --reloadcmd     "systemctl force-reload nginx" \
                --ecc || return 1
 
-chmod 644 /var/www/ssl/*.key
+chmod 600 /var/www/ssl/*.key 2>/dev/null || true
 }
 
 
@@ -1173,14 +1184,14 @@ find /var/www/ssl/*.pem | grep -v "dhparam.pem" | xargs -I {} rm -rf {}
 curl https://get.acme.sh | sh
 "/root/.acme.sh"/acme.sh --upgrade  --auto-upgrade
 "/root/.acme.sh"/acme.sh --set-default-ca  --server letsencrypt
-"/root/.acme.sh"/acme.sh --issue -d $domain -w /var/www/html -k ec-256
+"/root/.acme.sh"/acme.sh --issue -d $domain -w /var/www/html -k ec-256 || return 1
 "/root/.acme.sh"/acme.sh --installcert -d $domain \
                --key-file       /var/www/ssl/de_GWD.key  \
                --fullchain-file /var/www/ssl/de_GWD.cer \
                --reloadcmd     "systemctl force-reload nginx" \
-               --ecc
+               --ecc || return 1
 
-chmod 644 /var/www/ssl/*.key
+chmod 600 /var/www/ssl/*.key 2>/dev/null || true
 }
 
 
@@ -1460,7 +1471,7 @@ sslFolder=$(ls "/root/.acme.sh" | grep '_ecc')
 cp -f "/root/.acme.sh"/$sslFolder/fullchain.cer /var/www/ssl/de_GWD.cer
 cp -f "/root/.acme.sh"/$sslFolder/*.key /var/www/ssl/de_GWD.key
 
-chmod 644 /var/www/ssl/*.key
+chmod 600 /var/www/ssl/*.key 2>/dev/null || true
 fi
 EOF
 chmod +x /opt/de_GWD/Qday
@@ -1471,10 +1482,9 @@ cat << "EOF" >/etc/rc_kernel.local
 #!/bin/bash
 PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 
-rm -f /var/cache/apt/archives/lock
-rm -f /var/lib/apt/lists/lock
-rm -f /var/lib/dpkg/lock
-rm -f /var/lib/dpkg/lock-frontend
+while fuser /var/lib/dpkg/lock >/dev/null 2>&1 || fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+  sleep 2
+done
 dpkg --configure -a
 
 dpkg --list | grep linux-image | awk '{print $2}' | grep -Fv $(uname -r) | while read line; do
@@ -1597,7 +1607,10 @@ path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui/con
     read CFemail
     [[ -n $CFemail ]] || { echo -e "${RED}Email cannot be empty${cRES}"; return 1; }
 
-makeSSL_D
+if ! makeSSL_D; then
+  echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}SSL Certificate Issue/Install ${RED}Failed${cRES}" >&2
+  return 1
+fi
 
 nginxWebConf
 
@@ -2031,6 +2044,8 @@ extraXrayRollback(){
   [[ -f $nginxBak ]] && mv -f "$nginxBak" /etc/nginx/conf.d/default.conf
   if [[ -f $vlessBak ]]; then mv -f "$vlessBak" "$vlessConf"; else rm -f "$vlessConf"; fi
   if [[ -f $locBak ]]; then mv -f "$locBak" "$DE_GWD_VLESS_NGINX_LOCATION"; else rm -f "$DE_GWD_VLESS_NGINX_LOCATION"; fi
+  systemctl force-reload nginx >/dev/null 2>&1 || true
+  systemctl restart vtrui >/dev/null 2>&1 || true
 }
 if ! "$DE_GWD_XRAY_BIN" run -test -confdir "$DE_GWD_XRAY_DIR" >/tmp/extra-xray-test.log 2>&1; then
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Xray config test failed${cRES}"
@@ -2044,8 +2059,16 @@ if ! nginx -t >/tmp/extra-nginx-test.log 2>&1; then
   extraXrayRollback
   return 1
 fi
-systemctl force-reload nginx >/dev/null 2>&1 || true
-systemctl restart vtrui >/dev/null 2>&1 || return 1
+if ! systemctl force-reload nginx >/dev/null 2>&1; then
+  echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Nginx reload failed${cRES}" >&2
+  extraXrayRollback
+  return 1
+fi
+if ! systemctl restart vtrui >/dev/null 2>&1; then
+  echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Xray service restart failed${cRES}" >&2
+  extraXrayRollback
+  return 1
+fi
 rm -f "$bak" "$nginxBak" "$vlessBak" "$locBak"
 }
 
@@ -2438,7 +2461,7 @@ else
 fi
 host=${host#\[}
 host=${host%\]}
-[[ -n $host && $port =~ ^[0-9]+$ ]] || return 1
+[[ -n $host && $port =~ ^[1-9][0-9]{0,4}$ ]] && (( port <= 65535 )) || return 1
 printf '%s %s\n' "$host" "$port"
 }
 
@@ -2548,8 +2571,23 @@ return 0
 
 tcppf_port_available(){
 local candidate=$1 usedPort mappingPort
-usedPort=$(awk '$1 == "listen" {gsub(/;/, "", $2); if ($2 ~ /^[0-9]+$/) print $2}' "$DE_GWD_NGINX_CONF_DIR/default.conf" 2>/dev/null | awk 'NR==1')
-[[ $candidate = "$usedPort" || $candidate = "80" || $candidate = "443" || $candidate = "9890" || $candidate = "9891" || $candidate = "3000" || $candidate = "8053" ]] && return 1
+[[ $candidate = "80" || $candidate = "443" || $candidate = "9890" || $candidate = "9891" || $candidate = "3000" || $candidate = "8053" ]] && return 1
+while IFS= read -r usedPort; do
+  [[ -n $usedPort && $candidate = "$usedPort" ]] && return 1
+done < <(awk '
+  $1 == "listen" {
+    for (i=2; i<=NF; i++) {
+      val=$i
+      gsub(/;/, "", val)
+      # Match standalone port or [ip]:port
+      sub(/^.*:/, "", val)
+      if (val ~ /^[0-9]+$/) {
+        print val
+        break
+      }
+    }
+  }
+' "$DE_GWD_NGINX_CONF_DIR"/*.conf 2>/dev/null)
 for extraf in extra-reality.json extra-vlessws.json extra-socks5.json extra-dokodemo.json tcppf.json; do
   [[ -f $DE_GWD_DATA_DIR/$extraf ]] || continue
   if [[ $extraf != tcppf.json ]]; then
@@ -2608,6 +2646,10 @@ local temp i n localP upstream name
 mkdir -p -- "$(dirname -- "$DE_GWD_HAPROXY_CONFIG")" || return 1
 temp=$(mktemp "${DE_GWD_HAPROXY_CONFIG}.XXXXXX") || return 1
 cat >"$temp" <<'EOF'
+# ----------------------------------------------------------------------
+# [de_GWD] Dedicated Managed HAProxy Configuration
+# NOTE: This file is fully managed by de_GWD TCP forwarding (menu 44).
+# ----------------------------------------------------------------------
 global
   ulimit-n              500000
   maxconn               200000
@@ -2683,14 +2725,24 @@ fi
 }
 
 tcppf_runtime_matches(){
-local json_ports cfg_ports
-json_ports=$(jq -r '[.[].localPort | tonumber] | sort | map(tostring) | join(",")' <<<"${TCPPFrules:-[]}" 2>/dev/null)
+local json_pairs cfg_pairs
+json_pairs=$(jq -r '[.[] | "\(.localPort)=\(.upstream)"] | sort | join(";")' <<<"${TCPPFrules:-[]}" 2>/dev/null)
 if [[ ! -f $DE_GWD_HAPROXY_CONFIG ]]; then
-  [[ -z $json_ports ]] && return 0
+  [[ -z $json_pairs ]] && return 0
   return 1
 fi
-cfg_ports=$(awk '$1 == "bind" {print $2}' "$DE_GWD_HAPROXY_CONFIG" 2>/dev/null | awk -F: '{print $NF}' | sort -n | awk '{p=p $0 ","} END {sub(/,$/, "", p); print p}')
-[[ $json_ports = "$cfg_ports" ]]
+cfg_pairs=$(awk '
+  $1 == "frontend" {fe=$2}
+  $1 == "bind" && fe != "" {bind_port=$2; sub(/^.*:/, "", bind_port)}
+  $1 == "backend" {be=$2}
+  $1 == "server" && $2 == "endpoint" && be != "" {
+    if (bind_port != "") {
+      print bind_port "=" $3
+      bind_port=""
+    }
+  }
+' "$DE_GWD_HAPROXY_CONFIG" 2>/dev/null | sort | awk '{p=p $0 ";"} END {sub(/;$/, "", p); print p}')
+[[ $json_pairs = "$cfg_pairs" ]]
 }
 
 # JSON is source of truth. Rewrite HAProxy if bind ports drifted (legacy relay0, etc).
@@ -2706,20 +2758,28 @@ local candidate=$1 bak_settings bak_cfg had_settings=0 had_cfg=0
 bak_settings=$(mktemp /tmp/de_GWD-tcppf-bak-settings.XXXXXX) || return 1
 bak_cfg=$(mktemp /tmp/de_GWD-tcppf-bak-cfg.XXXXXX) || { rm -f -- "$bak_settings"; return 1; }
 if [[ -f $DE_GWD_TCPPF_SETTINGS ]]; then
-  cp -f -- "$DE_GWD_TCPPF_SETTINGS" "$bak_settings" && had_settings=1
+  if ! cp -f -- "$DE_GWD_TCPPF_SETTINGS" "$bak_settings"; then
+    rm -f -- "$bak_settings" "$bak_cfg"
+    return 1
+  fi
+  had_settings=1
 fi
 if [[ -f $DE_GWD_HAPROXY_CONFIG ]]; then
-  cp -f -- "$DE_GWD_HAPROXY_CONFIG" "$bak_cfg" && had_cfg=1
+  if ! cp -f -- "$DE_GWD_HAPROXY_CONFIG" "$bak_cfg"; then
+    rm -f -- "$bak_settings" "$bak_cfg"
+    return 1
+  fi
+  had_cfg=1
 fi
 if ! mv -f -- "$candidate" "$DE_GWD_TCPPF_SETTINGS" || ! tcppf_apply_runtime; then
-  if [[ $had_settings = 1 ]]; then
+  if [[ $had_settings = 1 && -f $bak_settings ]]; then
     mv -f -- "$bak_settings" "$DE_GWD_TCPPF_SETTINGS"
-  else
+  elif [[ $had_settings = 0 ]]; then
     rm -f -- "$DE_GWD_TCPPF_SETTINGS"
   fi
-  if [[ $had_cfg = 1 ]]; then
+  if [[ $had_cfg = 1 && -f $bak_cfg ]]; then
     mv -f -- "$bak_cfg" "$DE_GWD_HAPROXY_CONFIG"
-  else
+  elif [[ $had_cfg = 0 ]]; then
     rm -f -- "$DE_GWD_HAPROXY_CONFIG"
   fi
   rm -f -- "$bak_settings" "$bak_cfg"
@@ -3062,7 +3122,10 @@ installNginx
 
 installXray
 
-makeSSL_D
+if ! makeSSL_D; then
+  echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}SSL Certificate Issue/Install ${RED}Failed${cRES}" >&2
+  exit 1
+fi
 
 nginxWebConf
 
@@ -3389,7 +3452,7 @@ else
 fi
 read tunnelPort
 [[ -z $tunnelPort ]] && tunnelPort="$oldPort"
-[[ -n $tunnelPort ]] || { echo -e "${RED}Invalid port${cRES}"; return 1; }
+[[ $tunnelPort =~ ^[1-9][0-9]{0,4}$ ]] && (( tunnelPort <= 65535 )) || { echo -e "${RED}Invalid port (must be 1-65535)${cRES}"; return 1; }
 if [[ $tunnelPort = "55443" || $tunnelPort = "443" || $tunnelPort = "80" ]]; then
   echo -e "${RED}$tunnelPort is nginx${cRES}"
   return 1
