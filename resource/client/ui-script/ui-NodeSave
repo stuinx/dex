@@ -35,7 +35,6 @@ if [[ -s "$tmp_nodes" ]]; then
   sort -u "$tmp_nodes" | sed '/^\s*$/d' >"${tmp_nodes}.clean"
   elements_list=$(awk '{printf "%s, ", $1}' "${tmp_nodes}.clean" | sed 's/, $//')
   cat << EOF >"$tmp_nft"
-flush set ip de_GWD V2NODE
 table ip de_GWD {
         set V2NODE {
                 type ipv4_addr
@@ -45,6 +44,7 @@ table ip de_GWD {
         }
 }
 EOF
+  nft flush set ip de_GWD V2NODE 2>/dev/null || true
   if nft -c -f "$tmp_nft" 2>/dev/null && nft -f "$tmp_nft"; then
     mv -f "$tmp_domains" /opt/de_GWD/mosdns/domains_nodes
     awk '{print $1","}' "${tmp_nodes}.clean" >/opt/de_GWD/nftables/IP_V2NODE
@@ -58,7 +58,6 @@ elif [[ -n "$node_domains" ]]; then
   echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}DNS resolution for nodes returned empty, keeping previous node set${cRES}" >&2
 else
   cat << EOF >"$tmp_nft"
-flush set ip de_GWD V2NODE
 table ip de_GWD {
         set V2NODE {
                 type ipv4_addr
@@ -67,6 +66,7 @@ table ip de_GWD {
         }
 }
 EOF
+  nft flush set ip de_GWD V2NODE 2>/dev/null || true
   nft -c -f "$tmp_nft" 2>/dev/null && nft -f "$tmp_nft" 2>/dev/null || true
   >/opt/de_GWD/mosdns/domains_nodes
   >/opt/de_GWD/nftables/IP_V2NODE
