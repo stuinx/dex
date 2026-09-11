@@ -70,10 +70,11 @@ unset aptPKG
 ghREPO="unlimitedbacon/stl-thumb"
 ghPackage="_$architecture.deb"
 stlApi="https://api.github.com/repos/${ghREPO}/releases/latest"
-stlJson=$(curl -fsSL --connect-timeout 8 "https://ghfast.top/$stlApi" || curl -fsSL --connect-timeout 8 "https://gh-proxy.com/$stlApi" || curl -fsSL --connect-timeout 8 "$stlApi")
+stlJson=$(curl -fsSL --connect-timeout 4 "https://gh-proxy.com/$stlApi" || curl -fsSL --connect-timeout 4 "https://ghproxy.net/$stlApi" || curl -fsSL --connect-timeout 4 "https://ghfast.top/$stlApi" || curl -fsSL --connect-timeout 4 "$stlApi")
 stlUrl=$(echo "$stlJson" | grep -E 'browser_download_url' | grep 'stl-thumb_' | grep $ghPackage | cut -d '"' -f 4)
-[[ -n $stlUrl ]] && wget --no-check-certificate --show-progress -cqO /tmp/stl-thumb.deb "https://ghfast.top/$stlUrl"
-[[ ! -s /tmp/stl-thumb.deb ]] && [[ -n $stlUrl ]] && wget --no-check-certificate --show-progress -cqO /tmp/stl-thumb.deb "https://gh-proxy.com/$stlUrl"
+[[ -n $stlUrl ]] && wget --no-check-certificate --timeout=15 --tries=1 --connect-timeout=4 --show-progress -cqO /tmp/stl-thumb.deb "https://gh-proxy.com/$stlUrl"
+[[ ! -s /tmp/stl-thumb.deb ]] && [[ -n $stlUrl ]] && wget --no-check-certificate --timeout=15 --tries=1 --connect-timeout=4 --show-progress -cqO /tmp/stl-thumb.deb "https://ghproxy.net/$stlUrl"
+[[ ! -s /tmp/stl-thumb.deb ]] && [[ -n $stlUrl ]] && wget --no-check-certificate --timeout=15 --tries=1 --connect-timeout=4 --show-progress -cqO /tmp/stl-thumb.deb "https://ghfast.top/$stlUrl"
 [[ ! -s /tmp/stl-thumb.deb ]] && [[ -n $stlUrl ]] && wget --show-progress -cqO /tmp/stl-thumb.deb "$stlUrl"
 [[ ! -s /tmp/stl-thumb.deb ]] && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}stl-thumb${RED} Download Failed${cRES}" && exit
 dpkg -i /tmp/stl-thumb.deb
