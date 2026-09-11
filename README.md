@@ -21,10 +21,10 @@ bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx
 ## Client (amd64):
 
 ```
-bash <(wget --no-check-certificate -qO- https://gh-proxy.com/https://raw.githubusercontent.com/stuinx/dex/dev/client)
+bash <(wget --no-check-certificate -qO- https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/dev/client)
 ```
 
-国内安装默认经 `gh-proxy.com` 拉 GitHub 资源，失败会换 `ghproxy.net` / `gh.stuinx.eu.org` / `ghfast.top`。Pi-hole 镜像优先 `docker.1ms.run` / `docker.1panel.live`，不先打 Docker Hub。可覆盖：`GH_PROXY=https://gh-proxy.com/`。
+国内安装默认经 `gh.stuinx.eu.org` 拉 GitHub 资源，失败会换 `gh-proxy.com` / `ghproxy.net` / `ghfast.top`。Pi-hole 镜像优先 `docker.1ms.run` / `docker.1panel.live`，不先打 Docker Hub。可覆盖：`GH_PROXY=https://gh.stuinx.eu.org/`。
 
 或
 

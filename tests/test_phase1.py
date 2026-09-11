@@ -191,15 +191,15 @@ def test_client_github_downloads_use_proxy():
         + '\ngh_candidates https://raw.githubusercontent.com/stuinx/dex/main/x\n'
     )
     out = result.stdout.split()
-    assert out[0] == 'https://gh-proxy.com/https://raw.githubusercontent.com/stuinx/dex/main/x'
-    assert out[1] == 'https://ghproxy.net/https://raw.githubusercontent.com/stuinx/dex/main/x'
-    assert out[2] == 'https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/main/x'
+    assert out[0] == 'https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/main/x'
+    assert out[1] == 'https://gh-proxy.com/https://raw.githubusercontent.com/stuinx/dex/main/x'
+    assert out[2] == 'https://ghproxy.net/https://raw.githubusercontent.com/stuinx/dex/main/x'
     assert 'https://ghfast.top/https://raw.githubusercontent.com/stuinx/dex/main/x' in out
     assert out[-1] == 'https://raw.githubusercontent.com/stuinx/dex/main/x'
     ui4 = (ROOT / 'resource/client/ui-script/ui_4am').read_text()
     assert 'wget_gh /tmp/geosite.dat' in ui4
     auto = (ROOT / 'resource/client/ui-script/ui-autoUpdateHour').read_text()
-    assert 'gh-proxy.com/https://raw.githubusercontent.com/stuinx/dex/main/client' in auto
+    assert 'gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/main/client' in auto
 
 
 def test_runtime_does_not_fetch_original_repo():

@@ -54,16 +54,16 @@ fi
 if [[ -n ${GH_PROXY:-} ]]; then
   echo "${GH_PROXY%/}/$url"; echo "$url"; return
 fi
+echo "https://gh.stuinx.eu.org/$url"
 echo "https://gh-proxy.com/$url"
 echo "https://ghproxy.net/$url"
-echo "https://gh.stuinx.eu.org/$url"
 echo "https://ghfast.top/$url"
 echo "$url"
 }
 curl_gh(){
 local url="$1" u
 for u in $(gh_candidates "$url"); do
-  curl -fsSL --connect-timeout 4 --max-time 60 --retry 0 "$u" && return 0
+  curl -fsSL --connect-timeout 4 --speed-limit 200000 --speed-time 8 --max-time 60 --retry 0 "$u" && return 0
 done
 return 1
 }
@@ -71,8 +71,14 @@ wget_gh(){
 local dest="$1" url="$2" u tmp="${1}.part"
 rm -f "$tmp"
 for u in $(gh_candidates "$url"); do
-  if wget --no-check-certificate --show-progress -c --timeout=20 --tries=1 --connect-timeout=4 -O "$tmp" "$u" && [[ -s $tmp ]]; then
+  if curl -fL --connect-timeout 4 --speed-limit 200000 --speed-time 8 --progress-bar -o "$tmp" "$u" && [[ -s $tmp ]]; then
     mv -f "$tmp" "$dest"; return 0
+  fi
+  rm -f "$tmp"
+  if command -v wget >/dev/null 2>&1; then
+    if wget --no-check-certificate --show-progress -c --timeout=20 --tries=1 --connect-timeout=4 -O "$tmp" "$u" && [[ -s $tmp ]]; then
+      mv -f "$tmp" "$dest"; return 0
+    fi
   fi
   rm -f "$tmp"
 done
