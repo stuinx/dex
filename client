@@ -690,18 +690,28 @@ systemctl start swap.target >/dev/null 2>&1
 fi
 
 if [[ $(free -m | awk 'NR==3{print$2}') = "0" ]] && [[ $virt_type != "container" ]]; then
+avail_root_mb=$(df -m / 2>/dev/null | awk 'NR==2{print $4}')
+if [[ -n $avail_root_mb && $avail_root_mb -lt 1500 ]]; then
+  swap_sz="256M"
+  swap_mb=256
+elif [[ -n $avail_root_mb && $avail_root_mb -lt 2500 ]]; then
+  swap_sz="512M"
+  swap_mb=512
+else
+  swap_sz="1G"
+  swap_mb=1024
+fi
 if [[ $(df -T / | awk '{print$2}' | tail -n 1) = "btrfs" ]]; then
 btrfs subvolume create /swap 2>/dev/null
-btrfs filesystem mkswapfile --size 1g --uuid clear /swap/swapfile 2>/dev/null
+btrfs filesystem mkswapfile --size "$swap_sz" --uuid clear /swap/swapfile 2>/dev/null
 swapon /swap/swapfile
 sed -i "/swapfile/d" /etc/fstab
 echo "/swap/swapfile none swap defaults 0 0" >>/etc/fstab
 else
-fallocate -l 1G /swapfile 2>/dev/null
-dd if=/dev/zero of=/swapfile bs=1M count=1024 status=progress 2>/dev/null
+fallocate -l "$swap_sz" /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count="$swap_mb" status=none 2>/dev/null
 chmod 600 /swapfile
-mkswap -U clear /swapfile
-swapon /swapfile
+mkswap -U clear /swapfile >/dev/null 2>&1
+swapon /swap/swapfile 2>/dev/null || swapon /swapfile 2>/dev/null || true
 sed -i "/swapfile/d" /etc/fstab
 echo "/swapfile none swap defaults 0 0" >>/etc/fstab
 fi
