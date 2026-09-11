@@ -233,20 +233,22 @@ kernelAptInstall zabbly linux-zabbly
 if [[ -n $(dpkg --list | grep linux-image | grep zabbly) ]]; then
   cleanOldKernels "zabbly"
 
-  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Zabbly kernel${cRES}"
+  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Zabbly kernel ${GREEN}Installed${cRES}"
+  echo -e "${YELLOW}System will reboot in 5 seconds (Press Ctrl+C to cancel)...${cRES}"
+  sleep 5
   reboot
   exit
 else
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Zabbly kernel ${RED}Install Failed${cRES}"
 
   dpkg --list | awk '{print $2}' | grep zabbly | while read line; do
-  apt autoremove --purge $line
+  apt autoremove --purge -y $line
   done
 
   rm -rf /etc/apt/sources.list.d/zabbly-kernel.list
-  rm -rf /etc/apt/keyrings/zabbly.gpg
+  rm -rf /etc/apt/keyrings/zabbly.asc
   echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Clear up & Exit${cRES}"
-  exit
+  exit 1
 fi
 fi
 }
@@ -287,7 +289,41 @@ local xanCodename xanKey
 xanCodename=$(kernelCodename)
 xanKey=/tmp/xanmod.archive.key
 rm -f "$xanKey"
-curl -fsSLo "$xanKey" --connect-timeout 8 --max-time 30 https://dl.xanmod.org/archive.key || true
+curl -fsSLo "$xanKey" --connect-timeout 8 --max-time 30 https://dl.xanmod.org/archive.key 2>/dev/null || true
+if [[ ! -s $xanKey ]]; then
+  cat << 'EOF' >"$xanKey"
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+Version: GnuPG v2
+
+mQENBFhxW04BCAC61HuxBVf1XJiQjXu/DSAtVcnuK38geDoDjcqFtHskFy32NgJG
+X118EFNym6noF+oibaSftI9yjHthWvMnYZ/+DPwd7YZhbAjBvxMIQCsP6cFVxrgc
+VV8g+uh4TCfbpalDBFoncRhQCgkmDN9Vd4kIWRh6BHJuzpKB/h2KxUHZVEKgWlK2
+dR1xUtbrc+kp8gLwPbxTgC3tZ4x2uMMMlnbyCMSRa5oJ/AvoW4W1XphKL9ivsFHM
+PSQkUBDvgv2RPw+0XBxPy8SYE0r0onx0ZIpjJRTODt3bSV6/0owwlpNogV9bT8HY
+kl3+w3mTwax6S1akHZuJtLkZS0uUBz1BHt5bABEBAAG0IVhhbk1vZCBLZXJuZWwg
+PGtlcm5lbEB4YW5tb2Qub3JnPokBNwQTAQgAIQUCWHFbTgIbAwULCQgHAgYVCAkK
+CwIEFgIDAQIeAQIXgAAKCRCG99Ce5zTmIwTmB/9/S4rmwU6efDgEaBDwBDbOfLBA
+P2+kDpabjG4K+V4NSvDqlPN49KrI7C21jHghAa2VuTPbSZVQ9ziUd5DjX9OuXov8
+CYVG+rrlG1UadHS8SBpgw0gNylEvo9/U6u0hl8mrbVOlpzu+eE+e4cMTHax2y580
+fC2xmnM8wKgyRFEyVc6ilWU+UNTAeUFlg0YfU3cV1Ut4DzVFfamtNYg0p7Q/9MSy
+VgFpt5C2U5prk4wi++51OgrtaNhMrUhzYXLINWVF6IrXhQ+mkI/FWXUZ0oyVo55v
++dQzuds/gos90q+tKyE514pYAmwQSftSjf+RmHOMpPQyMZZKSywrz4vlfveDuQEN
+BFhxW04BCACs5bXq73MDb2+AsvNL2XkkbnzmE4K3k0gejB9OxrO+puAZn3wWyYIk
+b0Op8qVUh+/FIiW/uFfmdFD8BypC3YkCNfg6e74f5TT3qQciccpMGy62teo3jfhT
+T8E1OL1i76ALq7eNbByJKiKLBrTUDM6BDIeRZBWXQMase4+aqUAP47Kd/ByPsmCh
+/pzb6yPdDPKwkspELssdPXYI7enddjQsCPoBko0j8CTPgKqMTeCuKMXCtD2gtRBN
+eoVj4cbjZoZvBh8oJktzbYA8FX8eKdxIXhSP9MoVOPSWhxIQdwzkzUPK+0vUV8jA
+NBTnGOkrRJPOHGPJWFWnTUGrzvcwi7czABEBAAGJAR8EGAEIAAkFAlhxW04CGwwA
+CgkQhvfQnuc05iMIswgAmzSpCHFGKdkFLdC673FidJcL8adKFTO5Mpyholc5N8vG
+ROJbpso+DpssF14NKoBfBWqPRgHxYzHakxHiNf0R2+EEwXH3rblzpx3PXzB0OgNe
+T9T0UStrGgc9nZ8nZVURHZZ2z5zakEWS+rB2TiSxz3YArR3wiTHQW49G09uZvfp6
+5Mim2w+eUxbQ689eT0DlDI1d2eDP/j5lrv1elsg3kBE2Awzdvi8DdGUpMFrSsYJw
+WS85uZrwbeAs/nPO62wNIvAbbRsWnDg3AV3vc02eRvy52tTBY1W/67N02M4AxgPd
+ukDDFZMifwa03yTHD/a57O4dFOnzsEVojBnbzQ7W7w==
+=HKlF
+-----END PGP PUBLIC KEY BLOCK-----
+EOF
+fi
 if ! kernelInstallKeyring "$xanKey" /etc/apt/keyrings/xanmod.gpg; then
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}XanMod kernel ${RED}key install failed${cRES}"
   return 1
@@ -297,23 +333,24 @@ echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/xanmod.gpg] http://deb.xanmod.
 kernelAptInstall xanmod linux-xanmod-x64$CPU_LEVEL
 
 if [[ -n $(dpkg --list | grep linux-image | grep xanmod) ]]; then
-  # 清理旧内核
   cleanOldKernels "xanmod"
 
-  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}XanMod kernel${cRES}"
+  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}XanMod kernel ($CPU_LEVEL) ${GREEN}Installed${cRES}"
+  echo -e "${YELLOW}System will reboot in 5 seconds (Press Ctrl+C to cancel)...${cRES}"
+  sleep 5
   reboot
   exit
 else
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}XanMod kernel ${RED}Install Failed${cRES}"
 
   dpkg --list | awk '{print $2}' | grep xanmod | while read line; do
-  apt autoremove --purge $line
+  apt autoremove --purge -y $line
   done
 
   rm -rf /etc/apt/sources.list.d/xanmod-kernel.list
   rm -rf /etc/apt/keyrings/xanmod.gpg
   echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Clear up & Exit${cRES}"
-  exit
+  exit 1
 fi
 fi
 }
@@ -325,8 +362,15 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Liquorix kernel${cRES}\r\c"
 if [[ $architecture != "amd64" ]]; then
   echo -e "${RED}only work on x86_64${cRES}"
 elif [[ $architecture == "amd64" ]]; then
-curl -fsSLo /tmp/liquorix.gpg.key --connect-timeout 8 --max-time 30 https://liquorix.net/liquorix-keyring.gpg || true
-if ! kernelInstallKeyring /tmp/liquorix.gpg.key /etc/apt/keyrings/liquorix.gpg; then
+local liqKey=/tmp/liquorix.gpg.key
+rm -f "$liqKey"
+curl -fsSLo "$liqKey" --connect-timeout 8 --max-time 30 https://liquorix.net/liquorix-keyring.gpg 2>/dev/null || true
+if [[ ! -s $liqKey ]]; then
+  base64 -d << 'EOF' >"$liqKey"
+mQGiBEoInlERBADPfXKqqpwgbfFl1N/CIpAJSbAPkfcpfo4aLBfEGbM4856VWvHiG0HsyQ4e2fTe70P7oZ1+4y8czu3nE8SAeshFf15ngsULGQN4ISo45nBT9BJdvgsJ5qT0nq1IMF3GRC56tFedyxWzK4R32K4g8cbQc1CAOK5gUxegzCXe5zJJbwCg5T6YFQeUkzOic1Tluhu6LaOgINMD/2xQWyi3Q7DKeEXA3XNmQJIZETgdzAPYtdvt1vvne9aJpXSXFK0ocesGrEMZKECYZBz4XTTTHUBAtdQIjpsle1yTaK3E/jzkwvRniH3gKKJ/IrzolUP/P83xuw3JelZIJR23suNq73lpckHUxHLxKsRllLJyzGGOCSTAz1RkAvbLBAC13Z3MtO1VXyYMZNHDgne7vLXuTlxTnIPDcWaWE8nQsp9YMKbDttUilT42a4Mf8zRhxdbvUTqj+cVESZotBcwLX4201X6sPcD677Q1BYTqI8V+7Q7mdE2sDVFSi8NO1qK9F438/+GpstvCU7GUdaFeXYKoafqMfLqXRnMDIfaYXrQiU3RldmVuIEJhcnJldHQgPGRhbWVudHpAZ21haWwuY29tPohhBBMRCgAhAhsDAh4BAheABQJW7ccZBQsJCAcDBRUKCQgLBRYCAwEAAAoJED7/Tycvss2A+fMAn0vBOPtGMW6dO8OJMmWGi4St9mHLAJ9o00i0t2P0Gs3x1eq0onpIWog2A7kCDQRKCJ5REAgAwEV6IIcohMl6XpQ9v2dd+EhrJFmZYlr8nX901hAlBpmaWRPSTU9BNkHkIrUZ0Br+41W9pMpvNIrbIi+zDq+2v3rrSBwaowZ65nGlVw5cNPCp0qQ3mYN2ctVP9dFjPp16oWqNyuSLn5sfk9bcIEovXiL2cSKGErkopd8jTJuMGGfSGMngLDi1M3h347Ji6XDricw2tARIYpUO0TtFk8AO2XOIb/SNzIqGtFV5h/75rPN+2tgfA8igvXULRI23axnVyw4qs+elnDWfdYGzhmfIwAUp75EPzUjSQSm9WD9QALWirAWxZk/Sg1JJIqR/ijeAPmdY1OJv6arSF5ccnlXHpwADBQf/U+m310ojy9/PPA0xzaAF2BAtEqpZXztqN4yYeoDgJrOPQV8tY9wJU6FMSQA9mIyxUtT8Cit0nQ0m8BPQK/hYthcnSfJeCT4srRPdkz8ItkYLzMojcY0gBnPcJSSGxlhrEPw4AhtSkaZMzlFpH18yN5+d/YEZ3Ly/9GgXmu51OM4weboKpfl6/ZG+bRu10RYisZIpMArWNwMDkv3c/QdVQBNZxlEQscNjK8BwSIF2dz8W78AWvylYsqM8lBl5ByAJIHwHmafk27W41azVkYsqxxA8CDxBNK1Flb6BuiErDgvXSgO9V37j02+77AApAZhhWyGErnFSPhLMkgp0Xz0xDIhJBBgRAgAJBQJKCJ5RAhsMAAoJED7/Tycvss2AYvAAoIZQiX7mCa38MFI1jzRqwps7RyCBAKC8RoGUVFoJ5NgnGQNGU5oYtSei7JkCDQRW7cebARAAwlWvqPS6QmhJM7TusXYbZk756pB9A3XFbBvVHsVLpuDuOdwMIct+iTaQkaYRCmf5Fn3kWn1aVbkfwLuOoh7UoE4hnBemUhrJELQ+6ks8KY5lJ+hhBYll+SODXvFBTP4barLGCmB24KFcyViQh3QrMHna5xpE6WhWdNl1IRtbaItog8DYgKxEElSNBkGeeaBhggbXvkGSGKQTiTVEMWq0n1I2cg/NjSFOsZ+vdwkO8QgYuHfWrRCVlzRJiL3iaqwygy732J509kwdCxmn7LMod5xWf9ELJ0UoYmmGpQ9yXihRjxLJvooJOWc25dcqaDwsk79AfBmqqghlWQMTdbPyLdtybEzQerW3Pl+3rp4qBXNadpUuhCPyzth84C2Ws83eL4VTzTXYq1I+M6U32LOj83LCM/IzR96dDhzTgqf1UeMfDZBy5RwoHsf87BKHiVqjRduU+QGc+TX0m+MVjlWDrOTPCxF2mHz227abTpJNcQSyZBx58Hvg7jWGY8jYuIAyBVmt1Vaz5UWBcy103exP4orqbD1ZHxVHQ1g3ujnV+8cKl8yeTUI8iaSZreePLzP3GWGW+JXabYmVLnF683tgRRvfs9SqJRjiYvqgGY2NpbNcca7JW3ZKihcwFC8BrK2aGZNXWaLtKbtZ7FR9ncXjTNqOkRSHAEoCqb3hoOQ42gUAEQEAAbQkU3RldmVuIEJhcnJldHQgPHN0ZXZlbkBsaXF1b3JpeC5uZXQ+iQI3BBMBCgAhBQJW7cebAhsDBQsJCAcDBRUKCQgLBRYCAwEAAh4BAheAAAoJEJrkB4Az+AJNSJsQAKe/RkjnxABXwadEOEmLlOtabdt8e8/unqL7LikTVO+3CAahKnQcUoKY+v3uiqqv6Ml6C5k9hZvW3qI2MevpTL2CMmJ6c/YMkE3UFZ7id9U/08z14siKFW59TiAVST8MH6ntqG90+NEp/RhpcSXLNWu8Wx9Q437ce4PrY797/tpeVkZMlspDNBUxbBFbjnowYlm0bE2Z0KDVpEFFBthuRkcmeBY4V2oNYv8ATHMkHaD6H3OYfXoGigrdphYz8Yat9CyBNk7moqjqvdocoorf3A94CtpRbohyPohI6AuQXvsRxJl487SgqNymYkPMrTTiANPVBmCX+sPu5X6TaOh6AVgtgERb4/gy99h1qzeKU1MFqjqcAGsW8r7DhbevFslq6qIn6hKdShCr0KWhnkoHkQlsh7EkbfmEwIBiq4XpFpCxeeMfH3VIPDPcVm2JGYdtRYhKVN77+GOKiXVd/D99I5EEe9vwMQRsnUgdX9JGJVvymP90vgHETKOOwXAVDsK9nprL9iUzEME0cMqOwU8UFBrBLZdmafsVUkIjRYh3WhRByj+SdqPTKH2uNtkVe9r634gEP1TvUhTetXytD6cjOlPm3sp5mSi8nizGbYHDHGJN+++ExhatFR8CC2FXMgeysXByXJ+NxcEzFh2pnUBMRDpQHDXlEkslM4/AzwXto7TkiEYEEBEKAAYFAlbtyNgACgkQPv9PJy+yzYDncACgmOpH1Jx8VXGUtKTkUcYfS8D0GwcAmwfacWUsAJpwiIBQU2P+s5aH89XfuQINBFbtx5sBEACxhQtF+5ruiN2eLrCc1DI5Yb83UbS10YaU68SpEQ8KyJP3hifXmy+oxASqCvrxoj5zg5Z0s059sJxzwUcBJN1WH9PGMP1xVk46Zgv1Tw97C3JMHZ3T/osouTsqvE0FSQQVZvee1tZ85PmKP2RQKXTsQ6FqCGYLnya2IHdzTY6J4hmKRkA+yn/UQ9+CCJ+HWm5eI+cfkzA8Z+xRdXqhvKe/RRx1nlYUY80t4tidN4P/GxDnI1eUADxNz12bUfYg7V2Kaxla5UDTrmk5Bw/59swh8+548+3Bdc6Uf6UwRh/9B3oP5mu5RRqc7kB6k082M7O1t3/MJNf29oy8QUaPAZEqu8QtBGvsvgHPhOpHeGS7Mkc03nx8qFYhr7XANyWyA/GryFebdTcobfMRHsft36Cpdjm35d76pDvI5CtVqyEDy/5jxh5gd2RnQ1oZjYyzySvW2aktpbN7PZiQ2KdXE7iquFmX+DlH+EbWwTZWO7+EV9mU7iRZfJuLhHP7Yqf8c+7nSeEVRkuI/WSYvOB0pz07AehrFA7bG/dAxdGobig1KyHFvaMx2xDUs+MsaOZtP2JW8O01gwCkCmo5pVGZMsPhAIELdNPZma9Xs0fU3fqbwIDNGRgzDkttpRVZY9sikySNQRK/Q+rjAB+d8/q5Ejq7SK63RMXHa1KgCUkl4IX09wARAQABiQIfBBgBCgAJBQJW7cebAhsMAAoJEJrkB4Az+AJNct8QAJ7RgHZbcEVerLISyOC99MX+iARMC1izsYbBa+zBt97Zrf5bfrttRfwsK9A45x810UUZcX6iWuCg4c+00qyb4KbXB+QVnBY6BMKY6hrrjb4Di7KmNeLB1Na7I8TLEhmMwLEBGAiAjiL/wpvjXnvELom6t9BLApsrpcMMmmNCl3CKLyMdrSa22euTviIqxS43PFsUkbci1xEymcC4lYNX45R7fRz20C9acop5MReHenLkFMs8P9kIehByyNWG8Ok1YU9RmA4b2RPWL5edUd1f5oUq7RsSyvgGGl4c90q0ieXCNq9gleHMuyyuGBcgwIHfloz7eugWyQFHO+tL150JKk3nz2VgrA6VFmq58d+k8pxncheMYhY0Do51e8tT0BQ/6GNQgN0e0sIguXNtAwXZ2rElfHrbj8jUzX5BfZvqoqkQv9Q+3Xj1Sdg7VYMyTSwneOpf57cq5lwhuGBXwql6PfYCShHblD8fluJ7deX9UqqhoBuy1j2s9MFSXqgloieMEBJYy8pYudGAx+ubRLyrZWSkINSXVUQDCegyCCrViKs3GVF65V2vbrZLYo18CXMMYKRe4PPhN/KLq2Y3CvdD2pg6mU80c3RdGzdTFWfky7OiX3TM0Sv2vCajl9PD8HH8CB+2uWsiMJsteesyuIVVZA8QUdSBFFLXjIsMvLF3bYbP
+EOF
+fi
+if ! kernelInstallKeyring "$liqKey" /etc/apt/keyrings/liquorix.gpg; then
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Liquorix kernel ${RED}key install failed${cRES}"
   return 1
 fi
@@ -337,40 +381,63 @@ kernelAptInstall liquorix linux-image-liquorix-amd64 linux-headers-liquorix-amd6
 if [[ -n $(dpkg --list | grep linux-image | grep liquorix) ]]; then
   cleanOldKernels "liquorix"
 
-  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Liquorix kernel${cRES}"
+  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Liquorix kernel ${GREEN}Installed${cRES}"
+  echo -e "${YELLOW}System will reboot in 5 seconds (Press Ctrl+C to cancel)...${cRES}"
+  sleep 5
   reboot
   exit
 else
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Liquorix kernel ${RED}Install Failed${cRES}"
 
   dpkg --list | awk '{print $2}' | grep liquorix | while read line; do
-  apt autoremove --purge $line
+  apt autoremove --purge -y $line
   done
 
   rm -rf /etc/apt/sources.list.d/liquorix-kernel.list
   rm -rf /etc/apt/keyrings/liquorix.gpg
   echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Clear up & Exit${cRES}"
-  exit
+  exit 1
 fi
 fi
 }
 
 
 
+get_cpu_arch_level
+while true; do
+echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+echo -e "${GREEN}Current Kernel:     ${YELLOW}$(uname -r)${cRES}"
+echo -e "${GREEN}Debian Codename:    ${YELLOW}$(kernelCodename)${cRES}"
+echo -e "${GREEN}CPU Arch / Level:   ${YELLOW}${architecture} (${CPU_LEVEL})${cRES}"
+echo -e "${BLUE}-------------------------------------------------- ${cRES}"
 echo -e "${GREEN}======================================== ${cRES}"
 echo -e "${GREEN}[1]: Install Zabbly kernel and reboot ${cRES}"
-echo -e "${GREEN}[2]: Install XanMod kernel and reboot ${cRES}"
+echo -e "${GREEN}[2]: Install XanMod kernel ($CPU_LEVEL) and reboot ${cRES}"
 echo -e "${GREEN}[3]: Install Liquorix kernel and reboot ${cRES}"
+echo -e "${GREEN}[0]: Back / Cancel ${cRES}"
 echo -e "${GREEN}======================================== ${cRES}"
 read -s -n 1 kernelSwitch
+echo
 
 case $kernelSwitch in
+  0|"")
+      echo -e "${YELLOW}Cancelled${cRES}"
+      exit 0
+    ;;
   "1")
       installZabbly
+      break
     ;;
   "2")
       installXanMod
+      break
     ;;
   "3")
       installLiquorix
+      break
+    ;;
+  *)
+      echo -e "${RED}Wrong number${cRES}"
+    ;;
 esac
+done

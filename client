@@ -178,7 +178,7 @@ tmp="${dest}.part"
 rm -f "$tmp"
 for u in $(gh_candidates "$url"); do
   echo -e "  ${CYAN}$u${cRES}"
-  if wget --no-check-certificate --show-progress --timeout=30 --tries=2 --connect-timeout=10 -O "$tmp" "$u" && [[ -s $tmp ]]; then
+  if wget --no-check-certificate --show-progress --timeout=20 --tries=1 --connect-timeout=5 -O "$tmp" "$u" && [[ -s $tmp ]]; then
     mv -f "$tmp" "$dest"
     return 0
   fi
