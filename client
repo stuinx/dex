@@ -548,15 +548,16 @@ echo
 ethernetnum=$(find /sys/class/net ! -type d | xargs --max-args=1 realpath | grep 'device' | xargs -n 1 | grep -v 'virtual' | grep -v 'ifb' | awk -F'/' '{print$NF}' | head -n1)
 gatewayAddr=$(jq -r '.address.upstreamIP' /opt/de_GWD/0conf | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}')
 localAddrCIDR=$(jq -r '.address.localIP' /opt/de_GWD/0conf | grep -v '^null$')
-localAddr=$(echo $localAddrCIDR | cut -d / -f1)
-netmask=$(echo $localAddrCIDR | sed -r 's/([0-9]{1,3}\.){3}[0-9]{1,3}//g')
+localAddr=$(echo "$localAddrCIDR" | cut -d / -f1 | grep -Po '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
+netmask=$(echo "$localAddrCIDR" | sed -r 's/([0-9]{1,3}\.){3}[0-9]{1,3}//g')
+[[ -z $netmask || ! $netmask =~ ^/[0-9]+$ ]] && netmask="/24"
 
-if [[ -n $netmask ]]; then
-localCIDR="$(echo $localAddr | cut -d . -f1-3).0$netmask"
+if [[ -n $localAddr && $(echo "$localAddr" | awk -F. '{print NF}') -eq 4 ]]; then
+  localCIDR="$(echo "$localAddr" | cut -d . -f1-3).0$netmask"
+  localAddrCIDR="$localAddr$netmask"
 else
-netmask="/24" 
-localAddrCIDR="$localAddr$netmask"
-localCIDR="$(echo $localAddr | cut -d . -f1-3).0$netmask"
+  localCIDR=""
+  localAddrCIDR=""
 fi
 
 DoG=$(jq -r '.dns.dog' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
@@ -1787,13 +1788,18 @@ table inet bypassflow {
 }
 EOF
 
+localCIDR_entry=""
+if [[ -n $localCIDR && $localCIDR =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$ && ! $localCIDR =~ ^\. ]]; then
+  localCIDR_entry="        $localCIDR,"
+fi
+
 cat << EOF >/opt/de_GWD/nftables/nftables
 #!/usr/sbin/nft -f
 
 include "/opt/de_GWD/nftables/*.nft"
 
 define RESERVED_IP = {
-        $localCIDR,
+$localCIDR_entry
         10.0.0.0/8,
         100.64.0.0/10,
         127.0.0.0/8,
@@ -1894,8 +1900,8 @@ RemainAfterExit=yes
 StandardInput=null
 ProtectSystem=full
 ProtectHome=true
-ExecStart=/bin/bash -c '/etc/rc_online.local 2>/dev/null || true' ; /bin/bash -c '/opt/de_GWD/nftables/flowtable_eth.sh 2>/dev/null || true' ; /usr/sbin/nft -f /opt/de_GWD/nftables/nftables ; $(which ip) route add local default dev lo scope host table 220 ; $(which ip) rule add fwmark 0x9 table 220 prio 100
-ExecStop=/usr/sbin/nft delete table ip de_GWD 2>/dev/null ; /usr/sbin/nft delete table inet bypassflow 2>/dev/null ; $(which ip) rule del table 220 2>/dev/null ; $(which ip) route del local default dev lo table 220 2>/dev/null || true
+ExecStart=/bin/bash -c '/etc/rc_online.local 2>/dev/null || true' ; /bin/bash -c '/opt/de_GWD/nftables/flowtable_eth.sh 2>/dev/null || true' ; /usr/sbin/nft -f /opt/de_GWD/nftables/nftables ; /bin/bash -c '$(which ip) route add local default dev lo scope host table 220 2>/dev/null || true' ; /bin/bash -c '$(which ip) rule add fwmark 0x9 table 220 prio 100 2>/dev/null || true'
+ExecStop=/usr/sbin/nft delete table ip de_GWD 2>/dev/null ; /usr/sbin/nft delete table inet bypassflow 2>/dev/null ; /bin/bash -c '$(which ip) rule del table 220 2>/dev/null || true' ; /bin/bash -c '$(which ip) route del local default dev lo table 220 2>/dev/null || true'
 
 [Install]
 WantedBy=sysinit.target
@@ -2716,15 +2722,22 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Password ${GRE
 
 
 installGWD(){
+    defaultLocalIP=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7}' | head -n1)
+    [[ -z $defaultLocalIP ]] && defaultLocalIP=$(hostname -I 2>/dev/null | awk '{print $1}')
+    [[ -z $defaultLocalIP ]] && defaultLocalIP="192.168.1.2"
     echo -e "${GREEN}=========================== ${cRES}"
-    echo -e "${GREEN} de_GWD local IP address${cRES}"
+    echo -e "${GREEN} de_GWD local IP address (default: ${YELLOW}${defaultLocalIP}${GREEN})${cRES}"
     echo -e "${GREEN}=========================== ${cRES}"
     read localAddr
+    [[ -z $localAddr ]] && localAddr="$defaultLocalIP"
 
+    defaultGW=$(ip -4 route show default 2>/dev/null | awk '{print $3}' | head -n1)
+    [[ -z $defaultGW ]] && defaultGW="192.168.1.1"
     echo -e "${GREEN}=========================== ${cRES}"
-    echo -e "${GREEN} Upstream route IP address${cRES}"
+    echo -e "${GREEN} Upstream route IP address (default: ${YELLOW}${defaultGW}${GREEN})${cRES}"
     echo -e "${GREEN}=========================== ${cRES}"
     read gatewayAddr
+    [[ -z $gatewayAddr ]] && gatewayAddr="$defaultGW"
 
     echo -e "${GREEN}=========================== ${cRES}"
     echo -e "${GREEN} DoH / DoG${cRES}"
@@ -2747,10 +2760,18 @@ installGWD(){
     read path
 
 ethernetnum=$(find /sys/class/net ! -type d | xargs --max-args=1 realpath | grep 'device' | xargs -n 1 | grep -v 'virtual' | grep -v 'ifb' | awk -F'/' '{print$NF}' | head -n1)
+[[ -z $ethernetnum ]] && ethernetnum=$(ip -4 route show default 2>/dev/null | awk '{print $5}' | head -n1)
+[[ -z $ethernetnum ]] && ethernetnum=$(ip link show | awk -F': ' '/^[0-9]+: (eth[0-9]+|en[a-z0-9]+|ens[0-9]+)/ {print $2}' | head -n1)
 netmask=$(ip route | grep "$ethernetnum" | awk 'NR==2{print$1}' | sed -r 's/([0-9]{1,3}\.){3}[0-9]{1,3}//g')
-localAddr=$(echo $localAddr | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}')
-localAddrCIDR=$(echo "$localAddr$netmask")
-localCIDR="$(echo $localAddr | cut -d . -f1-3).0$netmask"
+[[ -z $netmask || ! $netmask =~ ^/[0-9]+$ ]] && netmask="/24"
+localAddr=$(echo "$localAddr" | grep -Po '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
+if [[ -n $localAddr && $(echo "$localAddr" | awk -F. '{print NF}') -eq 4 ]]; then
+  localAddrCIDR="${localAddr}${netmask}"
+  localCIDR="$(echo "$localAddr" | cut -d . -f1-3).0${netmask}"
+else
+  localAddrCIDR=""
+  localCIDR=""
+fi
 
 if [[ $DoGorDOH =~ "/" ]]; then
 doh1=$DoGorDOH
