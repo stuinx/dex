@@ -2816,16 +2816,7 @@ sed -i "s/ bullseye / bookworm /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
 apt update --fix-missing && apt upgrade --allow-downgrades -y
 apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
 
-preInstall
-
-preConf
-
-preDL
-
-installSmartDNS
-
-installXray
-
+mkdir -p /opt/de_GWD
 echo "{}" >/opt/de_GWD/0conf
 jq '.address={}' /opt/de_GWD/0conf |\
 jq '.dns={}' |\
@@ -2849,6 +2840,16 @@ jq --arg path "$path" '.update.v2node.path=$path' | sponge /opt/de_GWD/0conf
 [[ -n $doh1 ]] && jq --arg doh1 "$doh1" '.dns.doh+=[$doh1]' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 chown root:www-data /opt/de_GWD/0conf
 chmod 0660 /opt/de_GWD/0conf
+
+preInstall
+
+preConf
+
+preDL
+
+installSmartDNS
+
+installXray
 
 updateAPT
 
