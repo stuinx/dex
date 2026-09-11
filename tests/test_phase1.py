@@ -162,6 +162,8 @@ def test_installkernel_bootstraps_keys_and_codename():
     assert 'command -v gpg' in source
     assert 'command -v crontab' in source
     assert 'kernelCodename' in source
+    assert 'installBackports' in source
+    assert 'ensureBackportsRepo' in source
     client = (ROOT / 'client').read_text()
     assert 'resource/kernel/installkernel' in client
     assert 'xanmod\\.org|liquorix\\.net' in client

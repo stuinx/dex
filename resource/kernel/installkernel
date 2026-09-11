@@ -116,20 +116,22 @@ elif [[ $kernel_type == "xanmod" ]]; then
   rm -f /etc/apt/sources.list.d/*zabbly* /etc/apt/keyrings/zabbly* /etc/apt/sources.list.d/*liquorix* /etc/apt/keyrings/liquorix*
 elif [[ $kernel_type == "liquorix" ]]; then
   rm -f /etc/apt/sources.list.d/*zabbly* /etc/apt/keyrings/zabbly* /etc/apt/sources.list.d/*xanmod* /etc/apt/keyrings/xanmod*
+elif [[ $kernel_type == "bpo" || $kernel_type == "backports" ]]; then
+  rm -f /etc/apt/sources.list.d/*zabbly* /etc/apt/keyrings/zabbly* /etc/apt/sources.list.d/*xanmod* /etc/apt/keyrings/xanmod* /etc/apt/sources.list.d/*liquorix* /etc/apt/keyrings/liquorix*
 fi
   
-  dpkg --list | awk '{print $2}' | grep 'linux-image' | sed "/$kernel_type/d" | while read line; do
+  dpkg --list | awk '{print $2}' | grep '^linux-image' | grep -vE "^linux-image-amd64\$|$kernel_type" | while read line; do
     apt autoremove --purge -y $line
   done
 
-  dpkg --list | awk '{print $2}' | grep 'linux-headers' | sed "/$kernel_type/d" | while read line; do
+  dpkg --list | awk '{print $2}' | grep '^linux-headers' | grep -vE "^linux-headers-amd64\$|$kernel_type" | while read line; do
     apt autoremove --purge -y $line
   done
   
   apt autoremove --purge -y && apt clean -y && apt autoclean -y
   
-  update-initramfs -u -k all
-  update-grub
+  update-initramfs -u -k all 2>/dev/null || true
+  update-grub 2>/dev/null || true
 }
 
 
@@ -403,6 +405,51 @@ fi
 
 
 
+ensureBackportsRepo(){
+local codename mirror
+codename=$(kernelCodename)
+if ! grep -rEq "[[:space:]]${codename}-backports([[:space:]]|$)" /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null; then
+  mirror=$(awk '/^deb / && /debian/ && !/security/ && !/backports/ {print $2; exit}' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null)
+  [[ -z $mirror ]] && mirror="https://deb.debian.org/debian"
+  if [[ $codename = "bookworm" || $codename = "trixie" ]]; then
+    echo "deb $mirror ${codename}-backports main contrib non-free non-free-firmware" >/etc/apt/sources.list.d/debian-backports.list
+  else
+    echo "deb $mirror ${codename}-backports main contrib non-free" >/etc/apt/sources.list.d/debian-backports.list
+  fi
+fi
+}
+
+installBackports(){
+echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Debian Backports kernel${cRES}\r\c"
+if [[ $architecture != "amd64" ]]; then
+  echo -e "${RED}only work on x86_64${cRES}"
+elif [[ $architecture == "amd64" ]]; then
+local codename
+codename=$(kernelCodename)
+ensureBackportsRepo
+kernelDropForeignRepos "backports"
+apt-get update || true
+apt-get install -y -t "${codename}-backports" linux-image-amd64 linux-headers-amd64 || \
+  apt-get install -y -t "${codename}-backports" linux-image-amd64
+
+if dpkg --list | awk '$2 ~ /^linux-image/ {print $0}' | grep -Eq 'bpo|backports'; then
+  cleanOldKernels "bpo"
+
+  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Debian Backports kernel ${GREEN}Installed${cRES}"
+  echo -e "${YELLOW}System will reboot in 5 seconds (Press Ctrl+C to cancel)...${cRES}"
+  sleep 5
+  reboot
+  exit
+else
+  echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Debian Backports kernel ${RED}Install Failed${cRES}"
+  echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Clear up & Exit${cRES}"
+  exit 1
+fi
+fi
+}
+
+
+
 get_cpu_arch_level
 while true; do
 echo -e "${BLUE}-------------------------------------------------- ${cRES}"
@@ -414,6 +461,7 @@ echo -e "${GREEN}======================================== ${cRES}"
 echo -e "${GREEN}[1]: Install Zabbly kernel and reboot ${cRES}"
 echo -e "${GREEN}[2]: Install XanMod kernel ($CPU_LEVEL) and reboot ${cRES}"
 echo -e "${GREEN}[3]: Install Liquorix kernel and reboot ${cRES}"
+echo -e "${GREEN}[4]: Install Debian Backports kernel and reboot ${cRES}"
 echo -e "${GREEN}[0]: Back / Cancel ${cRES}"
 echo -e "${GREEN}======================================== ${cRES}"
 read -s -n 1 kernelSwitch
@@ -434,6 +482,10 @@ case $kernelSwitch in
     ;;
   "3")
       installLiquorix
+      break
+    ;;
+  "4")
+      installBackports
       break
     ;;
   *)
