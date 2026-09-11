@@ -332,7 +332,13 @@ if ! kernelInstallKeyring "$xanKey" /etc/apt/keyrings/xanmod.gpg; then
 fi
 echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/xanmod.gpg] http://deb.xanmod.org $xanCodename main" >/etc/apt/sources.list.d/xanmod-kernel.list
 
-kernelAptInstall xanmod linux-xanmod-x64$CPU_LEVEL
+kernelDropForeignRepos xanmod
+apt-get update || true
+local xanPkg="linux-xanmod-x64$CPU_LEVEL"
+if ! apt-cache show "$xanPkg" >/dev/null 2>&1; then
+  xanPkg="linux-xanmod-lts-x64$CPU_LEVEL"
+fi
+kernelAptInstall xanmod "$xanPkg"
 
 if [[ -n $(dpkg --list | grep linux-image | grep xanmod) ]]; then
   cleanOldKernels "xanmod"
