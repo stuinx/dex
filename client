@@ -2410,7 +2410,14 @@ fi
 
 
 installkernel(){
-bash <(wget --show-progress -cqO- https://raw.githubusercontent.com/jacyl4/de_GWD/main/resource/kernel/installkernel)
+wget --show-progress -cqO /tmp/installkernel https://raw.githubusercontent.com/jacyl4/de_GWD/main/resource/kernel/installkernel
+wget --show-progress -cqO /tmp/installkernel.sha256sum https://raw.githubusercontent.com/jacyl4/de_GWD/main/resource/kernel/installkernel.sha256sum
+if [[ -s /tmp/installkernel ]] && [[ "$(checkSum /tmp/installkernel "$(cat /tmp/installkernel.sha256sum 2>/dev/null)")" == "true" ]]; then
+  bash /tmp/installkernel
+else
+  echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}installkernel checksum mismatch, aborted${cRES}"
+fi
+rm -f /tmp/installkernel /tmp/installkernel.sha256sum
 }
 
 
