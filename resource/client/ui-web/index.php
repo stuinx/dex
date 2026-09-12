@@ -226,117 +226,10 @@
   </div>
 </div>
 
-<div id="nodeSMrules" class="modal fade" tabindex="-1" role="dialog" aria-hidden="true">
+<div id="nodeSMrules" class="modal fade">
   <div class="modal-dialog modal-sm">
     <div class="modal-content">
       <div class="modal-body">
-
-<div class="input-group input-group-sm mb-3">
-  <div class="input-group-prepend">
-    <span class="input-group-text border-danger bg-danger text-white">YouTube</span>
-  </div>
-  <div class="input-group-append">
-      <button id="nodeSMshowYoutube" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
-      <div id="nodeSMyoutube" class="dropdown-menu">
-<a class='dropdown-item' href='#' id='nodeSMyoutube0' onclick="buttonNodeSMyoutube(this)"> 默认代理 </a>
-<?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
-  $name = $de_GWDconf->v2node[$i]->name;
-  $num = $i+1;
-print <<<EOT
-<a class='dropdown-item' href='#' id='nodeSMyoutube$num' onclick="buttonNodeSMyoutube(this)">$name</a>
-EOT;
-}
-?>
-      </div>
-  </div>
-</div>
-
-<div class="input-group input-group-sm mb-3">
-  <div class="input-group-prepend">
-    <span class="input-group-text border-danger bg-white text-danger">NETFLIX</span>
-  </div>
-  <div class="input-group-append">
-      <button id="nodeSMshowNetflix" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
-      <div id="nodeSMnetflix" class="dropdown-menu">
-<a class='dropdown-item' href='#' id='nodeSMnetflix0' onclick="buttonNodeSMnetflix(this)"> 默认代理 </a>
-<?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
-  $name = $de_GWDconf->v2node[$i]->name;
-  $num = $i+1;
-print <<<EOT
-<a class='dropdown-item' href='#' id='nodeSMnetflix$num' onclick="buttonNodeSMnetflix(this)">$name</a>
-EOT;
-}
-?>
-      </div>
-  </div>
-</div>
-
-<div class="input-group input-group-sm mb-3">
-  <div class="input-group-prepend">
-    <span class="input-group-text border-dark bg-dark text-white">HBO</span>
-    <span class="input-group-text text-white" style="border-color: #6c3483;background-color: #6c3483;">Disney+</span>
-    <span class="input-group-text text-white" style="border-color: #2ecc71;background-color: #2ecc71;">Hulu</span>
-  </div>
-  <div class="input-group-append">
-      <button id="nodeSMshowHDH" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
-      <div id="nodeSMhdh" class="dropdown-menu">
-<a class='dropdown-item' href='#' id='nodeSMhdh0' onclick="buttonNodeSMhdh(this)"> 默认代理 </a>
-<?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
-  $name = $de_GWDconf->v2node[$i]->name;
-  $num = $i+1;
-print <<<EOT
-<a class='dropdown-item' href='#' id='nodeSMhdh$num' onclick="buttonNodeSMhdh(this)">$name</a>
-EOT;
-}
-?>
-      </div>
-  </div>
-</div>
-
-<div class="input-group input-group-sm mb-3">
-  <div class="input-group-prepend">
-    <span class="input-group-text border-primary bg-primary text-white">TVB</span>
-  </div>
-  <div class="input-group-append">
-      <button id="nodeSMshowTVB" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
-      <div id="nodeSMtvb" class="dropdown-menu">
-<a class='dropdown-item' href='#' id='nodeSMtvb0' onclick="buttonNodeSMtvb(this)"> 默认代理 </a>
-<?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
-  $name = $de_GWDconf->v2node[$i]->name;
-  $num = $i+1;
-print <<<EOT
-<a class='dropdown-item' href='#' id='nodeSMtvb$num' onclick="buttonNodeSMtvb(this)">$name</a>
-EOT;
-}
-?>
-      </div>
-  </div>
-</div>
-
-<div class="input-group input-group-sm mb-3">
-  <div class="input-group-prepend">
-    <span class="input-group-text text-white" style="border-color: #3AC1DF;background-color: #3AC1DF;">巴哈姆特動畫瘋</span>
-  </div>
-  <div class="input-group-append">
-      <button id="nodeSMshowBahamut" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
-      <div id="nodeSMbahamut" class="dropdown-menu">
-<a class='dropdown-item' href='#' id='nodeSMbahamut0' onclick="buttonNodeSMbahamut(this)"> 默认代理 </a>
-<?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
-  $name = $de_GWDconf->v2node[$i]->name;
-  $num = $i+1;
-print <<<EOT
-<a class='dropdown-item' href='#' id='nodeSMbahamut$num' onclick="buttonNodeSMbahamut(this)">$name</a>
-EOT;
-}
-?>
-      </div>
-  </div>
-</div>
 
 <div class="input-group input-group-sm mb-3">
   <div class="input-group-prepend">
@@ -345,13 +238,13 @@ EOT;
   <div class="input-group-append">
       <button id="nodeSMshowOpenai" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
       <div id="nodeSMopenai" class="dropdown-menu">
-<a class='dropdown-item' href='#' id='nodeSMopenai0' onclick="buttonNodeSMopenai(this)"> 默认代理 </a>
+<a class='dropdown-item' href='#' id='nodeSMopenai0' onclick="buttonNodeSM(this)"> 默认代理 </a>
 <?php
 for( $i=0; $i<count($de_GWDconf->v2node); $i++){
   $name = $de_GWDconf->v2node[$i]->name;
   $num = $i+1;
 print <<<EOT
-<a class='dropdown-item' href='#' id='nodeSMopenai$num' onclick="buttonNodeSMopenai(this)">$name</a>
+<a class='dropdown-item' href='#' id='nodeSMopenai$num' onclick="buttonNodeSM(this)">$name</a>
 EOT;
 }
 ?>
@@ -361,18 +254,165 @@ EOT;
 
 <div class="input-group input-group-sm mb-3">
   <div class="input-group-prepend">
-    <span class="input-group-text border-secondary bg-secondary text-white">APPLE</span>
+    <span class="input-group-text text-white" style="border-color: #D97757;background-color: #D97757;">Claude</span>
   </div>
   <div class="input-group-append">
-      <button id="nodeSMshowApple" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
-      <div id="nodeSMapple" class="dropdown-menu">
-<a class='dropdown-item' href='#' id='nodeSMapple0' onclick="buttonNodeSMapple(this)"> 直连 </a>
+      <button id="nodeSMshowClaude" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
+      <div id="nodeSMclaude" class="dropdown-menu">
+<a class='dropdown-item' href='#' id='nodeSMclaude0' onclick="buttonNodeSM(this)"> 默认代理 </a>
 <?php
 for( $i=0; $i<count($de_GWDconf->v2node); $i++){
   $name = $de_GWDconf->v2node[$i]->name;
   $num = $i+1;
 print <<<EOT
-<a class='dropdown-item' href='#' id='nodeSMapple$num' onclick="buttonNodeSMapple(this)">$name</a>
+<a class='dropdown-item' href='#' id='nodeSMclaude$num' onclick="buttonNodeSM(this)">$name</a>
+EOT;
+}
+?>
+      </div>
+  </div>
+</div>
+
+<div class="input-group input-group-sm mb-3">
+  <div class="input-group-prepend">
+    <span class="input-group-text text-white" style="border-color: #4285F4;background-color: #4285F4;">Gemini</span>
+  </div>
+  <div class="input-group-append">
+      <button id="nodeSMshowGemini" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
+      <div id="nodeSMgemini" class="dropdown-menu">
+<a class='dropdown-item' href='#' id='nodeSMgemini0' onclick="buttonNodeSM(this)"> 默认代理 </a>
+<?php
+for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+  $name = $de_GWDconf->v2node[$i]->name;
+  $num = $i+1;
+print <<<EOT
+<a class='dropdown-item' href='#' id='nodeSMgemini$num' onclick="buttonNodeSM(this)">$name</a>
+EOT;
+}
+?>
+      </div>
+  </div>
+</div>
+
+<div class="input-group input-group-sm mb-3">
+  <div class="input-group-prepend">
+    <span class="input-group-text text-white" style="border-color: #16181D;background-color: #16181D;">Grok</span>
+  </div>
+  <div class="input-group-append">
+      <button id="nodeSMshowGrok" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
+      <div id="nodeSMgrok" class="dropdown-menu">
+<a class='dropdown-item' href='#' id='nodeSMgrok0' onclick="buttonNodeSM(this)"> 默认代理 </a>
+<?php
+for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+  $name = $de_GWDconf->v2node[$i]->name;
+  $num = $i+1;
+print <<<EOT
+<a class='dropdown-item' href='#' id='nodeSMgrok$num' onclick="buttonNodeSM(this)">$name</a>
+EOT;
+}
+?>
+      </div>
+  </div>
+</div>
+
+<div class="input-group input-group-sm mb-3">
+  <div class="input-group-prepend">
+    <span class="input-group-text text-white" style="border-color: #54595D;background-color: #54595D;">Wikipedia</span>
+  </div>
+  <div class="input-group-append">
+      <button id="nodeSMshowWikipedia" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
+      <div id="nodeSMwikipedia" class="dropdown-menu">
+<a class='dropdown-item' href='#' id='nodeSMwikipedia0' onclick="buttonNodeSM(this)"> 默认代理 </a>
+<?php
+for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+  $name = $de_GWDconf->v2node[$i]->name;
+  $num = $i+1;
+print <<<EOT
+<a class='dropdown-item' href='#' id='nodeSMwikipedia$num' onclick="buttonNodeSM(this)">$name</a>
+EOT;
+}
+?>
+      </div>
+  </div>
+</div>
+
+<div class="input-group input-group-sm mb-3">
+  <div class="input-group-prepend">
+    <span class="input-group-text text-white" style="border-color: #FF4500;background-color: #FF4500;">Reddit</span>
+  </div>
+  <div class="input-group-append">
+      <button id="nodeSMshowReddit" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
+      <div id="nodeSMreddit" class="dropdown-menu">
+<a class='dropdown-item' href='#' id='nodeSMreddit0' onclick="buttonNodeSM(this)"> 默认代理 </a>
+<?php
+for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+  $name = $de_GWDconf->v2node[$i]->name;
+  $num = $i+1;
+print <<<EOT
+<a class='dropdown-item' href='#' id='nodeSMreddit$num' onclick="buttonNodeSM(this)">$name</a>
+EOT;
+}
+?>
+      </div>
+  </div>
+</div>
+
+<div class="input-group input-group-sm mb-3">
+  <div class="input-group-prepend">
+    <span class="input-group-text text-white" style="border-color: #181717;background-color: #181717;">Github</span>
+  </div>
+  <div class="input-group-append">
+      <button id="nodeSMshowGithub" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
+      <div id="nodeSMgithub" class="dropdown-menu">
+<a class='dropdown-item' href='#' id='nodeSMgithub0' onclick="buttonNodeSM(this)"> 默认代理 </a>
+<?php
+for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+  $name = $de_GWDconf->v2node[$i]->name;
+  $num = $i+1;
+print <<<EOT
+<a class='dropdown-item' href='#' id='nodeSMgithub$num' onclick="buttonNodeSM(this)">$name</a>
+EOT;
+}
+?>
+      </div>
+  </div>
+</div>
+
+<div class="input-group input-group-sm mb-3">
+  <div class="input-group-prepend">
+    <span class="input-group-text text-white" style="border-color: #5865F2;background-color: #5865F2;">Discord</span>
+  </div>
+  <div class="input-group-append">
+      <button id="nodeSMshowDiscord" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
+      <div id="nodeSMdiscord" class="dropdown-menu">
+<a class='dropdown-item' href='#' id='nodeSMdiscord0' onclick="buttonNodeSM(this)"> 默认代理 </a>
+<?php
+for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+  $name = $de_GWDconf->v2node[$i]->name;
+  $num = $i+1;
+print <<<EOT
+<a class='dropdown-item' href='#' id='nodeSMdiscord$num' onclick="buttonNodeSM(this)">$name</a>
+EOT;
+}
+?>
+      </div>
+  </div>
+</div>
+
+<div class="input-group input-group-sm mb-3">
+  <div class="input-group-prepend">
+    <span class="input-group-text text-white" style="border-color: #229ED9;background-color: #229ED9;">Telegram</span>
+  </div>
+  <div class="input-group-append">
+      <button id="nodeSMshowTelegram" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
+      <div id="nodeSMtelegram" class="dropdown-menu">
+<a class='dropdown-item' href='#' id='nodeSMtelegram0' onclick="buttonNodeSM(this)"> 默认代理 </a>
+<?php
+for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+  $name = $de_GWDconf->v2node[$i]->name;
+  $num = $i+1;
+print <<<EOT
+<a class='dropdown-item' href='#' id='nodeSMtelegram$num' onclick="buttonNodeSM(this)">$name</a>
 EOT;
 }
 ?>
@@ -382,13 +422,21 @@ EOT;
 
 <div class="input-group input-group-sm">
   <div class="input-group-prepend">
-    <span class="input-group-text text-white" style="border-color: #184053;background-color: #184053;">Steam等国区游戏</span>
+    <span class="input-group-text text-white" style="border-color: #1DA1F2;background-color: #1DA1F2;">X / Twitter</span>
   </div>
   <div class="input-group-append">
-      <button id="nodeSMshowSteam" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
-      <div id="nodeSMsteam" class="dropdown-menu">
-<a class='dropdown-item' href='#' id='nodeSMsteam0' onclick="buttonNodeSMsteam(this)"> 直连 </a>
-<a class='dropdown-item' href='#' id='nodeSMsteam1' onclick="buttonNodeSMsteam(this)"> 默认代理 </a>
+      <button id="nodeSMshowTwitter" class="btn btn-outline-secondary dropdown-toggle border-left-0" type="button" data-toggle="dropdown"></button>
+      <div id="nodeSMtwitter" class="dropdown-menu">
+<a class='dropdown-item' href='#' id='nodeSMtwitter0' onclick="buttonNodeSM(this)"> 默认代理 </a>
+<?php
+for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+  $name = $de_GWDconf->v2node[$i]->name;
+  $num = $i+1;
+print <<<EOT
+<a class='dropdown-item' href='#' id='nodeSMtwitter$num' onclick="buttonNodeSM(this)">$name</a>
+EOT;
+}
+?>
       </div>
   </div>
 </div>
@@ -952,68 +1000,14 @@ $('#switch'+SWITCHindex).attr('class', 'btn btn-success btn-sm');
 $.get("./act/NodeChange.php", {nodenum:SWITCHindex}, function(){})
 }
 
-function buttonNodeSMyoutube(buttonNodeSMyoutube){
-var NodeSMyoutubeOBJ = $(buttonNodeSMyoutube).parent().find('a')
-var NodeSMyoutubeIndex = NodeSMyoutubeOBJ.index($(buttonNodeSMyoutube))
-var NodeSMyoutubeName = $('#nodeSMyoutube'+NodeSMyoutubeIndex).html()
-$('#nodeSMshowYoutube').html(NodeSMyoutubeName)
-$('#nodeSMshowYoutube').val(NodeSMyoutubeIndex)
-}
-
-function buttonNodeSMnetflix(buttonNodeSMnetflix){
-var NodeSMnetflixOBJ = $(buttonNodeSMnetflix).parent().find('a')
-var NodeSMnetflixIndex = NodeSMnetflixOBJ.index($(buttonNodeSMnetflix))
-var NodeSMnetflixName = $('#nodeSMnetflix'+NodeSMnetflixIndex).html()
-$('#nodeSMshowNetflix').html(NodeSMnetflixName)
-$('#nodeSMshowNetflix').val(NodeSMnetflixIndex)
-}
-
-function buttonNodeSMhdh(buttonNodeSMhdh){
-var NodeSMhdhOBJ = $(buttonNodeSMhdh).parent().find('a')
-var NodeSMhdhIndex = NodeSMhdhOBJ.index($(buttonNodeSMhdh))
-var NodeSMhdhName = $('#nodeSMhdh'+NodeSMhdhIndex).html()
-$('#nodeSMshowHDH').html(NodeSMhdhName)
-$('#nodeSMshowHDH').val(NodeSMhdhIndex)
-}
-
-function buttonNodeSMtvb(buttonNodeSMtvb){
-var NodeSMtvbOBJ = $(buttonNodeSMtvb).parent().find('a')
-var NodeSMtvbIndex = NodeSMtvbOBJ.index($(buttonNodeSMtvb))
-var NodeSMtvbName = $('#nodeSMtvb'+NodeSMtvbIndex).html()
-$('#nodeSMshowTVB').html(NodeSMtvbName)
-$('#nodeSMshowTVB').val(NodeSMtvbIndex)
-}
-
-function buttonNodeSMbahamut(buttonNodeSMbahamut){
-var NodeSMbahamutOBJ = $(buttonNodeSMbahamut).parent().find('a')
-var NodeSMbahamutIndex = NodeSMbahamutOBJ.index($(buttonNodeSMbahamut))
-var NodeSMbahamutName = $('#nodeSMbahamut'+NodeSMbahamutIndex).html()
-$('#nodeSMshowBahamut').html(NodeSMbahamutName)
-$('#nodeSMshowBahamut').val(NodeSMbahamutIndex)
-}
-
-function buttonNodeSMopenai(buttonNodeSMopenai){
-var NodeSMopenaiOBJ = $(buttonNodeSMopenai).parent().find('a')
-var NodeSMopenaiIndex = NodeSMopenaiOBJ.index($(buttonNodeSMopenai))
-var NodeSMopenaiName = $('#nodeSMopenai'+NodeSMopenaiIndex).html()
-$('#nodeSMshowOpenai').html(NodeSMopenaiName)
-$('#nodeSMshowOpenai').val(NodeSMopenaiIndex)
-}
-
-function buttonNodeSMapple(buttonNodeSMapple){
-var NodeSMappleOBJ = $(buttonNodeSMapple).parent().find('a')
-var NodeSMappleIndex = NodeSMappleOBJ.index($(buttonNodeSMapple))
-var NodeSMappleName = $('#nodeSMapple'+NodeSMappleIndex).html()
-$('#nodeSMshowApple').html(NodeSMappleName)
-$('#nodeSMshowApple').val(NodeSMappleIndex)
-}
-
-function buttonNodeSMsteam(buttonNodeSMsteam){
-var NodeSMsteamOBJ = $(buttonNodeSMsteam).parent().find('a')
-var NodeSMsteamIndex = NodeSMsteamOBJ.index($(buttonNodeSMsteam))
-var NodeSMsteamName = $('#nodeSMsteam'+NodeSMsteamIndex).html()
-$('#nodeSMshowSteam').html(NodeSMsteamName)
-$('#nodeSMshowSteam').val(NodeSMsteamIndex)
+function buttonNodeSM(buttonNodeSM){
+var NodeSMsite = $(buttonNodeSM).parent().attr('id').replace('nodeSM','')
+var NodeSMcap = NodeSMsite.charAt(0).toUpperCase() + NodeSMsite.slice(1)
+var NodeSMobj = $(buttonNodeSM).parent().find('a')
+var NodeSMindex = NodeSMobj.index($(buttonNodeSM))
+var NodeSMname = $('#nodeSM'+NodeSMsite+NodeSMindex).html()
+$('#nodeSMshow'+NodeSMcap).html(NodeSMname)
+$('#nodeSMshow'+NodeSMcap).val(NodeSMindex)
 }
 
 function buttonNodeDT(buttonNodeDT){
@@ -1074,35 +1068,23 @@ $.get("./act/pingTCPDoG.php", function(data) { $('#pingDoG').text(data) })
 })
 
 $('#submitNodeSMrulesClear').click(function(){
-$('#nodeSMshowYoutube').html(' 默认代理 ')
-$('#nodeSMshowYoutube').val('0')
-$('#nodeSMshowNetflix').html(' 默认代理 ')
-$('#nodeSMshowNetflix').val('0')
-$('#nodeSMshowHDH').html(' 默认代理 ')
-$('#nodeSMshowHDH').val('0')
-$('#nodeSMshowTVB').html(' 默认代理 ')
-$('#nodeSMshowTVB').val('0')
-$('#nodeSMshowBahamut').html(' 默认代理 ')
-$('#nodeSMshowBahamut').val('0')
-$('#nodeSMshowOpenai').html(' 默认代理 ')
-$('#nodeSMshowOpenai').val('0')
-$('#nodeSMshowApple').html(' 直连 ')
-$('#nodeSMshowApple').val('0')
-$('#nodeSMshowSteam').html(' 直连 ')
-$('#nodeSMshowSteam').val('0')
+var sites = ['openai','claude','gemini','grok','wikipedia','reddit','github','discord','telegram','twitter']
+for (var i = 0; i < sites.length; i++) {
+  var cap = sites[i].charAt(0).toUpperCase() + sites[i].slice(1)
+  $('#nodeSMshow'+cap).html(' 默认代理 ')
+  $('#nodeSMshow'+cap).val('0')
+}
 })
 
 $('#submitNodeSMrules').click(function(){
 $("#submitNodeSMrulesLoading").attr("class", "spinner-border spinner-border-sm ml-2")
-nodeSMshowYoutube=$('#nodeSMshowYoutube').val()
-nodeSMshowNetflix=$('#nodeSMshowNetflix').val()
-nodeSMshowHDH=$('#nodeSMshowHDH').val()
-nodeSMshowTVB=$('#nodeSMshowTVB').val()
-nodeSMshowBahamut=$('#nodeSMshowBahamut').val()
-nodeSMshowOpenai=$('#nodeSMshowOpenai').val()
-nodeSMshowApple=$('#nodeSMshowApple').val()
-nodeSMshowSteam=$('#nodeSMshowSteam').val()
-$.get('./act/NodeSMrules.php', {nodeSMshowYoutube:nodeSMshowYoutube, nodeSMshowNetflix:nodeSMshowNetflix, nodeSMshowHDH:nodeSMshowHDH, nodeSMshowTVB:nodeSMshowTVB, nodeSMshowBahamut:nodeSMshowBahamut, nodeSMshowOpenai:nodeSMshowOpenai, nodeSMshowApple:nodeSMshowApple, nodeSMshowSteam:nodeSMshowSteam}, function(result){
+var sites = ['openai','claude','gemini','grok','wikipedia','reddit','github','discord','telegram','twitter']
+var data = {}
+for (var i = 0; i < sites.length; i++) {
+  var cap = sites[i].charAt(0).toUpperCase() + sites[i].slice(1)
+  data['nodeSMshow'+cap] = $('#nodeSMshow'+cap).val()
+}
+$.get('./act/NodeSMrules.php', data, function(result){
   $("#submitNodeSMrulesLoading").removeClass()
   $("#nodeSMrules").modal('hide')
   window.location.reload()
@@ -1257,66 +1239,18 @@ if(data != "") {
 
 $.get('./act/NodeSMcheck.php', function(data){
 let SMarray = data.split("\n")
-let youtubeNum = SMarray[0]
-let youtubeName = SMarray[1]
-if (youtubeName == "-none-") {
-    youtubeName = " 默认代理 "
+var sites = ['openai','claude','gemini','grok','wikipedia','reddit','github','discord','telegram','twitter']
+for (var i = 0; i < sites.length; i++) {
+  var cap = sites[i].charAt(0).toUpperCase() + sites[i].slice(1)
+  var siteNum = SMarray[i*2]
+  var siteName = SMarray[i*2+1]
+  if (siteName == "-none-") {
+    siteName = " 默认代理 "
+  }
+  $('#nodeSMshow'+cap).val(siteNum)
+  $('#nodeSMshow'+cap).html(siteName)
 }
-let netflixNum = SMarray[2]
-let netflixName = SMarray[3]
-if (netflixName == "-none-") {
-    netflixName = " 默认代理 "
-}
-let hdhNum = SMarray[4]
-let hdhName = SMarray[5]
-if (hdhName == "-none-") {
-    hdhName = " 默认代理 "
-}
-let tvbNum = SMarray[6]
-let tvbName = SMarray[7]
-if (tvbName == "-none-") {
-    tvbName = " 默认代理 "
-}
-let bahamutNum = SMarray[8]
-let bahamutName = SMarray[9]
-if (bahamutName == "-none-") {
-    bahamutName = " 默认代理 "
-}
-let openaiNum = SMarray[10]
-let openaiName = SMarray[11]
-if (openaiName == "-none-") {
-    openaiName = " 默认代理 "
-}
-let appleNum = SMarray[12]
-let appleName = SMarray[13]
-if (appleName == "-none-") {
-    appleName = " 直连 "
-}
-let steamNum = SMarray[14]
-let steamName = SMarray[15]
-if (steamName == "-none-") {
-    steamName = " 直连 "
-}
-
-$('#nodeSMshowYoutube').val(youtubeNum)
-$('#nodeSMshowYoutube').html(youtubeName)
-$('#nodeSMshowNetflix').val(netflixNum)
-$('#nodeSMshowNetflix').html(netflixName)
-$('#nodeSMshowHDH').val(hdhNum)
-$('#nodeSMshowHDH').html(hdhName)
-$('#nodeSMshowTVB').val(tvbNum)
-$('#nodeSMshowTVB').html(tvbName)
-$('#nodeSMshowBahamut').val(bahamutNum)
-$('#nodeSMshowBahamut').html(bahamutName)
-$('#nodeSMshowOpenai').val(openaiNum)
-$('#nodeSMshowOpenai').html(openaiName)
-$('#nodeSMshowApple').val(appleNum)
-$('#nodeSMshowApple').html(appleName)
-$('#nodeSMshowSteam').val(steamNum)
-$('#nodeSMshowSteam').html(steamName)
-})
-})
-</script>
+})</script>
 
   <!-- Custom scripts for all pages-->
   <script src="js/sb-admin.min.js"></script>
