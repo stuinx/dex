@@ -26,36 +26,15 @@ Dpkg::Options {
 };
 EOF
 
-wait_for_dpkg_lock(){
-  local waited=0
-  if ! command -v fuser >/dev/null 2>&1; then
-    echo -e "${RED}Error: fuser is required to inspect apt/dpkg locks; refusing to continue.${cRES}" >&2
-    return 1
-  fi
-  while fuser /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1; do
-    if [[ $waited -ge 120 ]]; then
-      echo -e "${RED}Error: apt/dpkg lock held for > 120s, aborting to prevent database corruption.${cRES}" >&2
-      return 1
-    fi
-    sleep 2
-    waited=$((waited + 2))
-  done
-  return 0
-}
-
-wait_for_dpkg_lock || exit 1
 
 
 apt-key del 2FB2CD80 >/dev/null 2>&1
 apt-key del 33F8024D >/dev/null 2>&1
 apt-key del E734E623 >/dev/null 2>&1
-# Safely clean leftover third-party kernel entries line-by-line without deleting official source lists.
+# Drop leftover third-party kernel lists so apt update is not blocked by NO_PUBKEY.
 for src in /etc/apt/sources.list /etc/apt/sources.list.d/*; do
   [[ -f $src ]] || continue
-  if grep -Eq 'xanmod\.org|liquorix\.net|pkgs\.zabbly\.com' "$src" 2>/dev/null; then
-    sed -i -E '/xanmod\.org|liquorix\.net|pkgs\.zabbly\.com/d' "$src" 2>/dev/null || true
-    [[ $src != "/etc/apt/sources.list" && ! -s $src ]] && rm -f -- "$src"
-  fi
+  grep -Eq 'xanmod\.org|liquorix\.net|pkgs\.zabbly\.com' "$src" 2>/dev/null && rm -f -- "$src"
 done
 rm -f /etc/apt/keyrings/xanmod* \
       /etc/apt/keyrings/liquorix* \
@@ -64,13 +43,10 @@ rm -f /etc/apt/keyrings/xanmod* \
       /etc/apt/trusted.gpg.d/liquorix* \
       /etc/apt/trusted.gpg.d/xanmod*
 
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober') ]] && {
-  wait_for_dpkg_lock || exit 1
-  apt remove --purge os-prober || exit 1
-}
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober') ]] && apt remove --purge os-prober
 
 mkdir -p /boot/grub /etc/apt/keyrings
-wait_for_dpkg_lock || exit 1
+rm -f /var/cache/apt/archives/lock /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend
 dpkg --configure -a
 
 unset aptPKG
@@ -83,10 +59,8 @@ dpkg -l ca-certificates 2>/dev/null | grep -q '^ii' || aptPKG+=(ca-certificates)
 [[ -z $(which 'update-grub') ]] && [[ -d "/sys/firmware/efi" ]] && aptPKG+=(grub-efi)
 [[ -z $(which 'update-grub') ]] && [[ ! -d "/sys/firmware/efi" ]] && aptPKG+=(grub2-common)
 if [[ -n $aptPKG ]]; then
-  wait_for_dpkg_lock || exit 1
-  apt-get update || apt-get update -o Dir::Etc::sourceparts=/dev/null || exit 1
-  wait_for_dpkg_lock || exit 1
-  apt-get install -y "${aptPKG[@]}" || exit 1
+  apt-get update || apt-get update -o Dir::Etc::sourceparts=/dev/null
+  apt-get install -y "${aptPKG[@]}"
 fi
 systemctl enable --now cron >/dev/null 2>&1 || true
 
@@ -103,19 +77,10 @@ echo "net.ipv4.tcp_congestion_control = bbr" >>/etc/sysctl.conf
 echo "net.core.default_qdisc = cake" >>/etc/sysctl.conf
 sysctl -p >/dev/null 2>&1
 
-if ! command -v fuser >/dev/null 2>&1; then
-  echo "fuser is required to inspect apt/dpkg locks" >&2
-  exit 1
-fi
-waited=0
-while fuser /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1; do
-  if [[ $waited -ge 120 ]]; then
-    echo "apt/dpkg lock held for > 120s" >&2
-    exit 1
-  fi
-  sleep 2
-  waited=$((waited + 2))
-done
+rm -f /var/cache/apt/archives/lock
+rm -f /var/lib/apt/lists/lock
+rm -f /var/lib/dpkg/lock
+rm -f /var/lib/dpkg/lock-frontend
 dpkg --configure -a
 
 dpkg --list | grep linux-image | awk '{print $2}' | grep -Fv $(uname -r) | while read line; do
@@ -186,26 +151,12 @@ kernelCodename(){
 printf '%s\n' "${VERSION_CODENAME:-bookworm}"
 }
 
-# Remove any apt source entry that mentions these hosts line-by-line without deleting files.
+# Remove any apt source that mentions these hosts, not just one filename.
 kernelDropRepoHost(){
 local host=$1 f
 for f in /etc/apt/sources.list /etc/apt/sources.list.d/*; do
   [[ -f $f ]] || continue
-  if grep -Fq "$host" "$f" 2>/dev/null; then
-    local tmp
-    tmp=$(mktemp "${f}.XXXXXX") || return 1
-    if ! awk -v needle="$host" 'index($0, needle) == 0' "$f" >"$tmp"; then
-      rm -f -- "$tmp"
-      return 1
-    fi
-    chmod --reference="$f" "$tmp" 2>/dev/null || true
-    chown --reference="$f" "$tmp" 2>/dev/null || true
-    if ! mv -f -- "$tmp" "$f"; then
-      rm -f -- "$tmp"
-      return 1
-    fi
-    [[ $f != "/etc/apt/sources.list" && ! -s $f ]] && rm -f -- "$f"
-  fi
+  grep -Fq "$host" "$f" 2>/dev/null && rm -f -- "$f"
 done
 }
 
@@ -220,10 +171,8 @@ local keep=${1-}
 kernelAptInstall(){
 local keep=$1
 shift
-kernelDropForeignRepos "$keep" || return 1
-wait_for_dpkg_lock || return 1
-apt-get update || return 1
-wait_for_dpkg_lock || return 1
+kernelDropForeignRepos "$keep"
+apt-get update || true
 apt-get install -y "$@"
 }
 
@@ -461,18 +410,7 @@ ensureBackportsRepo(){
 local codename mirror
 codename=$(kernelCodename)
 if ! grep -rEq "[[:space:]]${codename}-backports([[:space:]]|$)" /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null; then
-  # Support deb [option=val] http://... format by stripping brackets before extracting URL
-  mirror=$(awk '
-    /^deb / && /debian/ && !/security/ && !/backports/ {
-      line = $0
-      sub(/^deb +(\[[^]]+\] +)?/, "", line)
-      split(line, parts, " ")
-      if (parts[1] ~ /^https?:\/\//) {
-        print parts[1]
-        exit
-      }
-    }
-  ' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null)
+  mirror=$(awk '/^deb / && /debian/ && !/security/ && !/backports/ {print $2; exit}' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null)
   [[ -z $mirror ]] && mirror="https://deb.debian.org/debian"
   if [[ $codename = "bookworm" || $codename = "trixie" ]]; then
     echo "deb $mirror ${codename}-backports main contrib non-free non-free-firmware" >/etc/apt/sources.list.d/debian-backports.list
