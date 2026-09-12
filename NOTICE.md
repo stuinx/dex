@@ -5,7 +5,7 @@ dex is an independently maintained Modified Work of 寒月 / de_GWD.
 - Original program: https://github.com/jacyl4/de_GWD (archived)
 - Original author: JacyL4
 - Upstream revision this tree started from: a689d11 (v1.26.5)
-- This tree version: dev
+- This tree version: dev1.26.8
 - License: Eclipse Public License 2.0 (see LICENSE.md)
 
 This repository is not an official continuation of de_GWD. Runtime install,

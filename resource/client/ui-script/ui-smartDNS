@@ -57,29 +57,29 @@ if [[ $(jq -r '.FORWARD.DoGs.status' /opt/de_GWD/0conf 2>/dev/null) = "on" ]];th
 fi
 
 if [[ -n $doh1 ]]; then
-doh1Domain=$(echo $doh1 | cut -d/ -f1 | cut -d: -f1)
-doh1IP=$(dig @127.0.0.1 $doh1Domain -4p 5331 +short  | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
-doh1Port=$(echo $doh1 | cut -d/ -f1 | cut -d: -f2 | grep '^[[:digit:]]*$')
-doh1Path=$(echo $doh1 | cut -d/ -f2)
+doh1Input=${doh1#https://}
+doh1Domain=$(echo "$doh1Input" | cut -d/ -f1 | cut -d: -f1)
+doh1IP=$(dig @127.0.0.1 "$doh1Domain" -4p 5331 +short 2>/dev/null | awk -F. 'NF == 4 && $1 <= 255 && $2 <= 255 && $3 <= 255 && $4 <= 255 && $0 != "127.0.0.1" {print; exit}')
+doh1Port=$(echo "$doh1Input" | cut -d/ -f1 | cut -d: -f2 | grep '^[[:digit:]]*$')
+doh1Path=$(echo "$doh1Input" | cut -d/ -f2-)
 
 if [[ -z $doh1Port ]]; then
-    doh1Str="$doh1IP/$doh1Path"
-else
-    doh1Str="$doh1IP:$doh1Port/$doh1Path"
+    doh1Port=443
 fi
+doh1Str="$doh1IP:$doh1Port/$doh1Path"
 fi
 
 if [[ -n $doh2 ]]; then
-doh2Domain=$(echo $doh2 | cut -d/ -f1 | cut -d: -f1)
-doh2IP=$(dig @127.0.0.1 $doh2Domain -4p 5331 +short  | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
-doh2Port=$(echo $doh2 | cut -d/ -f1 | cut -d: -f2 | grep '^[[:digit:]]*$')
-doh2Path=$(echo $doh2 | cut -d/ -f2)
+doh2Input=${doh2#https://}
+doh2Domain=$(echo "$doh2Input" | cut -d/ -f1 | cut -d: -f1)
+doh2IP=$(dig @127.0.0.1 "$doh2Domain" -4p 5331 +short 2>/dev/null | awk -F. 'NF == 4 && $1 <= 255 && $2 <= 255 && $3 <= 255 && $4 <= 255 && $0 != "127.0.0.1" {print; exit}')
+doh2Port=$(echo "$doh2Input" | cut -d/ -f1 | cut -d: -f2 | grep '^[[:digit:]]*$')
+doh2Path=$(echo "$doh2Input" | cut -d/ -f2-)
 
 if [[ -z $doh2Port ]]; then
-    doh2Str="$doh2IP/$doh2Path"
-else
-    doh2Str="$doh2IP:$doh2Port/$doh2Path"
+    doh2Port=443
 fi
+doh2Str="$doh2IP:$doh2Port/$doh2Path"
 fi
 
 cat << EOF >/opt/de_GWD/smartdns/smartdns.conf
