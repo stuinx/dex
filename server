@@ -1743,34 +1743,20 @@ fi
 }
 
 
+tcppf_config_is_managed(){
+if [[ ! -f /etc/haproxy/haproxy.cfg ]]; then
+return 0
+fi
+[[ $(head -n1 /etc/haproxy/haproxy.cfg) = "# [de_GWD] Managed" ]]
+}
 
-changeTCPPF(){
-    echo -e "${GREEN}============================ ${cRES}"
-    echo -e "${GREEN}[1]: Set TCP Port Forward${cRES}"
-    echo -e "${GREEN}[2]: Delete TCP Port Forward${cRES}"
-    echo -e "${GREEN}============================ ${cRES}"
-    read -s -n 1 tcpPFsw
-    echo -e "${WHITE}[...${WHITE}]\c" && echo -e "\t${WHITE}Modifying TCP Port Forward settings${cRES}\r\c"
-
-if [[ $tcpPFsw = "1" ]]; then
-    echo -e "${GREEN}======================= ${cRES}"
-    echo -e "${GREEN}Upstream Domain & Port${cRES}"
-    echo -e "${GREEN}======================= ${cRES}"
-    read upDomainP
-
-    echo -e "${GREEN}======================= ${cRES}"
-    echo -e "${GREEN}Local Port${cRES}"
-    echo -e "${GREEN}======================= ${cRES}"
-    read localP
-
-upDomain=$(echo $upDomainP | cut -d: -f1)
-upPort=$(echo $upDomainP | cut -d: -f2| grep '^[[:digit:]]*$')
-
+tcppf_apply(){
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^haproxy$') ]] && aptPKG+=(haproxy)
 [[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
 
 cat << EOF >/etc/haproxy/haproxy.cfg
+# [de_GWD] Managed
 global
   ulimit-n              500000
   maxconn               200000
@@ -1789,16 +1775,27 @@ resolvers local
   timeout retry         3s
   hold valid            10s
   accepted_payload_size 8192
-
-frontend $upDomain
-  bind                  :$localP
-  default_backend       $upDomain
-
-backend $upDomain
-  server endpoint $upDomainP check resolvers local init-addr none
 EOF
 
+len=0
+[[ -f /opt/de_GWD/tcppf.json ]] && len=$(jq -r 'length' /opt/de_GWD/tcppf.json 2>/dev/null | grep -v '^null$')
+for (( i=0; i<$len; i++ )); do
+tag=$(jq -r --argjson i $i '.[$i].tag' /opt/de_GWD/tcppf.json | grep -v '^null$')
+localPort=$(jq -r --argjson i $i '.[$i].localPort' /opt/de_GWD/tcppf.json | grep -v '^null$')
+upDomain=$(jq -r --argjson i $i '.[$i].upDomain' /opt/de_GWD/tcppf.json | grep -v '^null$')
+upPort=$(jq -r --argjson i $i '.[$i].upPort' /opt/de_GWD/tcppf.json | grep -v '^null$')
+cat << EOF >>/etc/haproxy/haproxy.cfg
 
+frontend $tag
+  bind                  :$localPort
+  default_backend       $tag
+
+backend $tag
+  server endpoint $upDomain:$upPort check resolvers local init-addr none
+EOF
+done
+
+if /usr/sbin/haproxy -f /etc/haproxy/haproxy.cfg -c -q >/dev/null 2>&1; then
 rm -rf /lib/systemd/system/haproxy.service
 cat << "EOF" >/etc/systemd/system/haproxy.service
 [Unit]
@@ -1825,27 +1822,296 @@ EOF
 systemctl daemon-reload >/dev/null
 systemctl enable haproxy >/dev/null 2>&1
 systemctl restart haproxy
-
-domain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf | sed 's/.$//')
-
-echo -e "${BLUE}------------------------------------------------ ${cRES}"
-echo -e "${GREEN}TCP Port Forward${cRES}"
-echo
-echo -e "${BLUE}Address:       ${YELLOW}$domain:$localP${cRES}"
-echo -e "${BLUE}tls:           ${YELLOW}$upDomain${cRES}"
-echo -e "${BLUE}------------------------------------------------ ${cRES}"
-echo
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}TCP Port Forward ${GREEN}Deployed${cRES}"
-elif [[ $tcpPFsw = "2" ]]; then
-systemctl stop haproxy
-systemctl disable haproxy
+else
+echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Invalid HAProxy config, not applied${cRES}"
+fi
+}
 
+tcppf_add(){
+if ! tcppf_config_is_managed; then
+echo -e "${RED}Refuse: /etc/haproxy/haproxy.cfg is not managed by de_GWD${cRES}"
+return
+fi
+
+echo -e "${GREEN}======================= ${cRES}"
+echo -e "${GREEN}Upstream Domain & Port${cRES}"
+echo -e "${GREEN}======================= ${cRES}"
+read upDomainP
+
+echo -e "${GREEN}======================= ${cRES}"
+echo -e "${GREEN}Local Port${cRES}"
+echo -e "${GREEN}======================= ${cRES}"
+read localP
+
+upDomain=$(echo $upDomainP | cut -d: -f1)
+upPort=$(echo $upDomainP | cut -d: -f2 | grep '^[[:digit:]]*$')
+[[ -z $upPort ]] && upPort="443"
+
+if [[ -z $localP ]] || [[ -z $(echo $localP | grep '^[[:digit:]]*$') ]]; then
+echo -e "${RED}Invalid local port: $localP${cRES}"
+return
+fi
+
+if ss -ltn 2>/dev/null | grep -q ":$localP "; then
+echo -e "${RED}Local port $localP already in use${cRES}"
+return
+fi
+
+if [[ -f /opt/de_GWD/tcppf.json ]]; then
+if jq -e --arg localP $localP '[.[] | select(.localPort == ($localP|tonumber))] | length > 0' /opt/de_GWD/tcppf.json >/dev/null 2>&1; then
+echo -e "${RED}Local port $localP already forwarded${cRES}"
+return
+fi
+tag=$upDomain
+if jq -e --arg tag $tag '[.[] | select(.tag == $tag)] | length > 0' /opt/de_GWD/tcppf.json >/dev/null 2>&1; then
+tag="$upDomain-$localP"
+fi
+jq --arg tag $tag --arg localP $localP --arg upDomain $upDomain --arg upPort $upPort '. + [{"tag":$tag,"localPort":($localP|tonumber),"upDomain":$upDomain,"upPort":($upPort|tonumber)}]' /opt/de_GWD/tcppf.json | sponge /opt/de_GWD/tcppf.json
+else
+tag=$upDomain
+jq -n --arg tag $tag --arg localP $localP --arg upDomain $upDomain --arg upPort $upPort '[{"tag":$tag,"localPort":($localP|tonumber),"upDomain":$upDomain,"upPort":($upPort|tonumber)}]' | sponge /opt/de_GWD/tcppf.json
+fi
+chmod 600 /opt/de_GWD/tcppf.json
+
+tcppf_apply
+}
+
+tcppf_del(){
+if ! tcppf_config_is_managed; then
+echo -e "${RED}Refuse: /etc/haproxy/haproxy.cfg is not managed by de_GWD${cRES}"
+return
+fi
+if [[ ! -f /opt/de_GWD/tcppf.json ]] || [[ $(jq -r 'length' /opt/de_GWD/tcppf.json) = "0" ]]; then
+echo -e "${RED}No TCP Port Forward rules${cRES}"
+return
+fi
+
+jq -r 'to_entries[] | "\(.key))  Local :\(.value.localPort|tostring) \t=> \(.value.upDomain):\(.value.upPort|tostring)"' /opt/de_GWD/tcppf.json
+
+echo -e "${GREEN}======================= ${cRES}"
+echo -e "${GREEN}Delete rule (number)${cRES}"
+echo -e "${GREEN}======================= ${cRES}"
+read pfdelnum
+
+if [[ -z $(echo $pfdelnum | grep '^[[:digit:]]*$') ]]; then
+echo -e "${RED}Invalid number${cRES}"
+return
+fi
+if [[ $pfdelnum -ge $(jq -r 'length' /opt/de_GWD/tcppf.json) ]]; then
+echo -e "${RED}No such rule${cRES}"
+return
+fi
+
+jq "del(.[$pfdelnum])" /opt/de_GWD/tcppf.json | sponge /opt/de_GWD/tcppf.json
+
+if [[ $(jq -r 'length' /opt/de_GWD/tcppf.json) = "0" ]]; then
+rm -rf /opt/de_GWD/tcppf.json
+systemctl stop haproxy >/dev/null 2>&1
+systemctl disable haproxy >/dev/null 2>&1
 rm -rf /etc/haproxy/haproxy.cfg >/dev/null 2>&1
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}TCP Port Forward ${GREEN}Deleted${cRES}"
+else
+tcppf_apply
+fi
+}
 
+tcppf_delall(){
+if ! tcppf_config_is_managed; then
+echo -e "${RED}Refuse: /etc/haproxy/haproxy.cfg is not managed by de_GWD${cRES}"
+return
+fi
+echo -e "${GREEN}======================= ${cRES}"
+echo -e "${GREEN}Delete all rules? (y/n)${cRES}"
+echo -e "${GREEN}======================= ${cRES}"
+read -s -n 1 tcpPFall
+if [[ $tcpPFall = "y" ]]; then
+rm -rf /opt/de_GWD/tcppf.json
+systemctl stop haproxy >/dev/null 2>&1
+systemctl disable haproxy >/dev/null 2>&1
+rm -rf /etc/haproxy/haproxy.cfg >/dev/null 2>&1
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}TCP Port Forward ${GREEN}Deleted${cRES}"
 fi
 }
 
+tcppf_status(){
+echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+echo -e "${GREEN}HAProxy: $(systemctl is-active 'haproxy' 2>/dev/null)${cRES}"
+if [[ -f /opt/de_GWD/tcppf.json ]]; then
+jq -r '.[] | "Local :\(.localPort|tostring)  =>  \(.upDomain):\(.upPort|tostring)   [\(.tag)]"' /opt/de_GWD/tcppf.json
+fi
+echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+}
+
+changeTCPPF(){
+echo -e "${GREEN}============================ ${cRES}"
+echo -e "${GREEN}[1]: Add TCP Port Forward${cRES}"
+echo -e "${GREEN}[2]: Delete TCP Port Forward${cRES}"
+echo -e "${GREEN}[3]: Delete all TCP Port Forward${cRES}"
+echo -e "${GREEN}[4]: Status${cRES}"
+echo -e "${GREEN}============================ ${cRES}"
+read -s -n 1 tcpPFsw
+
+case "$tcpPFsw" in
+1)
+tcppf_add
+;;
+2)
+tcppf_del
+;;
+3)
+tcppf_delall
+;;
+4)
+tcppf_status
+;;
+esac
+}
+
+rproxySgenuuid(){
+uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null
+}
+
+rproxySmenu(){
+echo -e "${GREEN}============================ ${cRES}"
+echo -e "${GREEN}[1]:  Tunnel port${cRES}"
+echo -e "${GREEN}[2]:  Tunnel UUID (auto-gen)${cRES}"
+echo -e "${GREEN}[3]:  Add inUUID (auto-gen)${cRES}"
+echo -e "${GREEN}[4]:  Delete inUUID${cRES}"
+echo -e "${GREEN}[5]:  Add mapping${cRES}"
+echo -e "${GREEN}[6]:  Delete mapping${cRES}"
+echo -e "${GREEN}[7]:  Toggle inStatus (on/off)${cRES}"
+echo -e "${GREEN}[8]:  Toggle mappingStatus (on/off)${cRES}"
+echo -e "${GREEN}[9]:  Status${cRES}"
+echo -e "${GREEN}[0]:  Apply (deploy RproxyS)${cRES}"
+echo -e "${GREEN}============================ ${cRES}"
+read -s -n 1 rproxySw
+
+case "$rproxySw" in
+1)
+echo -e "${GREEN}======================= ${cRES}"
+echo -e "${GREEN}Tunnel port${cRES}"
+echo -e "${GREEN}======================= ${cRES}"
+read rproxyPort
+if [[ -z $(echo $rproxyPort | grep '^[[:digit:]]*$') ]]; then
+echo -e "${RED}Invalid port: $rproxyPort${cRES}"
+return
+fi
+jq --arg rproxyPort $rproxyPort '.FORWARD.Rproxy.server.tunnel.port=($rproxyPort|tonumber)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+;;
+2)
+rproxyG=$(rproxySgenuuid)
+if [[ -z $rproxyG ]]; then
+echo -e "${RED}UUID generation failed${cRES}"
+return
+fi
+jq --arg rproxyG $rproxyG '.FORWARD.Rproxy.server.tunnel.uuid=$rproxyG' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Tunnel UUID ${GREEN}$rproxyG${cRES}"
+;;
+3)
+rproxyG=$(rproxySgenuuid)
+if [[ -z $rproxyG ]]; then
+echo -e "${RED}UUID generation failed${cRES}"
+return
+fi
+jq --arg rproxyG $rproxyG '.FORWARD.Rproxy.server.inUUID += [{"RproxyS0uuid":$rproxyG}]' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}inUUID ${GREEN}$rproxyG${cRES}"
+;;
+4)
+if [[ $(jq -r '.FORWARD.Rproxy.server.inUUID | length' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$') = "0" ]] || [[ -z $(jq -r '.FORWARD.Rproxy.server.inUUID' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$') ]]; then
+echo -e "${RED}No inUUID${cRES}"
+return
+fi
+jq -r '.FORWARD.Rproxy.server.inUUID | to_entries[] | "\(.key))  \(.value.RproxyS0uuid)"' /opt/de_GWD/0conf
+echo -e "${GREEN}======================= ${cRES}"
+echo -e "${GREEN}Delete inUUID (number)${cRES}"
+echo -e "${GREEN}======================= ${cRES}"
+read rproxyUuidnum
+if [[ -z $(echo $rproxyUuidnum | grep '^[[:digit:]]*$') ]]; then
+echo -e "${RED}Invalid number${cRES}"
+return
+fi
+if [[ $rproxyUuidnum -ge $(jq -r '.FORWARD.Rproxy.server.inUUID | length' /opt/de_GWD/0conf) ]]; then
+echo -e "${RED}No such inUUID${cRES}"
+return
+fi
+jq "del(.FORWARD.Rproxy.server.inUUID[$rproxyUuidnum])" /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+;;
+5)
+echo -e "${GREEN}======================= ${cRES}"
+echo -e "${GREEN}Mapping port${cRES}"
+echo -e "${GREEN}======================= ${cRES}"
+read rproxyMport
+if [[ -z $(echo $rproxyMport | grep '^[[:digit:]]*$') ]]; then
+echo -e "${RED}Invalid port: $rproxyMport${cRES}"
+return
+fi
+echo -e "${GREEN}======================= ${cRES}"
+echo -e "${GREEN}[1]: tcp${cRES}"
+echo -e "${GREEN}[2]: udp${cRES}"
+echo -e "${GREEN}[3]: tcp,udp${cRES}"
+echo -e "${GREEN}======================= ${cRES}"
+read -s -n 1 rproxyMproto
+case "$rproxyMproto" in
+1) rproxyMprotoN="tcp" ;;
+2) rproxyMprotoN="udp" ;;
+3) rproxyMprotoN="tcp,udp" ;;
+*) echo -e "${RED}Wrong number${cRES}"; return ;;
+esac
+jq --arg rproxyMport $rproxyMport --arg rproxyMprotoN "$rproxyMprotoN" '.FORWARD.Rproxy.server.mapping += [{"port":($rproxyMport|tonumber),"protocol":$rproxyMprotoN}]' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+;;
+6)
+if [[ $(jq -r '.FORWARD.Rproxy.server.mapping | length' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$') = "0" ]] || [[ -z $(jq -r '.FORWARD.Rproxy.server.mapping' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$') ]]; then
+echo -e "${RED}No mapping${cRES}"
+return
+fi
+jq -r '.FORWARD.Rproxy.server.mapping | to_entries[] | "\(.key))  :\(.value.port|tostring)  \(.value.protocol)"' /opt/de_GWD/0conf
+echo -e "${GREEN}======================= ${cRES}"
+echo -e "${GREEN}Delete mapping (number)${cRES}"
+echo -e "${GREEN}======================= ${cRES}"
+read rproxyMmapnum
+if [[ -z $(echo $rproxyMmapnum | grep '^[[:digit:]]*$') ]]; then
+echo -e "${RED}Invalid number${cRES}"
+return
+fi
+if [[ $rproxyMmapnum -ge $(jq -r '.FORWARD.Rproxy.server.mapping | length' /opt/de_GWD/0conf) ]]; then
+echo -e "${RED}No such mapping${cRES}"
+return
+fi
+jq "del(.FORWARD.Rproxy.server.mapping[$rproxyMmapnum])" /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+;;
+7)
+cur=$(jq -r '.FORWARD.Rproxy.server.inStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+if [[ $cur = "on" ]]; then
+jq '.FORWARD.Rproxy.server.inStatus="off"' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+else
+jq '.FORWARD.Rproxy.server.inStatus="on"' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+fi
+;;
+8)
+cur=$(jq -r '.FORWARD.Rproxy.server.mappingStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+if [[ $cur = "on" ]]; then
+jq '.FORWARD.Rproxy.server.mappingStatus="off"' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+else
+jq '.FORWARD.Rproxy.server.mappingStatus="on"' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+fi
+;;
+0)
+/opt/de_GWD/ui-RproxySsave >/dev/null 2>&1
+;;
+9)
+systemctl status RproxyS 2>/dev/null | head -n5
+echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+echo -e "${GREEN}Rproxy Tunnel${cRES}"
+jq -r '.FORWARD.Rproxy.server.tunnel | "port: \(.port|tostring) \tuuid: \(.uuid)"' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$'
+echo -e "${GREEN}inUUID: $(jq -r '.FORWARD.Rproxy.server.inStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')${cRES}"
+jq -r '.FORWARD.Rproxy.server.inUUID[] | "  \(.RproxyS0uuid)"' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$'
+echo -e "${GREEN}mapping: $(jq -r '.FORWARD.Rproxy.server.mappingStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')${cRES}"
+jq -r '.FORWARD.Rproxy.server.mapping[] | "  :\(.port|tostring)  \(.protocol)"' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$'
+echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+;;
+esac
+}
 
 
 printNode(){
@@ -2183,6 +2449,7 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
    echo -e "${RED}00.AutoUpdate turn on/off${cRES}"
  echo -e "${GREEN}11.Print Xray node information${cRES}"
  echo -e "${GREEN}12.Localhost cloudflare speedtest${cRES}"
+  echo -e "${CYAN}22.RproxyS${cRES}"
   echo -e "${CYAN}44.Set TCP Port Forward${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
 echo
@@ -2217,6 +2484,10 @@ read -p "Select:" num
     ;;
     12)
     CFspeedTest
+    start_menu
+    ;;
+    22)
+    rproxySmenu
     start_menu
     ;;
     44)
@@ -2257,6 +2528,7 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
    echo -e "${RED}00.AutoUpdate turn on/off${cRES}"
  echo -e "${GREEN}11.Print Xray node information${cRES}"
  echo -e "${GREEN}12.Localhost cloudflare speedtest${cRES}"
+  echo -e "${CYAN}22.RproxyS${cRES}"
   echo -e "${CYAN}33.Set Cloudflare wireguard upstream (WARP) ${cRES}"
   echo -e "${CYAN}44.Set TCP Port Forward${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
@@ -2293,6 +2565,10 @@ read -p "Select:" num
     ;;
     12)
     CFspeedTest
+    start_menu
+    ;;
+    22)
+    rproxySmenu
     start_menu
     ;;
     33)
