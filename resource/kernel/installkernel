@@ -142,18 +142,16 @@ fi
 
 
 
+# Name -> repo-host map shared by the per-kernel cleanups below.
+KERNEL_REPOS=( [xanmod]=xanmod.org [liquorix]=liquorix.net [zabbly]=pkgs.zabbly.com )
+
 cleanOldKernels() {
-  local kernel_type=$1
-  
-if [[ $kernel_type == "zabbly" ]]; then
-  rm -f /etc/apt/sources.list.d/*xanmod* /etc/apt/keyrings/xanmod* /etc/apt/sources.list.d/*liquorix* /etc/apt/keyrings/liquorix*
-elif [[ $kernel_type == "xanmod" ]]; then
-  rm -f /etc/apt/sources.list.d/*zabbly* /etc/apt/keyrings/zabbly* /etc/apt/sources.list.d/*liquorix* /etc/apt/keyrings/liquorix*
-elif [[ $kernel_type == "liquorix" ]]; then
-  rm -f /etc/apt/sources.list.d/*zabbly* /etc/apt/keyrings/zabbly* /etc/apt/sources.list.d/*xanmod* /etc/apt/keyrings/xanmod*
-elif [[ $kernel_type == "bpo" || $kernel_type == "backports" ]]; then
-  rm -f /etc/apt/sources.list.d/*zabbly* /etc/apt/keyrings/zabbly* /etc/apt/sources.list.d/*xanmod* /etc/apt/keyrings/xanmod* /etc/apt/sources.list.d/*liquorix* /etc/apt/keyrings/liquorix*
-fi
+  local kernel_type=$1 k
+for k in "${!KERNEL_REPOS[@]}"; do
+  if [[ $kernel_type == "bpo" || $kernel_type == "backports" || $k != "$kernel_type" ]]; then
+    rm -f /etc/apt/sources.list.d/*"$k"* /etc/apt/keyrings/"$k"*
+  fi
+done
   
   # Keep running/old kernels until after reboot as safety fallback.
   # /etc/rc_kernel.local automatically cleans old kernels on successful boot.
@@ -210,10 +208,10 @@ done
 }
 
 kernelDropForeignRepos(){
-local keep=${1-}
-[[ $keep = xanmod ]] || kernelDropRepoHost xanmod.org
-[[ $keep = liquorix ]] || kernelDropRepoHost liquorix.net
-[[ $keep = zabbly ]] || kernelDropRepoHost pkgs.zabbly.com
+local keep=${1-} k
+for k in "${!KERNEL_REPOS[@]}"; do
+  [[ $k = "$keep" ]] || kernelDropRepoHost "${KERNEL_REPOS[$k]}"
+done
 }
 
 # Unsigned leftover kernel repos must not abort installing the selected kernel.

@@ -99,12 +99,12 @@ if [[ $RproxySmappingStatus = "on" && -n $RproxySmappingList && $RproxySmappingL
     port=$(jq -r --argjson i "$i" '.[$i].port' <<<"$RproxySmappingList")
     protocol=$(jq -r --argjson i "$i" '.[$i].protocol // empty' <<<"$RproxySmappingList")
     protocol=$(rproxy_normalize_protocol "$protocol") || exit 1
-    RontingMapping=$(jq -nc --arg tag "mapping$i" '{type:"field",inboundTag:[$tag],outboundTag:"portal"}')
+    RoutingMapping=$(jq -nc --arg tag "mapping$i" '{type:"field",inboundTag:[$tag],outboundTag:"portal"}')
     IBmapping=$(jq -nc --arg tag "mapping$i" --argjson port "$port" --arg net "$protocol" \
       '{tag:$tag,port:$port,protocol:"dokodemo-door",settings:{address:"127.0.0.1",port:$port,network:$net}}')
     next_tmp=$(mktemp "${config}.XXXXXX") || exit 1
-    jq --argjson RontingMapping "$RontingMapping" --argjson IBmapping "$IBmapping" \
-      '.routing.rules += [$RontingMapping] | .inbounds += [$IBmapping]' \
+    jq --argjson RoutingMapping "$RoutingMapping" --argjson IBmapping "$IBmapping" \
+      '.routing.rules += [$RoutingMapping] | .inbounds += [$IBmapping]' \
       "$config_tmp" >"$next_tmp" || exit 1
     mv -f -- "$next_tmp" "$config_tmp"
     next_tmp=

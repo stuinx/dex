@@ -716,17 +716,23 @@ else
 fi
 if [[ $(df -T / | awk '{print$2}' | tail -n 1) = "btrfs" ]]; then
 btrfs subvolume create /swap 2>/dev/null
-btrfs filesystem mkswapfile --size "$swap_sz" --uuid clear /swap/swapfile 2>/dev/null
-swapon /swap/swapfile
+if btrfs filesystem mkswapfile --size "$swap_sz" --uuid clear /swap/swapfile 2>/dev/null && swapon /swap/swapfile 2>/dev/null; then
 sed -i "/swapfile/d" /etc/fstab
 echo "/swap/swapfile none swap defaults 0 0" >>/etc/fstab
 else
+echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}swapfile not created; fstab unchanged${cRES}"
+fi
+else
 fallocate -l "$swap_sz" /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count="$swap_mb" status=none 2>/dev/null
+if [[ -f /swapfile ]]; then
 chmod 600 /swapfile
-mkswap -U clear /swapfile >/dev/null 2>&1
-swapon /swap/swapfile 2>/dev/null || swapon /swapfile 2>/dev/null || true
+if mkswap -U clear /swapfile >/dev/null 2>&1 && { swapon /swap/swapfile 2>/dev/null || swapon /swapfile 2>/dev/null; }; then
 sed -i "/swapfile/d" /etc/fstab
 echo "/swapfile none swap defaults 0 0" >>/etc/fstab
+else
+echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}swapfile not activated; fstab unchanged${cRES}"
+fi
+fi
 fi
 echo "RESUME=" >/etc/initramfs-tools/conf.d/resume
 fi
@@ -2657,7 +2663,10 @@ rm -rf /tmp/client.zip
 rm -rf /opt/de_GWD/update
 
 if [[ -f /opt/de_GWD/0conf ]]; then
+cur=$(jq -er '.update.updateCMD // empty' /opt/de_GWD/0conf 2>/dev/null)
+if [[ -z $cur || $cur = "$installCMD" ]]; then
 jq --arg updateCMD "$installCMD" '.update.updateCMD=$updateCMD' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+fi
 chown root:www-data /opt/de_GWD/0conf
 chmod 0660 /opt/de_GWD/0conf
 fi
@@ -2684,8 +2693,14 @@ local chk_url="https://raw.githubusercontent.com/stuinx/dex/$branch/resource/ker
 local expected_sha
 expected_sha=$(curl_gh "$chk_url" 2>/dev/null | awk '{print $1}')
 if wget_gh "$tmp" "https://raw.githubusercontent.com/stuinx/dex/$branch/resource/kernel/installkernel" && [[ -s $tmp ]]; then
-  if [[ -n $expected_sha ]] && [[ $(checkSum "$tmp" "$expected_sha") = "false" ]]; then
-    echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}installkernel checksum mismatch${cRES}"
+  if [[ -n $expected_sha ]]; then
+    if [[ $(checkSum "$tmp" "$expected_sha") = "false" ]]; then
+      echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}installkernel checksum mismatch${cRES}"
+      rm -f -- "$tmp"
+      return 1
+    fi
+  else
+    echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}installkernel skipped: checksum unavailable${cRES}"
     rm -f -- "$tmp"
     return 1
   fi

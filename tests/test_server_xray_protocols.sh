@@ -60,7 +60,7 @@ fail(){
 }
 
 type extraInboundsAppend >/dev/null 2>&1 || fail "server did not define extraInboundsAppend"
-type extraVlessWsNginxBlock >/dev/null 2>&1 || fail "server did not define extraVlessWsNginxBlock"
+type extraVlessWsNginxGuard >/dev/null 2>&1 || fail "server did not define extraVlessWsNginxGuard"
 type extraVlessWsNginxConf >/dev/null 2>&1 || fail "server did not define extraVlessWsNginxConf"
 type extraVlessWsWriteNginx >/dev/null 2>&1 || fail "server did not define extraVlessWsWriteNginx"
 type extraParseInstallAddr >/dev/null 2>&1 || fail "server did not define extraParseInstallAddr"
@@ -86,21 +86,21 @@ mapped=$(extraRproxyParseMapping '22201' '22200' 'tcp')
 [[ $(jq -c . <<<"$mapped") = '[{"port":"22201","protocol":"tcp"}]' ]] || fail "mapping port with tcp protocol parse failed"
 mapped=$(extraRproxyParseMapping '22201' '22200' 'udp')
 [[ $(jq -c . <<<"$mapped") = '[{"port":"22201","protocol":"udp"}]' ]] || fail "mapping port with udp protocol parse failed"
-[[ $(extraRproxyNormalizeProtocol 'tcp') = 'tcp' ]] || fail "normalize tcp failed"
-[[ $(extraRproxyNormalizeProtocol '1') = 'tcp' ]] || fail "normalize 1 failed"
-[[ $(extraRproxyNormalizeProtocol '2') = 'udp' ]] || fail "normalize 2 failed"
-[[ $(extraRproxyNormalizeProtocol '') = 'tcp,udp' ]] || fail "normalize empty failed"
+[[ $(extraProtocolNormalize 'tcp') = 'tcp' ]] || fail "normalize tcp failed"
+[[ $(extraProtocolNormalize '1') = 'tcp' ]] || fail "normalize 1 failed"
+[[ $(extraProtocolNormalize '2') = 'udp' ]] || fail "normalize 2 failed"
+[[ $(extraProtocolNormalize '') = 'tcp,udp' ]] || fail "normalize empty failed"
 merged=$(jq -nc --argjson a '[{"port":"22201","protocol":"tcp,udp"}]' --argjson b "$(extraRproxyParseMapping '22201,22202' '22200')" '$a+$b|unique_by(.port|tostring)|map(.port)')
 [[ $merged = '["22201","22202"]' ]] || fail "mapping merge unique_by port failed"
 
 parsed=$(parseDomainPort '[2a01:4f9:6b:4a8f:6c::a]:22') || fail "dokodemo ipv6 target parse failed"
 [[ $parsed = "2a01:4f9:6b:4a8f:6c::a 22" ]] || fail "dokodemo ipv6 target mismatch"
 [[ $(formatDomainPort '2a01:4f9:6b:4a8f:6c::a' '22') = '[2a01:4f9:6b:4a8f:6c::a]:22' ]] || fail "dokodemo ipv6 format mismatch"
-[[ $(extraDokodemoNormalizeNetwork '') = 'tcp,udp' ]] || fail "empty dokodemo network should default to tcp,udp"
-[[ $(extraDokodemoNormalizeNetwork 'TCP') = tcp ]] || fail "dokodemo network case fold failed"
-[[ $(extraDokodemoNormalizeNetwork 'tcp, udp') = 'tcp,udp' ]] || fail "dokodemo network tcp,udp spacing failed"
-[[ $(extraDokodemoNormalizeNetwork 'tcp/udp') = 'tcp,udp' ]] || fail "dokodemo network tcp/udp alias failed"
-if extraDokodemoNormalizeNetwork 'tcp / udp / tcp,udp' >/dev/null 2>&1; then
+[[ $(extraProtocolNormalize '') = 'tcp,udp' ]] || fail "empty dokodemo network should default to tcp,udp"
+[[ $(extraProtocolNormalize 'TCP') = tcp ]] || fail "dokodemo network case fold failed"
+[[ $(extraProtocolNormalize 'tcp, udp') = 'tcp,udp' ]] || fail "dokodemo network tcp,udp spacing failed"
+[[ $(extraProtocolNormalize 'tcp/udp') = 'tcp,udp' ]] || fail "dokodemo network tcp/udp alias failed"
+if extraProtocolNormalize 'tcp / udp / tcp,udp' >/dev/null 2>&1; then
   fail "prompt text was accepted as dokodemo network"
 fi
 
@@ -214,7 +214,7 @@ assert_main_vmess "second append changed main VMess inbound[0]"
 extraVlessWsWriteNginx
 [[ -f $DE_GWD_VLESS_NGINX_CONF ]] || fail "VLESS WS nginx file was not written"
 [[ ! -e $DE_GWD_VLESS_NGINX_LOCATION ]] || fail "shared location snippet should not be written"
-[[ -z $(extraVlessWsNginxBlock) ]] || fail "VLESS WS was injected into main default.conf"
+[[ -z $(extraVlessWsNginxGuard) ]] || fail "VLESS WS was injected into main default.conf"
 conf=$(cat "$DE_GWD_VLESS_NGINX_CONF")
 [[ $conf == *'upstream vlessws'* ]] || fail "standalone VLESS nginx missing upstream"
 [[ $conf == *'127.0.0.1:9891'* ]] || fail "standalone VLESS nginx missing loopback 9891"
@@ -241,7 +241,7 @@ assert_main_vmess "disabling extras changed main VMess inbound[0]"
 extraVlessWsWriteNginx
 [[ ! -e $DE_GWD_VLESS_NGINX_CONF ]] || fail "disabled VLESS WS left standalone nginx conf"
 [[ ! -e $DE_GWD_VLESS_NGINX_LOCATION ]] || fail "disabled VLESS WS left location snippet"
-[[ -z $(extraVlessWsNginxBlock) ]] || fail "disabled VLESS WS still emitted nginx include"
+[[ -z $(extraVlessWsNginxGuard) ]] || fail "disabled VLESS WS still emitted nginx include"
 [[ -z $(extraStatusPrint) ]] || fail "disabled extras still shown in extra status"
 
 echo OK

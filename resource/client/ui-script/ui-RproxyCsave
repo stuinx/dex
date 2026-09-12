@@ -81,7 +81,7 @@ extProtocol=$(echo $RproxyCmappingList | jq -r --argjson i "$i" '.[$i].extProtoc
 intIP=$(echo $RproxyCmappingList | jq -r --argjson i "$i" '.[$i].intIP')
 intPort=$(echo $RproxyCmappingList | jq -r --argjson i "$i" '.[$i].intPort')
 
-RontingMapping=`cat << EOF
+RoutingMapping=`cat << EOF
       {"type":"field","inboundTag":["bridge"],"port":"$extPort","network":"$extProtocol","outboundTag":"mapping$i"}
 EOF
 `
@@ -95,7 +95,7 @@ OBmapping=`cat << EOF
     }
 EOF
 `
-jq --argjson RontingMapping "$RontingMapping" '.routing.rules+=[$RontingMapping]' /opt/de_GWD/RproxyC/config.json |\
+jq --argjson RoutingMapping "$RoutingMapping" '.routing.rules+=[$RoutingMapping]' /opt/de_GWD/RproxyC/config.json |\
 jq --argjson OBmapping "$OBmapping" '.outbounds+=[$OBmapping]' | sponge /opt/de_GWD/RproxyC/config.json
 done
 fi

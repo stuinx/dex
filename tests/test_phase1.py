@@ -358,6 +358,29 @@ def test_findings_p1_and_p2_fixes():
     assert '`[5]` 查看已添加项，`[0]` 返回。' in readme
 
 
+def test_scope_a_fixes():
+    client_src = (ROOT / 'client').read_text()
+    # F2: a user's saved update command must not be clobbered by postInstall
+    assert "cur=$(jq -er '.update.updateCMD // empty' /opt/de_GWD/0conf 2>/dev/null)" in client_src
+    assert '[[ -z $cur || $cur = "$installCMD" ]]' in client_src
+    # F1: fstab is only written when the swapfile was actually activated
+    assert 'swapfile not activated; fstab unchanged' in client_src
+    # F3: an unverifiable installkernel is refused, not run
+    assert 'installkernel skipped: checksum unavailable' in client_src
+    # F7: single kernel-repo map shared by both cleanup paths
+    ik = (ROOT / 'resource/kernel/installkernel').read_text()
+    assert 'KERNEL_REPOS=( [xanmod]=xanmod.org [liquorix]=liquorix.net [zabbly]=pkgs.zabbly.com )' in ik
+    assert 'for k in "${!KERNEL_REPOS[@]}"' in ik
+    # F5/F6: one shared normalizer + renamed vless-ws sentinel in server and tests
+    server_src = (ROOT / 'server').read_text()
+    assert 'extraProtocolNormalize()' in server_src
+    assert 'extraVlessWsNginxGuard' in server_src
+    assert 'extraVlessWsNginxGuard' in (ROOT / 'tests/test_server_xray_protocols.sh').read_text()
+    # F4: routing-mapping typo eliminated from all shipped scripts
+    for p in ['resource/server/rproxyS-save', 'resource/client/ui-script/ui-RproxySsave', 'resource/client/ui-script/ui-RproxyCsave']:
+        assert 'RontingMapping' not in (ROOT / p).read_text()
+
+
 if __name__ == '__main__':
     failed = 0
     for name, fn in list(globals().items()):
