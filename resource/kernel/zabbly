@@ -1,6 +1,18 @@
 #!/bin/bash
 architecture=$(dpkg --print-architecture)
 export DEBIAN_FRONTEND=noninteractive
+wait_for_dpkg_lock(){
+local waited=0
+command -v fuser >/dev/null 2>&1 || { echo "fuser is required to inspect apt/dpkg locks" >&2; return 1; }
+while fuser /var/cache/apt/archives/lock /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+  if (( waited >= 120 )); then
+    echo "apt/dpkg lock held for > 120s" >&2
+    return 1
+  fi
+  sleep 2
+  waited=$((waited + 2))
+done
+}
 cat << EOF >/etc/apt/apt.conf.d/01InstallLess
 APT::Get::Assume-Yes "true";
 APT::Install-Recommends "false";
@@ -15,6 +27,7 @@ EOF
 
 
 
+wait_for_dpkg_lock || exit 1
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober') ]] && apt remove --purge os-prober
 
 unset aptPKG
@@ -23,12 +36,10 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^python3$') ]] && aptPKG+=(python3)
 [[ -z $(which 'update-grub') ]] && [[ -d "/sys/firmware/efi" ]] && aptPKG+=(grub-efi)
 [[ -z $(which 'update-grub') ]] && [[ ! -d "/sys/firmware/efi" ]] && aptPKG+=(grub2-common)
+wait_for_dpkg_lock || exit 1
 [[ -n $aptPKG ]] && apt update && apt install -y $(echo ${aptPKG[@]})
 mkdir -p /boot/grub
-rm -f /var/cache/apt/archives/lock
-rm -f /var/lib/apt/lists/lock
-rm -f /var/lib/dpkg/lock
-rm -f /var/lib/dpkg/lock-frontend
+wait_for_dpkg_lock || exit 1
 dpkg --configure -a
 
 

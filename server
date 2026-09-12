@@ -15,11 +15,25 @@ architecture=$(dpkg --print-architecture)
 export DEBIAN_FRONTEND=noninteractive
 branch="dev"
 
+wait_for_dpkg_lock(){
+local waited=0
+command -v fuser >/dev/null 2>&1 || { echo -e "${RED}fuser is required to inspect apt/dpkg locks${cRES}" >&2; return 1; }
+while fuser /var/cache/apt/archives/lock /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+  if (( waited >= 120 )); then
+    echo -e "${RED}apt/dpkg lock held for > 120s${cRES}" >&2
+    return 1
+  fi
+  sleep 2
+  waited=$((waited + 2))
+done
+}
+
 [[ -f "/etc/nginx/conf.d/default.conf" ]] && sed -i 's/fastopen=128/fastopen=500/g' /etc/nginx/conf.d/default.conf
 
 
 
 pkgDEP(){
+wait_for_dpkg_lock || return 1
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^ipset$') ]] && apt remove --purge ipset
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge haveged
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^subversion$') ]] && apt remove --purge subversion
@@ -353,10 +367,7 @@ DefaultLimitNPROC=1000000
 EOF
 systemctl daemon-reload
 
-rm -f /var/cache/apt/archives/lock
-rm -f /var/lib/apt/lists/lock
-rm -f /var/lib/dpkg/lock
-rm -f /var/lib/dpkg/lock-frontend
+wait_for_dpkg_lock || exit 1
 dpkg --configure -a
 
 cat << EOF >/etc/apt/sources.list
@@ -1107,6 +1118,42 @@ else
 fi
 }
 
+acmeInstallCert(){
+local certDomain=$1 backupDir keyHad=0 certHad=0
+backupDir=$(mktemp -d /tmp/de_GWD-acme-install.XXXXXX) || return 1
+if [[ -f /var/www/ssl/de_GWD.key ]]; then
+  cp -p -- /var/www/ssl/de_GWD.key "$backupDir/key" || { rm -rf -- "$backupDir"; return 1; }
+  keyHad=1
+fi
+if [[ -f /var/www/ssl/de_GWD.cer ]]; then
+  cp -p -- /var/www/ssl/de_GWD.cer "$backupDir/cert" || { rm -rf -- "$backupDir"; return 1; }
+  certHad=1
+fi
+if ! "/root/.acme.sh"/acme.sh --installcert -d "$certDomain" \
+               --key-file       /var/www/ssl/de_GWD.key \
+               --fullchain-file /var/www/ssl/de_GWD.cer \
+               --reloadcmd     "systemctl force-reload nginx" \
+               --ecc; then
+  [[ $keyHad = 1 ]] && cp -p -- "$backupDir/key" /var/www/ssl/de_GWD.key || rm -f -- /var/www/ssl/de_GWD.key
+  [[ $certHad = 1 ]] && cp -p -- "$backupDir/cert" /var/www/ssl/de_GWD.cer || rm -f -- /var/www/ssl/de_GWD.cer
+  rm -rf -- "$backupDir"
+  return 1
+fi
+if [[ ! -s /var/www/ssl/de_GWD.key || ! -s /var/www/ssl/de_GWD.cer ]]; then
+  [[ $keyHad = 1 ]] && cp -p -- "$backupDir/key" /var/www/ssl/de_GWD.key || rm -f -- /var/www/ssl/de_GWD.key
+  [[ $certHad = 1 ]] && cp -p -- "$backupDir/cert" /var/www/ssl/de_GWD.cer || rm -f -- /var/www/ssl/de_GWD.cer
+  rm -rf -- "$backupDir"
+  return 1
+fi
+if ! chmod 600 /var/www/ssl/de_GWD.key; then
+  [[ $keyHad = 1 ]] && cp -p -- "$backupDir/key" /var/www/ssl/de_GWD.key || rm -f -- /var/www/ssl/de_GWD.key
+  [[ $certHad = 1 ]] && cp -p -- "$backupDir/cert" /var/www/ssl/de_GWD.cer || rm -f -- /var/www/ssl/de_GWD.cer
+  rm -rf -- "$backupDir"
+  return 1
+fi
+rm -rf -- "$backupDir"
+}
+
 makeSSL_D(){
 local n1 n2
 read -r n1 n2 <<<"$(acmeWildcardNames "$domain")"
@@ -1121,41 +1168,51 @@ export CF_Key="$CFapikey"
 export CF_Email="$CFemail"
 
 if [[ $(systemctl is-active 'nginx') != "active" ]]; then
-  systemctl restart nginx
-  if [[ $? -ne 0 ]]; then
-  sed -i '/Nice=/d' /etc/systemd/system/nginx.service
-  systemctl daemon-reload >/dev/null
-  systemctl restart nginx
+  if ! systemctl restart nginx; then
+    sed -i '/Nice=/d' /etc/systemd/system/nginx.service
+    systemctl daemon-reload >/dev/null || return 1
+    systemctl restart nginx || return 1
   fi
 else
-systemctl force-reload nginx
+  systemctl force-reload nginx || return 1
 fi
 
-[[ -x /root/.acme.sh/acme.sh ]] || curl https://get.acme.sh | sh
-"/root/.acme.sh"/acme.sh --upgrade  --auto-upgrade
-"/root/.acme.sh"/acme.sh --set-default-ca  --server letsencrypt
+if [[ ! -x /root/.acme.sh/acme.sh ]]; then
+  curl -fsSL --connect-timeout 8 --max-time 30 https://get.acme.sh | sh || return 1
+fi
+"/root/.acme.sh"/acme.sh --upgrade --auto-upgrade || return 1
+"/root/.acme.sh"/acme.sh --set-default-ca --server letsencrypt || return 1
 "/root/.acme.sh"/acme.sh --issue --dns dns_cf -d "$n1" -d "$n2" -k ec-256 --dnssleep 180 || return 1
-"/root/.acme.sh"/acme.sh --installcert -d "$n1" \
-               --key-file       /var/www/ssl/de_GWD.key  \
-               --fullchain-file /var/www/ssl/de_GWD.cer \
-               --reloadcmd     "systemctl force-reload nginx" \
-               --ecc || return 1
-
-chmod 600 /var/www/ssl/*.key 2>/dev/null || true
+acmeInstallCert "$n1" || return 1
 }
 
 
 
 makeSSL_W(){
+local backupDir defaultConf=/etc/nginx/conf.d/default.conf eightyConf=/etc/nginx/conf.d/80.conf
+local hadDefault=0 hadEighty=0
+backupDir=$(mktemp -d /tmp/de_GWD-makesslw.XXXXXX) || return 1
+if [[ -f $defaultConf ]]; then
+  cp -p -- "$defaultConf" "$backupDir/default" || { rm -rf -- "$backupDir"; return 1; }
+  hadDefault=1
+fi
+if [[ -f $eightyConf ]]; then
+  cp -p -- "$eightyConf" "$backupDir/80" || { rm -rf -- "$backupDir"; return 1; }
+  hadEighty=1
+fi
+makeSSL_W_rollback(){
+  if [[ $hadDefault = 1 ]]; then cp -p -- "$backupDir/default" "$defaultConf"; else rm -f -- "$defaultConf"; fi
+  if [[ $hadEighty = 1 ]]; then cp -p -- "$backupDir/80" "$eightyConf"; else rm -f -- "$eightyConf"; fi
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  systemctl force-reload nginx >/dev/null 2>&1 || true
+  rm -rf -- "$backupDir"
+}
 crontab -l 2>/dev/null >/tmp/now.cron
 sed -i '/acme.sh/d' /tmp/now.cron
 crontab /tmp/now.cron
 rm -rf /tmp/now.cron
-rm -rf "/root/.acme.sh"
-
-rm -rf /etc/nginx/conf.d/80.conf
-rm -rf /etc/nginx/conf.d/default.conf
-cat << EOF >/etc/nginx/conf.d/default.conf
+rm -f -- "$eightyConf" "$defaultConf"
+if ! cat >"$defaultConf" << EOF
 # SERVER_BASE_START
 server {
     listen      80 reuseport;
@@ -1165,33 +1222,36 @@ server {
 # SERVER_BASE_END
 }
 EOF
-
-if [[ $(systemctl is-active 'nginx') != "active" ]]; then
-  systemctl restart nginx
-  if [[ $? -ne 0 ]]; then
-  sed -i '/Nice=/d' /etc/systemd/system/nginx.service
-  systemctl daemon-reload >/dev/null
-  systemctl restart nginx
-  fi
-else
-systemctl force-reload nginx
+then
+  makeSSL_W_rollback
+  unset -f makeSSL_W_rollback
+  return 1
 fi
 
-rm -rf /var/www/ssl/*.cer
-rm -rf /var/www/ssl/*.key
-find /var/www/ssl/*.pem | grep -v "dhparam.pem" | xargs -I {} rm -rf {}
+if [[ $(systemctl is-active 'nginx') != "active" ]]; then
+  if ! systemctl restart nginx; then
+  sed -i '/Nice=/d' /etc/systemd/system/nginx.service
+  systemctl daemon-reload >/dev/null
+  systemctl restart nginx || { makeSSL_W_rollback; unset -f makeSSL_W_rollback; return 1; }
+  fi
+else
+  systemctl force-reload nginx || { makeSSL_W_rollback; unset -f makeSSL_W_rollback; return 1; }
+fi
 
-curl https://get.acme.sh | sh
-"/root/.acme.sh"/acme.sh --upgrade  --auto-upgrade
-"/root/.acme.sh"/acme.sh --set-default-ca  --server letsencrypt
-"/root/.acme.sh"/acme.sh --issue -d $domain -w /var/www/html -k ec-256 || return 1
-"/root/.acme.sh"/acme.sh --installcert -d $domain \
-               --key-file       /var/www/ssl/de_GWD.key  \
-               --fullchain-file /var/www/ssl/de_GWD.cer \
-               --reloadcmd     "systemctl force-reload nginx" \
-               --ecc || return 1
-
-chmod 600 /var/www/ssl/*.key 2>/dev/null || true
+if [[ ! -x /root/.acme.sh/acme.sh ]]; then
+  if ! curl -fsSL --connect-timeout 8 --max-time 30 https://get.acme.sh | sh; then
+    makeSSL_W_rollback
+    unset -f makeSSL_W_rollback
+    return 1
+  fi
+fi
+if ! "/root/.acme.sh"/acme.sh --upgrade --auto-upgrade || ! "/root/.acme.sh"/acme.sh --set-default-ca --server letsencrypt || ! "/root/.acme.sh"/acme.sh --issue -d "$domain" -w /var/www/html -k ec-256 || ! acmeInstallCert "$domain"; then
+  makeSSL_W_rollback
+  unset -f makeSSL_W_rollback
+  return 1
+fi
+rm -rf -- "$backupDir"
+unset -f makeSSL_W_rollback
 }
 
 
@@ -1482,8 +1542,18 @@ cat << "EOF" >/etc/rc_kernel.local
 #!/bin/bash
 PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 
-while fuser /var/lib/dpkg/lock >/dev/null 2>&1 || fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+if ! command -v fuser >/dev/null 2>&1; then
+  echo "fuser is required to inspect apt/dpkg locks" >&2
+  exit 1
+fi
+waited=0
+while fuser /var/cache/apt/archives/lock /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+  if (( waited >= 120 )); then
+    echo "apt/dpkg lock held for > 120s" >&2
+    exit 1
+  fi
   sleep 2
+  waited=$((waited + 2))
 done
 dpkg --configure -a
 
@@ -1852,7 +1922,7 @@ upstream vlessws {
 EOF
 }
 
-# Same as installGWD: `domain` or `domain:port` (no port => 443).
+# Extra VLESS WS requires an explicit `domain:port` endpoint.
 extraParseInstallAddr(){
 local vpsdomainP=$1 d p
 [[ -n $vpsdomainP ]] || return 1
@@ -1967,109 +2037,174 @@ extraVlessWsNginxBlock(){
 return 0
 }
 
+extraXrayJqUpdate(){
+local file=$1 temp
+shift
+temp=$(mktemp "${file}.XXXXXX") || return 1
+if ! jq "$@" "$file" >"$temp"; then
+  rm -f -- "$temp"
+  return 1
+fi
+chmod --reference="$file" "$temp" 2>/dev/null || true
+if ! mv -f -- "$temp" "$file"; then
+  rm -f -- "$temp"
+  return 1
+fi
+}
+
 extraInboundsAppend(){
 local conf=$DE_GWD_XRAY_DIR/config.json
 local inbound n i listenPort target targetPort network
 [[ -f $conf ]] || return 0
-# Drop previous extra-* only. Never rewrite or reorder inbounds[0] (main VMess).
-jq '.inbounds |= map(select((.tag // "") | startswith("extra-") | not))' "$conf" | sponge "$conf"
-if extraJsonEnabled "$DE_GWD_DATA_DIR/extra-vlessws.json"; then
-  inbound=$(jq -nc --arg path "$(jq -r '.path' "$DE_GWD_DATA_DIR/extra-vlessws.json")" --arg uuid "$(jq -r '.uuid' "$DE_GWD_DATA_DIR/extra-vlessws.json")" \
-    '{tag:"extra-vless-ws",listen:"127.0.0.1",port:9891,protocol:"vless",settings:{clients:[{id:$uuid}],decryption:"none"},streamSettings:{network:"ws",security:"none",wsSettings:{path:$path},sockopt:{tcpFastOpen:true,tcpMptcp:true}},sniffing:{enabled:true,destOverride:["http","tls","quic"]}}')
-  jq --argjson ib "$inbound" '.inbounds += [$ib]' "$conf" | sponge "$conf"
-fi
-if extraJsonEnabled "$DE_GWD_DATA_DIR/extra-reality.json"; then
-  inbound=$(jq -nc \
-    --argjson port "$(jq -r '.port' "$DE_GWD_DATA_DIR/extra-reality.json")" \
-    --arg uuid "$(jq -r '.uuid' "$DE_GWD_DATA_DIR/extra-reality.json")" \
-    --arg flow "$(jq -r '.flow // empty' "$DE_GWD_DATA_DIR/extra-reality.json")" \
-    --arg dest "$(jq -r '.dest' "$DE_GWD_DATA_DIR/extra-reality.json")" \
-    --arg serverName "$(jq -r '.serverName' "$DE_GWD_DATA_DIR/extra-reality.json")" \
-    --arg privateKey "$(jq -r '.privateKey' "$DE_GWD_DATA_DIR/extra-reality.json")" \
-    --arg shortId "$(jq -r '.shortId' "$DE_GWD_DATA_DIR/extra-reality.json")" \
-    '{tag:"extra-vless-reality",listen:"0.0.0.0",port:$port,protocol:"vless",settings:{clients:[{id:$uuid,flow:$flow}],decryption:"none"},streamSettings:{network:"tcp",security:"reality",realitySettings:{show:false,dest:$dest,xver:0,serverNames:[$serverName],privateKey:$privateKey,shortIds:[$shortId]},sockopt:{tcpFastOpen:true,tcpMptcp:true}}}')
-  jq --argjson ib "$inbound" '.inbounds += [$ib]' "$conf" | sponge "$conf"
-fi
-if extraJsonEnabled "$DE_GWD_DATA_DIR/extra-socks5.json"; then
-  inbound=$(jq -nc \
-    --argjson port "$(jq -r '.port' "$DE_GWD_DATA_DIR/extra-socks5.json")" \
-    --arg user "$(jq -r '.user' "$DE_GWD_DATA_DIR/extra-socks5.json")" \
-    --arg password "$(jq -r '.password' "$DE_GWD_DATA_DIR/extra-socks5.json")" \
-    '{tag:"extra-socks5",listen:"0.0.0.0",port:$port,protocol:"socks",settings:{auth:"password",udp:true,accounts:[{user:$user,pass:$password}]}}')
-  jq --argjson ib "$inbound" '.inbounds += [$ib]' "$conf" | sponge "$conf"
-fi
-if extraJsonEnabled "$DE_GWD_DATA_DIR/extra-dokodemo.json"; then
-  n=$(jq '.rules | length' "$DE_GWD_DATA_DIR/extra-dokodemo.json")
-  for (( i=0; i<n; i++ )); do
-    listenPort=$(jq -r --argjson i "$i" '.rules[$i].port' "$DE_GWD_DATA_DIR/extra-dokodemo.json")
-    target=$(jq -r --argjson i "$i" '.rules[$i].target' "$DE_GWD_DATA_DIR/extra-dokodemo.json")
-    target=${target#\[}
-    target=${target%\]}
-    targetPort=$(jq -r --argjson i "$i" '.rules[$i].targetPort' "$DE_GWD_DATA_DIR/extra-dokodemo.json")
-    network=$(jq -r --argjson i "$i" '.rules[$i].network' "$DE_GWD_DATA_DIR/extra-dokodemo.json")
-    [[ -z $network || $network = null ]] && network=tcp,udp
-    inbound=$(jq -nc --argjson port "$listenPort" --arg target "$target" --argjson targetPort "$targetPort" --arg network "$network" --arg tag "extra-dokodemo-$i" \
-      '{tag:$tag,listen:"0.0.0.0",port:$port,protocol:"dokodemo-door",settings:{address:$target,port:$targetPort,network:$network}}')
-    jq --argjson ib "$inbound" '.inbounds += [$ib]' "$conf" | sponge "$conf"
-  done
-fi
+(
+  local candidate
+  candidate=$(mktemp "${conf}.XXXXXX") || exit 1
+  trap 'rm -f -- "$candidate"' EXIT
+  cp -p -- "$conf" "$candidate" || exit 1
+  # Drop previous extra-* only. Never rewrite or reorder inbounds[0] (main VMess).
+  extraXrayJqUpdate "$candidate" '.inbounds |= map(select((.tag // "") | startswith("extra-") | not))' || exit 1
+  if extraJsonEnabled "$DE_GWD_DATA_DIR/extra-vlessws.json"; then
+    inbound=$(jq -nc --arg path "$(jq -r '.path' "$DE_GWD_DATA_DIR/extra-vlessws.json")" --arg uuid "$(jq -r '.uuid' "$DE_GWD_DATA_DIR/extra-vlessws.json")" \
+      '{tag:"extra-vless-ws",listen:"127.0.0.1",port:9891,protocol:"vless",settings:{clients:[{id:$uuid}],decryption:"none"},streamSettings:{network:"ws",security:"none",wsSettings:{path:$path},sockopt:{tcpFastOpen:true,tcpMptcp:true}},sniffing:{enabled:true,destOverride:["http","tls","quic"]}}') || exit 1
+    extraXrayJqUpdate "$candidate" --argjson ib "$inbound" '.inbounds += [$ib]' || exit 1
+  fi
+  if extraJsonEnabled "$DE_GWD_DATA_DIR/extra-reality.json"; then
+    inbound=$(jq -nc \
+      --argjson port "$(jq -r '.port' "$DE_GWD_DATA_DIR/extra-reality.json")" \
+      --arg uuid "$(jq -r '.uuid' "$DE_GWD_DATA_DIR/extra-reality.json")" \
+      --arg flow "$(jq -r '.flow // empty' "$DE_GWD_DATA_DIR/extra-reality.json")" \
+      --arg dest "$(jq -r '.dest' "$DE_GWD_DATA_DIR/extra-reality.json")" \
+      --arg serverName "$(jq -r '.serverName' "$DE_GWD_DATA_DIR/extra-reality.json")" \
+      --arg privateKey "$(jq -r '.privateKey' "$DE_GWD_DATA_DIR/extra-reality.json")" \
+      --arg shortId "$(jq -r '.shortId' "$DE_GWD_DATA_DIR/extra-reality.json")" \
+      '{tag:"extra-vless-reality",listen:"0.0.0.0",port:$port,protocol:"vless",settings:{clients:[{id:$uuid,flow:$flow}],decryption:"none"},streamSettings:{network:"tcp",security:"reality",realitySettings:{show:false,dest:$dest,xver:0,serverNames:[$serverName],privateKey:$privateKey,shortIds:[$shortId]},sockopt:{tcpFastOpen:true,tcpMptcp:true}}}') || exit 1
+    extraXrayJqUpdate "$candidate" --argjson ib "$inbound" '.inbounds += [$ib]' || exit 1
+  fi
+  if extraJsonEnabled "$DE_GWD_DATA_DIR/extra-socks5.json"; then
+    inbound=$(jq -nc \
+      --argjson port "$(jq -r '.port' "$DE_GWD_DATA_DIR/extra-socks5.json")" \
+      --arg user "$(jq -r '.user' "$DE_GWD_DATA_DIR/extra-socks5.json")" \
+      --arg password "$(jq -r '.password' "$DE_GWD_DATA_DIR/extra-socks5.json")" \
+      '{tag:"extra-socks5",listen:"0.0.0.0",port:$port,protocol:"socks",settings:{auth:"password",udp:true,accounts:[{user:$user,pass:$password}]}}') || exit 1
+    extraXrayJqUpdate "$candidate" --argjson ib "$inbound" '.inbounds += [$ib]' || exit 1
+  fi
+  if extraJsonEnabled "$DE_GWD_DATA_DIR/extra-dokodemo.json"; then
+    n=$(jq '.rules | length' "$DE_GWD_DATA_DIR/extra-dokodemo.json") || exit 1
+    for (( i=0; i<n; i++ )); do
+      listenPort=$(jq -r --argjson i "$i" '.rules[$i].port' "$DE_GWD_DATA_DIR/extra-dokodemo.json") || exit 1
+      target=$(jq -r --argjson i "$i" '.rules[$i].target' "$DE_GWD_DATA_DIR/extra-dokodemo.json") || exit 1
+      target=${target#\[}
+      target=${target%\]}
+      targetPort=$(jq -r --argjson i "$i" '.rules[$i].targetPort' "$DE_GWD_DATA_DIR/extra-dokodemo.json") || exit 1
+      network=$(jq -r --argjson i "$i" '.rules[$i].network' "$DE_GWD_DATA_DIR/extra-dokodemo.json") || exit 1
+      [[ -z $network || $network = null ]] && network=tcp,udp
+      inbound=$(jq -nc --argjson port "$listenPort" --arg target "$target" --argjson targetPort "$targetPort" --arg network "$network" --arg tag "extra-dokodemo-$i" \
+        '{tag:$tag,listen:"0.0.0.0",port:$port,protocol:"dokodemo-door",settings:{address:$target,port:$targetPort,network:$network}}') || exit 1
+      extraXrayJqUpdate "$candidate" --argjson ib "$inbound" '.inbounds += [$ib]' || exit 1
+    done
+  fi
+  mv -f -- "$candidate" "$conf" || exit 1
+  trap - EXIT
+)
 }
 
 extraXrayApply(){
-local bak=$DE_GWD_XRAY_DIR/config.json.bak
-local nginxBak=/etc/nginx/conf.d/default.conf.bak-extra
-local vlessConf vlessBak locBak
-local path uuids domain port
+local vlessConf locConf defaultConf eightyConf hstsConf sslConf
+local path uuids domain port backupDir
+local hadXray=0 hadDefault=0 hadEighty=0 hadHsts=0 hadSsl=0 hadVless=0 hadLoc=0
 : "${DE_GWD_NGINX_CONF_DIR:=/etc/nginx/conf.d}"
 : "${DE_GWD_VLESS_NGINX_CONF:=$DE_GWD_NGINX_CONF_DIR/vless-ws.conf}"
 : "${DE_GWD_VLESS_NGINX_LOCATION:=$DE_GWD_NGINX_CONF_DIR/vless-ws-location.inc}"
 vlessConf=$DE_GWD_VLESS_NGINX_CONF
-vlessBak=${vlessConf}.bak-extra
-locBak=${DE_GWD_VLESS_NGINX_LOCATION}.bak-extra
-[[ ${DE_GWD_TEST_MODE:-0} = 1 ]] && { extraInboundsAppend; extraVlessWsWriteNginx; return 0; }
-[[ -f $DE_GWD_XRAY_DIR/config.json ]] && cp -f "$DE_GWD_XRAY_DIR/config.json" "$bak"
-[[ -f /etc/nginx/conf.d/default.conf ]] && cp -f /etc/nginx/conf.d/default.conf "$nginxBak"
-if [[ -f $vlessConf ]]; then cp -f "$vlessConf" "$vlessBak"; else rm -f "$vlessBak"; fi
-if [[ -f $DE_GWD_VLESS_NGINX_LOCATION ]]; then cp -f "$DE_GWD_VLESS_NGINX_LOCATION" "$locBak"; else rm -f "$locBak"; fi
+locConf=$DE_GWD_VLESS_NGINX_LOCATION
+defaultConf=$DE_GWD_NGINX_CONF_DIR/default.conf
+eightyConf=$DE_GWD_NGINX_CONF_DIR/80.conf
+hstsConf=$DE_GWD_NGINX_CONF_DIR/.HSTS
+sslConf=$DE_GWD_NGINX_CONF_DIR/.ssl_certs
+if [[ ${DE_GWD_TEST_MODE:-0} = 1 ]]; then
+  extraInboundsAppend && extraVlessWsWriteNginx
+  return $?
+fi
+backupDir=$(mktemp -d /tmp/de_GWD-extra-xray.XXXXXX) || return 1
+if [[ -f $DE_GWD_XRAY_DIR/config.json ]]; then
+  cp -p -- "$DE_GWD_XRAY_DIR/config.json" "$backupDir/xray" || { rm -rf -- "$backupDir"; return 1; }
+  hadXray=1
+fi
+if [[ -f $defaultConf ]]; then
+  cp -p -- "$defaultConf" "$backupDir/default" || { rm -rf -- "$backupDir"; return 1; }
+  hadDefault=1
+fi
+if [[ -f $eightyConf ]]; then
+  cp -p -- "$eightyConf" "$backupDir/80" || { rm -rf -- "$backupDir"; return 1; }
+  hadEighty=1
+fi
+if [[ -f $hstsConf ]]; then
+  cp -p -- "$hstsConf" "$backupDir/hsts" || { rm -rf -- "$backupDir"; return 1; }
+  hadHsts=1
+fi
+if [[ -f $sslConf ]]; then
+  cp -p -- "$sslConf" "$backupDir/ssl" || { rm -rf -- "$backupDir"; return 1; }
+  hadSsl=1
+fi
+if [[ -f $vlessConf ]]; then
+  cp -p -- "$vlessConf" "$backupDir/vless" || { rm -rf -- "$backupDir"; return 1; }
+  hadVless=1
+fi
+if [[ -f $locConf ]]; then
+  cp -p -- "$locConf" "$backupDir/location" || { rm -rf -- "$backupDir"; return 1; }
+  hadLoc=1
+fi
 path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$DE_GWD_XRAY_DIR/config.json" 2>/dev/null | grep -v '^null$')
 uuids=$(jq -r '.inbounds[0].settings.clients[].id' "$DE_GWD_XRAY_DIR/config.json" 2>/dev/null | grep -v '^null$')
-domain=$(awk '/server_name/ {gsub(/;/, "", $2); print $2; exit}' /etc/nginx/conf.d/default.conf)
-port=$(awk '/ssl .* reuseport/ {print$2}' /etc/nginx/conf.d/default.conf | grep '^[[:digit:]]*$')
-extraVlessWsWriteNginx
-nginxWebConf
-XrayInbound
-XrayOutboundDirect
+domain=$(awk '/server_name/ {gsub(/;/, "", $2); print $2; exit}' "$defaultConf")
+port=$(awk '/ssl .* reuseport/ {print$2}' "$defaultConf" | grep '^[[:digit:]]*$')
 extraXrayRollback(){
-  [[ -f $bak ]] && mv -f "$bak" "$DE_GWD_XRAY_DIR/config.json"
-  [[ -f $nginxBak ]] && mv -f "$nginxBak" /etc/nginx/conf.d/default.conf
-  if [[ -f $vlessBak ]]; then mv -f "$vlessBak" "$vlessConf"; else rm -f "$vlessConf"; fi
-  if [[ -f $locBak ]]; then mv -f "$locBak" "$DE_GWD_VLESS_NGINX_LOCATION"; else rm -f "$DE_GWD_VLESS_NGINX_LOCATION"; fi
+  local restoreStatus=0
+  if [[ $hadXray = 1 ]]; then cp -p -- "$backupDir/xray" "$DE_GWD_XRAY_DIR/config.json" || restoreStatus=1; else rm -f -- "$DE_GWD_XRAY_DIR/config.json"; fi
+  if [[ $hadDefault = 1 ]]; then cp -p -- "$backupDir/default" "$defaultConf" || restoreStatus=1; else rm -f -- "$defaultConf"; fi
+  if [[ $hadEighty = 1 ]]; then cp -p -- "$backupDir/80" "$eightyConf" || restoreStatus=1; else rm -f -- "$eightyConf"; fi
+  if [[ $hadHsts = 1 ]]; then cp -p -- "$backupDir/hsts" "$hstsConf" || restoreStatus=1; else rm -f -- "$hstsConf"; fi
+  if [[ $hadSsl = 1 ]]; then cp -p -- "$backupDir/ssl" "$sslConf" || restoreStatus=1; else rm -f -- "$sslConf"; fi
+  if [[ $hadVless = 1 ]]; then cp -p -- "$backupDir/vless" "$vlessConf" || restoreStatus=1; else rm -f -- "$vlessConf"; fi
+  if [[ $hadLoc = 1 ]]; then cp -p -- "$backupDir/location" "$locConf" || restoreStatus=1; else rm -f -- "$locConf"; fi
+  rm -rf -- "$backupDir"
   systemctl force-reload nginx >/dev/null 2>&1 || true
   systemctl restart vtrui >/dev/null 2>&1 || true
+  return "$restoreStatus"
 }
+if ! extraVlessWsWriteNginx || ! nginxWebConf || ! XrayInbound || ! XrayOutboundDirect; then
+  extraXrayRollback
+  unset -f extraXrayRollback
+  return 1
+fi
 if ! "$DE_GWD_XRAY_BIN" run -test -confdir "$DE_GWD_XRAY_DIR" >/tmp/extra-xray-test.log 2>&1; then
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Xray config test failed${cRES}"
   sed -n '1,20p' /tmp/extra-xray-test.log >&2
   extraXrayRollback
+  unset -f extraXrayRollback
   return 1
 fi
 if ! nginx -t >/tmp/extra-nginx-test.log 2>&1; then
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Nginx config test failed${cRES}"
   sed -n '1,20p' /tmp/extra-nginx-test.log >&2
   extraXrayRollback
+  unset -f extraXrayRollback
   return 1
 fi
 if ! systemctl force-reload nginx >/dev/null 2>&1; then
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Nginx reload failed${cRES}" >&2
   extraXrayRollback
+  unset -f extraXrayRollback
   return 1
 fi
 if ! systemctl restart vtrui >/dev/null 2>&1; then
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Xray service restart failed${cRES}" >&2
   extraXrayRollback
+  unset -f extraXrayRollback
   return 1
 fi
-rm -f "$bak" "$nginxBak" "$vlessBak" "$locBak"
+rm -rf -- "$backupDir"
+unset -f extraXrayRollback
 }
 
 extraGetDomain(){
@@ -2180,6 +2315,33 @@ fi
 echo -e "${BLUE}-------------------------------------------------- ${cRES}"
 }
 
+extraSettingsBegin(){
+EXTRA_SETTINGS_PATH=$1
+EXTRA_SETTINGS_DIR=$(mktemp -d /tmp/de_GWD-extra-settings.XXXXXX) || return 1
+EXTRA_SETTINGS_HAD=0
+if [[ -e $EXTRA_SETTINGS_PATH ]]; then
+  cp -p -- "$EXTRA_SETTINGS_PATH" "$EXTRA_SETTINGS_DIR/settings" || { rm -rf -- "$EXTRA_SETTINGS_DIR"; return 1; }
+  EXTRA_SETTINGS_HAD=1
+fi
+}
+
+extraSettingsRollback(){
+local status=0
+if [[ $EXTRA_SETTINGS_HAD = 1 ]]; then
+  cp -p -- "$EXTRA_SETTINGS_DIR/settings" "$EXTRA_SETTINGS_PATH" || status=1
+else
+  rm -f -- "$EXTRA_SETTINGS_PATH" || status=1
+fi
+rm -rf -- "$EXTRA_SETTINGS_DIR"
+unset EXTRA_SETTINGS_PATH EXTRA_SETTINGS_DIR EXTRA_SETTINGS_HAD
+return "$status"
+}
+
+extraSettingsCommit(){
+rm -rf -- "$EXTRA_SETTINGS_DIR"
+unset EXTRA_SETTINGS_PATH EXTRA_SETTINGS_DIR EXTRA_SETTINGS_HAD
+}
+
 changeVLESSReality(){
 local settings="$DE_GWD_DATA_DIR/extra-reality.json" sw domain extraPort uuid dest sni flow yn keyPair priv pub shortId
 echo -e "${GREEN}================================ ${cRES}"
@@ -2191,36 +2353,44 @@ echo -e "${GREEN}================================ ${cRES}"
 read -s -n 1 sw
 echo
 [[ $sw = "0" || -z $sw ]] && return
+extraSettingsBegin "$settings" || return 1
 if [[ $sw = "2" ]]; then
-  jq '{enabled:false}' >"$settings" 2>/dev/null || printf '%s\n' '{"enabled":false}' >"$settings"
-  extraXrayApply || return 1
+  printf '%s\n' '{"enabled":false}' >"$settings" || { extraSettingsRollback; return 1; }
+  if ! extraXrayApply; then
+    extraSettingsRollback
+    return 1
+  fi
+  extraSettingsCommit
   echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}VLESS REALITY ${RED}Disabled${cRES}"
   return
 fi
-[[ $sw = "1" ]] || return
+if [[ $sw != "1" ]]; then
+  extraSettingsRollback
+  return
+fi
 domain=$(extraGetDomain)
-[[ -n $domain ]] || { echo -e "${RED}Server domain unavailable${cRES}"; return 1; }
+[[ -n $domain ]] || { extraSettingsRollback; echo -e "${RED}Server domain unavailable${cRES}"; return 1; }
 echo -e "${GREEN} Listen port${cRES}"
 read extraPort
-[[ $extraPort =~ ^[1-9][0-9]{0,4}$ ]] && (( extraPort <= 65535 )) || { echo -e "${RED}Invalid port${cRES}"; return 1; }
-tcppf_port_available "$extraPort" || { echo -e "${RED}Port $extraPort conflicts${cRES}"; return 1; }
+[[ $extraPort =~ ^[1-9][0-9]{0,4}$ ]] && (( extraPort <= 65535 )) || { extraSettingsRollback; echo -e "${RED}Invalid port${cRES}"; return 1; }
+tcppf_port_available "$extraPort" || { extraSettingsRollback; echo -e "${RED}Port $extraPort conflicts${cRES}"; return 1; }
 uuid=$(cat /proc/sys/kernel/random/uuid)
 dest="127.0.0.1:$(extraGetPort)"
 echo -e "${GREEN} REALITY dest  (empty = $dest)${cRES}"
 read destIn
 dest=${destIn:-$dest}
-[[ -n $dest ]] || { echo -e "${RED}Invalid dest${cRES}"; return 1; }
+[[ -n $dest ]] || { extraSettingsRollback; echo -e "${RED}Invalid dest${cRES}"; return 1; }
 sni=$domain
 echo -e "${GREEN} serverName/SNI  (empty = $sni)${cRES}"
 read sniIn
 sni=${sniIn:-$sni}
-[[ -n $sni ]] || { echo -e "${RED}Invalid SNI${cRES}"; return 1; }
+[[ -n $sni ]] || { extraSettingsRollback; echo -e "${RED}Invalid SNI${cRES}"; return 1; }
 echo -e "${GREEN} Vision? [y/n]  (empty = y)${cRES}"
 read yn
 yn=${yn:-y}
 if [[ $yn = [Yy] ]]; then flow="xtls-rprx-vision"
 elif [[ $yn = [Nn] ]]; then flow=""
-else echo -e "${RED}Invalid Vision${cRES}"; return 1; fi
+else extraSettingsRollback; echo -e "${RED}Invalid Vision${cRES}"; return 1; fi
 if [[ ${DE_GWD_TEST_MODE:-0} = 1 ]]; then
   priv=test-private; pub=test-public
 else
@@ -2230,11 +2400,15 @@ else
   priv=$(printf '%s\n' "$keyPair" | awk -F': ' 'BEGIN{IGNORECASE=1} $1 ~ /^Private( key|Key)?$/{gsub(/^[ \t]+|[ \t]+$/,"",$2); print $2; exit}')
   pub=$(printf '%s\n' "$keyPair" | awk -F': ' 'BEGIN{IGNORECASE=1} $1 ~ /Public[[:space:]]*key|Password/{gsub(/^[ \t]+|[ \t]+$/,"",$2); print $2; exit}')
 fi
-[[ -n $priv && -n $pub ]] || { echo -e "${RED}x25519 key generation failed${cRES}"; return 1; }
+[[ -n $priv && -n $pub ]] || { extraSettingsRollback; echo -e "${RED}x25519 key generation failed${cRES}"; return 1; }
 shortId=$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
 jq -n --argjson port "$extraPort" --arg uuid "$uuid" --arg flow "$flow" --arg dest "$dest" --arg serverName "$sni" --arg privateKey "$priv" --arg publicKey "$pub" --arg shortId "$shortId" --arg domain "$domain" \
-  '{enabled:true,domain:$domain,port:$port,uuid:$uuid,flow:$flow,dest:$dest,serverName:$serverName,privateKey:$privateKey,publicKey:$publicKey,shortId:$shortId}' >"$settings"
-extraXrayApply || return 1
+  '{enabled:true,domain:$domain,port:$port,uuid:$uuid,flow:$flow,dest:$dest,serverName:$serverName,privateKey:$privateKey,publicKey:$publicKey,shortId:$shortId}' >"$settings" || { extraSettingsRollback; return 1; }
+if ! extraXrayApply; then
+  extraSettingsRollback
+  return 1
+fi
+extraSettingsCommit
 echo -e "${BLUE}Address:    ${YELLOW}$domain:$extraPort${cRES}"
 echo -e "${BLUE}UUID:       ${YELLOW}$uuid${cRES}"
 echo -e "${BLUE}Flow:       ${YELLOW}${flow:-none}${cRES}"
@@ -2255,18 +2429,26 @@ echo -e "${GREEN}================================ ${cRES}"
 read -s -n 1 sw
 echo
 [[ $sw = "0" || -z $sw ]] && return
+extraSettingsBegin "$settings" || return 1
 if [[ $sw = "2" ]]; then
-  jq '{enabled:false}' >"$settings" 2>/dev/null || printf '%s\n' '{"enabled":false}' >"$settings"
-  extraXrayApply || return 1
+  printf '%s\n' '{"enabled":false}' >"$settings" || { extraSettingsRollback; return 1; }
+  if ! extraXrayApply; then
+    extraSettingsRollback
+    return 1
+  fi
+  extraSettingsCommit
   echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}VLESS WS TLS ${RED}Disabled${cRES}"
   return
 fi
-[[ $sw = "1" ]] || return
+if [[ $sw != "1" ]]; then
+  extraSettingsRollback
+  return
+fi
 echo -e "${GREEN} Domain:port${cRES}"
 read vpsdomainP
-parsed=$(extraParseInstallAddr "$vpsdomainP") || { echo -e "${RED}Invalid domain${cRES}"; return 1; }
+parsed=$(extraParseInstallAddr "$vpsdomainP") || { extraSettingsRollback; echo -e "${RED}Invalid domain${cRES}"; return 1; }
 read -r domain extraPort <<<"$parsed"
-tcppf_port_available "$extraPort" || { echo -e "${RED}Port $extraPort conflicts${cRES}"; return 1; }
+tcppf_port_available "$extraPort" || { extraSettingsRollback; echo -e "${RED}Port $extraPort conflicts${cRES}"; return 1; }
 uuid=$(cat /proc/sys/kernel/random/uuid)
 path="/$(echo $uuid | awk '{print substr($0,length($1)-5)}')"
 mainPath=$(extraMainPath)
@@ -2275,13 +2457,13 @@ if [[ $path = "$mainPath" ]]; then
   path="/$(echo $uuid | awk '{print substr($0,length($1)-5)}')"
 fi
 jq -n --arg domain "$domain" --argjson port "$extraPort" --arg uuid "$uuid" --arg path "$path" \
-  '{enabled:true,domain:$domain,port:$port,uuid:$uuid,path:$path}' >"$settings"
+  '{enabled:true,domain:$domain,port:$port,uuid:$uuid,path:$path}' >"$settings" || { extraSettingsRollback; return 1; }
 local showDomain=$domain showPort=$extraPort showUuid=$uuid showPath=$path
 if ! extraXrayApply; then
-  jq '{enabled:false}' >"$settings" 2>/dev/null || printf '%s\n' '{"enabled":false}' >"$settings"
-  extraVlessWsWriteNginx || true
+  extraSettingsRollback
   return 1
 fi
+extraSettingsCommit
 if [[ $showPort = "443" ]]; then addr=$showDomain; else addr=$showDomain:$showPort; fi
 echo -e "${BLUE}Address: ${YELLOW}$addr${cRES}"
 echo -e "${BLUE}UUID:    ${YELLOW}$showUuid${cRES}"
@@ -2300,26 +2482,38 @@ echo -e "${GREEN}============================ ${cRES}"
 read -s -n 1 sw
 echo
 [[ $sw = "0" || -z $sw ]] && return
+extraSettingsBegin "$settings" || return 1
 if [[ $sw = "2" ]]; then
-  printf '%s\n' '{"enabled":false}' >"$settings"
-  extraXrayApply || return 1
+  printf '%s\n' '{"enabled":false}' >"$settings" || { extraSettingsRollback; return 1; }
+  if ! extraXrayApply; then
+    extraSettingsRollback
+    return 1
+  fi
+  extraSettingsCommit
   echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}SOCKS5 ${RED}Disabled${cRES}"
   return
 fi
-[[ $sw = "1" ]] || return
+if [[ $sw != "1" ]]; then
+  extraSettingsRollback
+  return
+fi
 domain=$(extraGetDomain)
 echo -e "${GREEN} SOCKS5 port${cRES}"
 read extraPort
-[[ $extraPort =~ ^[1-9][0-9]{0,4}$ ]] && (( extraPort <= 65535 )) || { echo -e "${RED}Invalid port${cRES}"; return 1; }
-tcppf_port_available "$extraPort" || { echo -e "${RED}Port $extraPort conflicts${cRES}"; return 1; }
+[[ $extraPort =~ ^[1-9][0-9]{0,4}$ ]] && (( extraPort <= 65535 )) || { extraSettingsRollback; echo -e "${RED}Invalid port${cRES}"; return 1; }
+tcppf_port_available "$extraPort" || { extraSettingsRollback; echo -e "${RED}Port $extraPort conflicts${cRES}"; return 1; }
 echo -e "${GREEN} User${cRES}"
 read user
 echo -e "${GREEN} Password${cRES}"
 read pass
-[[ -n $user && -n $pass ]] || { echo -e "${RED}Invalid user/password${cRES}"; return 1; }
+[[ -n $user && -n $pass ]] || { extraSettingsRollback; echo -e "${RED}Invalid user/password${cRES}"; return 1; }
 jq -n --arg domain "$domain" --argjson port "$extraPort" --arg user "$user" --arg password "$pass" \
-  '{enabled:true,domain:$domain,port:$port,user:$user,password:$password}' >"$settings"
-extraXrayApply || return 1
+  '{enabled:true,domain:$domain,port:$port,user:$user,password:$password}' >"$settings" || { extraSettingsRollback; return 1; }
+if ! extraXrayApply; then
+  extraSettingsRollback
+  return 1
+fi
+extraSettingsCommit
 echo -e "${BLUE}Address:  ${YELLOW}$domain:$extraPort${cRES}"
 echo -e "${BLUE}User:     ${YELLOW}$user${cRES}"
 echo -e "${BLUE}Password: ${YELLOW}$pass${cRES}"
@@ -2347,61 +2541,86 @@ echo -e "${GREEN}================================ ${cRES}"
 read -s -n 1 sw
 echo
 [[ $sw = "0" || -z $sw ]] && return
+extraSettingsBegin "$settings" || return 1
 if [[ $sw = "3" ]]; then
   curCount=$(jq '.rules | length' "$settings" 2>/dev/null || echo 0)
   if [[ ! $curCount =~ ^[0-9]+$ ]] || (( curCount == 0 )); then
     echo -e "${YELLOW}No dokodemo-door rules to disable${cRES}"
+    extraSettingsRollback
     continue
   fi
-  printf '%s\n' '{"enabled":false,"rules":[]}' >"$settings"
-  extraXrayApply || return 1
+  printf '%s\n' '{"enabled":false,"rules":[]}' >"$settings" || { extraSettingsRollback; return 1; }
+  if ! extraXrayApply; then
+    extraSettingsRollback
+    return 1
+  fi
+  extraSettingsCommit
   echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}dokodemo-door ${RED}Disabled${cRES}"
   continue
 fi
 if [[ ! -f $settings ]]; then
-  printf '%s\n' '{"enabled":true,"rules":[]}' >"$settings"
+  printf '%s\n' '{"enabled":true,"rules":[]}' >"$settings" || { extraSettingsRollback; return 1; }
 fi
 if [[ $sw = "2" ]]; then
   curCount=$(jq '.rules | length' "$settings" 2>/dev/null || echo 0)
   if [[ ! $curCount =~ ^[0-9]+$ ]] || (( curCount == 0 )); then
     echo -e "${YELLOW}No dokodemo-door rules to delete${cRES}"
+    extraSettingsRollback
     continue
   fi
   echo -e "${GREEN}Listen port to delete, or all${cRES}"
   read delID
-  [[ -n $delID ]] || continue
+  if [[ -z $delID ]]; then
+    extraSettingsRollback
+    continue
+  fi
   if [[ $delID = all ]]; then
-    printf '%s\n' '{"enabled":false,"rules":[]}' >"$settings"
+    printf '%s\n' '{"enabled":false,"rules":[]}' >"$settings" || { extraSettingsRollback; return 1; }
   elif [[ $delID =~ ^[0-9]+$ ]]; then
     if ! jq -e --argjson p "$delID" '.rules[] | select(.port == $p)' "$settings" >/dev/null 2>&1; then
       echo -e "${RED}Port $delID not found in rules${cRES}"
+      extraSettingsRollback
       continue
     fi
-    jq --argjson p "$delID" '.rules |= map(select(.port != $p))' "$settings" | sponge "$settings"
-    [[ $(jq '.rules | length' "$settings" 2>/dev/null || echo 0) -eq 0 ]] && jq '.enabled=false' "$settings" | sponge "$settings"
+    extraXrayJqUpdate "$settings" --argjson p "$delID" '.rules |= map(select(.port != $p))' || { extraSettingsRollback; return 1; }
+    if [[ $(jq '.rules | length' "$settings" 2>/dev/null || echo 0) -eq 0 ]]; then
+      extraXrayJqUpdate "$settings" '.enabled=false' || { extraSettingsRollback; return 1; }
+    fi
   else
     echo -e "${RED}Invalid port${cRES}"
+    extraSettingsRollback
     continue
   fi
-  extraXrayApply || return 1
+  if ! extraXrayApply; then
+    extraSettingsRollback
+    return 1
+  fi
+  extraSettingsCommit
   echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}dokodemo-door ${GREEN}Deleted${cRES}"
   continue
 fi
-[[ $sw = "1" ]] || continue
+if [[ $sw != "1" ]]; then
+  extraSettingsRollback
+  continue
+fi
 echo -e "${GREEN} Listen port${cRES}"
 read listenPort
-[[ $listenPort =~ ^[1-9][0-9]{0,4}$ ]] || { echo -e "${RED}Invalid port${cRES}"; continue; }
-tcppf_port_available "$listenPort" || { echo -e "${RED}Port $listenPort conflicts${cRES}"; continue; }
+[[ $listenPort =~ ^[1-9][0-9]{0,4}$ ]] || { extraSettingsRollback; echo -e "${RED}Invalid port${cRES}"; continue; }
+tcppf_port_available "$listenPort" || { extraSettingsRollback; echo -e "${RED}Port $listenPort conflicts${cRES}"; continue; }
 echo -e "${GREEN} Target host:port${cRES}"
 read targetInput
-parsed=$(parseDomainPort "$targetInput" 2>/dev/null) || { echo -e "${RED}Invalid target${cRES}"; continue; }
+parsed=$(parseDomainPort "$targetInput" 2>/dev/null) || { extraSettingsRollback; echo -e "${RED}Invalid target${cRES}"; continue; }
 read -r target targetPort <<<"$parsed"
 echo -e "${GREEN} Network tcp / udp / tcp,udp (empty = tcp,udp)${cRES}"
 read network
-network=$(extraDokodemoNormalizeNetwork "$network") || { echo -e "${RED}Invalid network${cRES}"; continue; }
-jq '.enabled=true' "$settings" | jq --argjson port "$listenPort" --arg target "$target" --argjson targetPort "$targetPort" --arg network "$network" \
-  '.rules += [{port:$port,target:$target,targetPort:$targetPort,network:$network}]' | sponge "$settings"
-extraXrayApply || return 1
+network=$(extraDokodemoNormalizeNetwork "$network") || { extraSettingsRollback; echo -e "${RED}Invalid network${cRES}"; continue; }
+extraXrayJqUpdate "$settings" --argjson port "$listenPort" --arg target "$target" --argjson targetPort "$targetPort" --arg network "$network" \
+  '.enabled=true | .rules += [{port:$port,target:$target,targetPort:$targetPort,network:$network}]' || { extraSettingsRollback; return 1; }
+if ! extraXrayApply; then
+  extraSettingsRollback
+  return 1
+fi
+extraSettingsCommit
 echo -e "${BLUE}Listen:  ${YELLOW}$listenPort${cRES}"
 echo -e "${BLUE}Target:  ${YELLOW}$(formatDomainPort "$target" "$targetPort")${cRES}"
 echo -e "${BLUE}Network: ${YELLOW}$network${cRES}"
@@ -2503,9 +2722,17 @@ if ! printf '%s\n' "$content" >"$temp" || ! chmod 0600 "$temp" || ! mv -f -- "$t
 fi
 }
 
+tcppf_config_is_managed(){
+[[ -f $DE_GWD_HAPROXY_CONFIG ]] && grep -Fqx '# [de_GWD] Dedicated Managed HAProxy Configuration' "$DE_GWD_HAPROXY_CONFIG"
+}
+
 tcppf_load(){
 local rules='[]' feName bind localP up parsed host upPort
 mkdir -p -- "$(dirname -- "$DE_GWD_TCPPF_SETTINGS")" || return 1
+if [[ -f $DE_GWD_HAPROXY_CONFIG ]] && ! tcppf_config_is_managed; then
+  echo -e "${RED}Existing HAProxy config is not managed by de_GWD; refusing to import or overwrite it${cRES}" >&2
+  return 1
+fi
 if [[ ! -f $DE_GWD_TCPPF_SETTINGS ]]; then
   if [[ -f $DE_GWD_HAPROXY_CONFIG ]]; then
     while IFS= read -r feName; do
@@ -2731,6 +2958,7 @@ if [[ ! -f $DE_GWD_HAPROXY_CONFIG ]]; then
   [[ -z $json_pairs ]] && return 0
   return 1
 fi
+tcppf_config_is_managed || return 1
 cfg_pairs=$(awk '
   $1 == "frontend" {fe=$2}
   $1 == "bind" && fe != "" {bind_port=$2; sub(/^.*:/, "", bind_port)}

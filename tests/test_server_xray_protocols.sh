@@ -143,6 +143,16 @@ jq -n '{enabled:true,rules:[{port:18080,target:"127.0.0.1",targetPort:80,network
 extraInboundsAppend
 assert_main_vmess "appending extras changed main VMess inbound[0]"
 
+cp -p -- "$xray_dir/config.json" "$test_root/xray.before-invalid"
+cp -p -- "$data_dir/extra-reality.json" "$test_root/extra-reality.valid"
+jq '.port="not-a-number"' "$data_dir/extra-reality.json" >"$data_dir/extra-reality.invalid"
+mv -f -- "$data_dir/extra-reality.invalid" "$data_dir/extra-reality.json"
+if extraInboundsAppend >/dev/null 2>&1; then
+  fail "invalid extra inbound was reported as success"
+fi
+cmp -s "$test_root/xray.before-invalid" "$xray_dir/config.json" || fail "invalid extra inbound changed live Xray config"
+mv -f -- "$test_root/extra-reality.valid" "$data_dir/extra-reality.json"
+
 jq -e '
   [.inbounds[] | select(.tag != null) | .tag] == ["extra-vless-ws","extra-vless-reality","extra-socks5","extra-dokodemo-0","extra-dokodemo-1","extra-dokodemo-2"]
 ' "$xray_dir/config.json" >/dev/null || fail "extra inbound tags mismatch"

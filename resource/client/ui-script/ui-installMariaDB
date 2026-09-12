@@ -9,6 +9,19 @@ CYAN='\E[1;36m'
 WHITE='\E[1;37m'
 cRES='\E[0m'
 
+wait_for_dpkg_lock(){
+local waited=0
+command -v fuser >/dev/null 2>&1 || { echo "fuser is required to inspect apt/dpkg locks" >&2; return 1; }
+while fuser /var/cache/apt/archives/lock /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+  if (( waited >= 120 )); then
+    echo "apt/dpkg lock held for > 120s" >&2
+    return 1
+  fi
+  sleep 2
+  waited=$((waited + 2))
+done
+}
+
 
 installMariaDB(){
     echo -e "${GREEN}================== ${cRES}"
@@ -26,8 +39,8 @@ installMariaDB(){
     echo -e "${GREEN}================== ${cRES}"
     read sqlnm
     
-apt update && apt install mariadb-server
-[[ $? -ne 0 ]] && rm -rf /var/lib/apt/lists/lock
+wait_for_dpkg_lock || return 1
+apt update && apt install mariadb-server || return 1
 
 mysql_secure_installation
 
@@ -144,11 +157,9 @@ systemctl disable mariadb
 rm -rf /etc/mysql
 rm -rf /var/lib/mysql
 
-apt remove --purge mariadb*
-rm -f /var/cache/apt/archives/lock
-rm -f /var/lib/apt/lists/lock
-rm -f /var/lib/dpkg/lock
-rm -f /var/lib/dpkg/lock-frontend
+wait_for_dpkg_lock || return 1
+apt remove --purge mariadb* || return 1
+wait_for_dpkg_lock || return 1
 dpkg --configure -a
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}MariaDB ${GREEN}Uninstalled${cRES}"

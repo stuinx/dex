@@ -1,0 +1,6 @@
+#!/bin/bash
+set -euo pipefail
+
+server=${1-}
+[[ $# -eq 1 && $server =~ ^[[:alnum:]][[:alnum:].:-]*$ ]] || exit 1
+exec /usr/sbin/showmount -e "$server"

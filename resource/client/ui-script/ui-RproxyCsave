@@ -120,8 +120,8 @@ jq --argjson RontingOut "$RontingOut" '.routing.rules+=[$RontingOut]' /opt/de_GW
 jq --argjson OBout "$OBout" '.outbounds+=[$OBout]' | sponge /opt/de_GWD/RproxyC/config.json
 fi
 
-chmod 666 /opt/de_GWD/RproxyC/config.json
-chmod 644 /var/www/ssl/*.key
+chmod 600 /opt/de_GWD/RproxyC/config.json
+chmod 600 /var/www/ssl/*.key 2>/dev/null || true
 
 rm -rf /lib/systemd/system/RproxyC.service
 cat << "EOF" >/etc/systemd/system/RproxyC.service

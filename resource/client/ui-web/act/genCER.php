@@ -12,6 +12,6 @@ $conf['FORWARD']['Email'] = $CFemail;
 $newJsonString = json_encode($conf, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 file_put_contents('/opt/de_GWD/0conf', $newJsonString);
 
-exec('sudo /usr/bin/ttyd -p 3000 -o /opt/de_GWD/ui-installCER &');
+exec('sudo /opt/de_GWD/ui-webStartInstall CER &');
 ?>
 <?php }?>

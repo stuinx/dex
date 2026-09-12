@@ -40,23 +40,23 @@
 
 <?php $checkCer = file_exists('/var/www/ssl/de_GWD.cer'); ?>
 
-<?php $checkcoredns = exec('sudo systemctl is-active coredns'); ?>
+<?php $checkcoredns = exec('systemctl is-active coredns'); ?>
 <?php $DoGsConf = strpos(file_get_contents('/opt/de_GWD/coredns/corefile'),'grpc://.:');?>
 
 <?php $checkBlock53 = $de_GWDconf->FORWARD->block53; ?>
 
-<?php $checkVtrui = exec('sudo systemctl is-active vtrui'); ?>
+<?php $checkVtrui = exec('systemctl is-active vtrui'); ?>
 <?php $vtruiConf = json_decode(file_get_contents('/opt/de_GWD/vtrui/config.json')); ?>
 <?php $checkFWD0 = empty($vtruiConf->inbounds[1]); ?>
 
-<?php $checkVtrui1 = exec('sudo systemctl is-active vtrui1'); ?>
+<?php $checkVtrui1 = exec('systemctl is-active vtrui1'); ?>
 <?php $checkFWD1OB = explode("\n", shell_exec('sudo /opt/de_GWD/ui-checkFWD1')); ?>
 <?php $checkFWD1 = file_exists('/opt/de_GWD/vtrui1/config.json'); ?>
 
-<?php $checkRproxyS = exec('sudo systemctl is-active RproxyS'); ?>
+<?php $checkRproxyS = exec('systemctl is-active RproxyS'); ?>
 <?php $RproxySconf = json_decode(file_get_contents('/opt/de_GWD/RproxyS/config.json')); ?>
 
-<?php $checkRproxyC = exec('sudo systemctl is-active RproxyC'); ?>
+<?php $checkRproxyC = exec('systemctl is-active RproxyC'); ?>
 <?php $RproxyCconf = json_decode(file_get_contents('/opt/de_GWD/RproxyC/config.json')); ?>
 
 <?php $FileRunWebConf = file_get_contents ('/etc/nginx/conf.d/filerun.conf'); preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $FileRunPort); $FileRunPort = $FileRunPort[0][0] ?>

@@ -22,6 +22,19 @@ export DEBIAN_FRONTEND=noninteractive
 TTYD_Ver="1.7.3"
 branch="dev"
 
+wait_for_dpkg_lock(){
+local waited=0
+command -v fuser >/dev/null 2>&1 || { echo -e "${RED}fuser is required to inspect apt/dpkg locks${cRES}" >&2; return 1; }
+while fuser /var/cache/apt/archives/lock /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+  if (( waited >= 120 )); then
+    echo -e "${RED}apt/dpkg lock held for > 120s${cRES}" >&2
+    return 1
+  fi
+  sleep 2
+  waited=$((waited + 2))
+done
+}
+
 if [[ $architecture != "amd64" ]]; then
   echo -e "${RED}only work on x86_64${cRES}"
   exit 1
@@ -798,10 +811,7 @@ DefaultLimitNPROC=1000000
 EOF
 systemctl daemon-reload
 
-rm -f /var/cache/apt/archives/lock
-rm -f /var/lib/apt/lists/lock
-rm -f /var/lib/dpkg/lock
-rm -f /var/lib/dpkg/lock-frontend
+wait_for_dpkg_lock || exit 1
 dpkg --configure -a
 
 pkgDEP1
@@ -1978,7 +1988,7 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Dependencies${cRES}\r\c"
 sed -i "/www-data/d" /etc/sudoers
 mkdir -p /etc/sudoers.d
 cat << 'EOF' >/etc/sudoers.d/degwd
-www-data ALL=(root) NOPASSWD: /opt/de_GWD/ui-*, /opt/de_GWD/ui_*, /opt/de_GWD/autoUpdate, /usr/bin/ttyd, /bin/systemctl, /usr/bin/systemctl, /usr/bin/dpkg, /bin/uname, /usr/bin/uname, /usr/sbin/showmount, /usr/sbin/nfsstat, /bin/cp, /usr/bin/cp, /bin/rm, /usr/bin/rm, /bin/cat, /usr/bin/cat, /usr/bin/zip, /usr/bin/curl
+www-data ALL=(root) NOPASSWD: /opt/de_GWD/ui-*, /opt/de_GWD/ui_*, /opt/de_GWD/autoUpdate
 EOF
 chmod 0440 /etc/sudoers.d/degwd
 
@@ -2599,10 +2609,19 @@ cat << "EOF" >/etc/rc_kernel.local
 #!/bin/bash
 PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 
-rm -f /var/cache/apt/archives/lock
-rm -f /var/lib/apt/lists/lock
-rm -f /var/lib/dpkg/lock
-rm -f /var/lib/dpkg/lock-frontend
+if ! command -v fuser >/dev/null 2>&1; then
+  echo "fuser is required to inspect apt/dpkg locks" >&2
+  exit 1
+fi
+waited=0
+while fuser /var/cache/apt/archives/lock /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+  if (( waited >= 120 )); then
+    echo "apt/dpkg lock held for > 120s" >&2
+    exit 1
+  fi
+  sleep 2
+  waited=$((waited + 2))
+done
 dpkg --configure -a
 
 dpkg --list | grep linux-image | awk '{print $2}' | grep -Fv $(uname -r) | while read line; do

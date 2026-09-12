@@ -1,8 +1,28 @@
 #!/bin/bash
-chmod +x /opt/de_GWD/update
-if [[ $(du -sk /opt/de_GWD/update 2>/dev/null | awk '{print$1}') -le 1 ]]; then
-updateCMDaddr=$(jq -r '.update.updateCMD' /opt/de_GWD/0conf 2>/dev/null | grep -oP "https://\K[^']+" | sed s'/.$//')
-systemctl stop nftables
+set -euo pipefail
+
+updateCMD=$(jq -er '.update.updateCMD // empty' /opt/de_GWD/0conf 2>/dev/null)
+updateCMDaddr=$(printf '%s\n' "$updateCMD" | grep -oE "https://[^[:space:]'\"\\)]+" | head -n 1) || {
+  echo "update command does not contain an HTTPS download URL" >&2
+  exit 1
+}
+updatePort=$(jq -er '.update.updatePort // empty' /opt/de_GWD/0conf 2>/dev/null)
+[[ $updatePort =~ ^[1-9][0-9]{0,4}$ ]] && (( updatePort <= 65535 )) || {
+  echo "invalid update port" >&2
+  exit 1
+}
+
+tmp=$(mktemp /opt/de_GWD/.update.XXXXXX)
+trap 'rm -f -- "$tmp"' EXIT
+if ! wget -qO "$tmp" "$updateCMDaddr" || [[ ! -s $tmp ]]; then
+  echo "update download failed" >&2
+  exit 1
+fi
+chmod 0700 "$tmp"
+mv -f -- "$tmp" /opt/de_GWD/update
+trap - EXIT
+
+systemctl stop nftables >/dev/null 2>&1 || true
 
 rm -rf /etc/resolv.conf
 cat << EOF >/etc/resolv.conf
@@ -12,13 +32,7 @@ nameserver 114.114.114.114
 nameserver 223.5.5.5
 EOF
 
-wget -cqO /opt/de_GWD/update $updateCMDaddr
-fi
-
-updatePort=$(jq -r '.update.updatePort' /opt/de_GWD/0conf)
-
-kill $(ps -e | grep 'ttyd' | awk '{print$1}') >/dev/null 2>&1
+pkill -x ttyd >/dev/null 2>&1 || true
 tmux kill-session -t updateGWD >/dev/null 2>&1
 sed -i "/ExecStart=/c\ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
 systemctl daemon-reload >/dev/null
-

@@ -1,0 +1,14 @@
+#!/bin/bash
+set -euo pipefail
+
+src=/opt/de_GWD/0conf
+dest=/var/www/html/restore/de_GWD_bak
+[[ -s $src ]] || exit 1
+install -d -o www-data -g www-data -m 0750 "$(dirname -- "$dest")"
+tmp=$(mktemp "${dest}.XXXXXX")
+trap 'rm -f -- "$tmp"' EXIT
+cp -f -- "$src" "$tmp"
+chown www-data:www-data "$tmp"
+chmod 0600 "$tmp"
+mv -f -- "$tmp" "$dest"
+trap - EXIT

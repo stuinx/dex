@@ -1,0 +1,4 @@
+#!/bin/bash
+set -euo pipefail
+
+exec /usr/sbin/nfsstat -m | sed '/Flags/d' | sed '/^[[:space:]]*$/d'

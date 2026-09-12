@@ -1,10 +1,6 @@
 #!/bin/bash
 # RproxyS portal: wu/LA-style raw TCP tunnel only.
 mkdir -p /opt/de_GWD/RproxyS
-if [[ ! -x /opt/de_GWD/RproxyS/RproxyS ]]; then
-  cp -f /opt/de_GWD/vtrui/vtrui /opt/de_GWD/RproxyS/RproxyS
-  chmod +x /opt/de_GWD/RproxyS/RproxyS
-fi
 
 RproxySinStatus=$(jq -r '.FORWARD.Rproxy.server.inStatus // .FORWARD.Rproxy.server.status' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 RproxySmappingStatus=$(jq -r '.FORWARD.Rproxy.server.mappingStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
@@ -12,6 +8,31 @@ RproxyStunnelPort=$(jq -r '.FORWARD.Rproxy.server.tunnel.port' /opt/de_GWD/0conf
 RproxyStunnelUUID=$(jq -r '.FORWARD.Rproxy.server.tunnel.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 RproxySinUUID=$(jq -r '.FORWARD.Rproxy.server.inUUID[].RproxyS0uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 RproxySmappingList=$(jq -r '.FORWARD.Rproxy.server.mapping' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+
+config=/opt/de_GWD/RproxyS/config.json
+config_tmp=
+next_tmp=
+service_tmp=
+binary_tmp=
+cleanup(){
+  [[ -n $config_tmp ]] && rm -f -- "$config_tmp"
+  [[ -n $next_tmp ]] && rm -f -- "$next_tmp"
+  [[ -n $service_tmp ]] && rm -f -- "$service_tmp"
+  [[ -n $binary_tmp ]] && rm -f -- "$binary_tmp"
+  return 0
+}
+trap cleanup EXIT
+
+rproxy_normalize_protocol(){
+  local protocol=${1-}
+  protocol=$(printf '%s' "$protocol" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+  case $protocol in
+    ""|null) printf '%s\n' 'tcp,udp' ;;
+    tcp|udp) printf '%s\n' "$protocol" ;;
+    tcp+udp|both|all|udp,tcp) printf '%s\n' 'tcp,udp' ;;
+    *) return 1 ;;
+  esac
+}
 
 if [[ -z $RproxyStunnelPort || -z $RproxyStunnelUUID ]]; then
   echo "RproxyS tunnel port/uuid missing in 0conf" >&2
@@ -26,89 +47,101 @@ if [[ $RproxyStunnelPort = "55443" || $RproxyStunnelPort = "443" ]]; then
   exit 1
 fi
 
-cat << EOF >/opt/de_GWD/RproxyS/config.json
-{
-  "log": {
-    "access":"none",
-    "error":"none",
-    "loglevel":"none"
-  },
-  "dns":{
-    "queryStrategy":"UseIP",
-    "disableCache":true,
-    "servers":["tcp+local://127.0.0.1:53"]
-  },
-  "routing":{
-    "rules":[
-      {"type":"field","inboundTag":["reverseTunnel"],"domain":["full:reverse.localhost"],"outboundTag":"portal"},
-      {"type":"field","inboundTag":["reverseTunnel"],"outboundTag":"portal"}
-    ]
-  },
-  "reverse": {
-    "portals": [{
-        "tag": "portal",
-        "domain": "reverse.localhost"
-     }]
-  },
-  "inbounds": [
-    {
-      "tag": "reverseTunnel",
-      "port": $RproxyStunnelPort,
-      "protocol": "vmess",
-      "settings":{
-        "clients":[
-          {
-            "id":"$RproxyStunnelUUID",
-            "alterId": 0
-          }
-        ]
-      },
-      "streamSettings": {
-        "network": "tcp"
-      }
+if [[ $RproxySmappingStatus = "on" ]]; then
+  if [[ -z $RproxySmappingList || $RproxySmappingList = "null" ]] || ! jq -e 'type == "array"' <<<"$RproxySmappingList" >/dev/null 2>&1; then
+    echo "RproxyS mapping must be a JSON array when enabled" >&2
+    exit 1
+  fi
+  len=$(jq 'length' <<<"$RproxySmappingList") || exit 1
+  for (( i=0; i<len; i++ )); do
+    port=$(jq -r --argjson i "$i" '.[$i].port // empty' <<<"$RproxySmappingList")
+    protocol=$(jq -r --argjson i "$i" '.[$i].protocol // empty' <<<"$RproxySmappingList")
+    protocol=$(rproxy_normalize_protocol "$protocol") || {
+      echo "mapping $i has unsupported protocol" >&2
+      exit 1
     }
-  ]
-}
-EOF
+    if [[ ! $port =~ ^[1-9][0-9]{0,4}$ ]] || (( port > 65535 )); then
+      echo "mapping $i port $port must be an integer between 1 and 65535" >&2
+      exit 1
+    fi
+    if [[ $port = "$RproxyStunnelPort" || $port = "55443" || $port = "443" ]]; then
+      echo "mapping $i port $port conflicts with nginx or the RproxyS tunnel" >&2
+      exit 1
+    fi
+    if jq -e --argjson i "$i" --arg port "$port" '[.[:$i][].port | tostring] | index($port) != null' <<<"$RproxySmappingList" >/dev/null 2>&1; then
+      echo "mapping $i duplicates port $port" >&2
+      exit 1
+    fi
+  done
+fi
+
+[[ -f /opt/de_GWD/vtrui/vtrui ]] || { echo "RproxyS source binary is missing" >&2; exit 1; }
+
+config_tmp=$(mktemp "${config}.XXXXXX") || exit 1
+jq -n --arg uuid "$RproxyStunnelUUID" --argjson port "$RproxyStunnelPort" '
+{
+  log: {access:"none", error:"none", loglevel:"none"},
+  dns: {queryStrategy:"UseIP", disableCache:true, servers:["tcp+local://127.0.0.1:53"]},
+  routing: {rules:[
+    {type:"field", inboundTag:["reverseTunnel"], domain:["full:reverse.localhost"], outboundTag:"portal"},
+    {type:"field", inboundTag:["reverseTunnel"], outboundTag:"portal"}
+  ]},
+  reverse: {portals:[{tag:"portal", domain:"reverse.localhost"}]},
+  inbounds: [{
+    tag:"reverseTunnel", port:$port, protocol:"vmess",
+    settings:{clients:[{id:$uuid, alterId:0}]},
+    streamSettings:{network:"tcp"}
+  }]
+}' >"$config_tmp" || exit 1
 
 if [[ $RproxySinStatus = "on" ]]; then
   for uuid in $RproxySinUUID; do
-    uuidStr='{"id":"'$uuid'", "alterId":0}'
-    jq --argjson uuidStr "$uuidStr" '
-      .inbounds |= map(if .protocol=="vmess" then .settings.clients+=[$uuidStr] else . end)
-    ' /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
+    next_tmp=$(mktemp "${config}.XXXXXX") || exit 1
+    jq --arg uuid "$uuid" '
+      .inbounds |= map(if .protocol=="vmess" then .settings.clients += [{id:$uuid, alterId:0}] else . end)
+    ' "$config_tmp" >"$next_tmp" || exit 1
+    mv -f -- "$next_tmp" "$config_tmp"
+    next_tmp=
   done
+  next_tmp=$(mktemp "${config}.XXXXXX") || exit 1
   jq '
     .inbounds |= map(if .protocol=="vmess" then .settings.clients=(.settings.clients|unique) else . end)
-  ' /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
+  ' "$config_tmp" >"$next_tmp" || exit 1
+  mv -f -- "$next_tmp" "$config_tmp"
+  next_tmp=
 fi
 
 if [[ $RproxySmappingStatus = "on" && -n $RproxySmappingList && $RproxySmappingList != "null" ]]; then
-  len=$(echo $RproxySmappingList | jq length)
   for (( i=0; i<$len; i++ )); do
     port=$(echo $RproxySmappingList | jq -r --argjson i "$i" '.[$i].port')
-    protocol=$(echo $RproxySmappingList | jq -r --argjson i "$i" '.[$i].protocol')
-    [[ -z $protocol || $protocol == "null" ]] && protocol="tcp,udp"
-    protocol=$(echo "$protocol" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
-    [[ $protocol == "tcp+udp" || $protocol == "both" || $protocol == "all" || $protocol == "udp,tcp" ]] && protocol="tcp,udp"
-    if [[ $protocol != "tcp" && $protocol != "udp" && $protocol != "tcp,udp" ]]; then
-      continue
-    fi
-    [[ ! $port =~ ^[1-9][0-9]{0,4}$ ]] || (( port > 65535 )) && continue
-    [[ $port = "$RproxyStunnelPort" || $port = "55443" || $port = "443" ]] && continue
+    protocol=$(echo $RproxySmappingList | jq -r --argjson i "$i" '.[$i].protocol // empty')
+    protocol=$(rproxy_normalize_protocol "$protocol") || exit 1
     RontingMapping=$(jq -nc --arg tag "mapping$i" '{type:"field",inboundTag:[$tag],outboundTag:"portal"}')
     IBmapping=$(jq -nc --arg tag "mapping$i" --argjson port "$port" --arg net "$protocol" \
       '{tag:$tag,port:$port,protocol:"dokodemo-door",settings:{address:"127.0.0.1",port:$port,network:$net}}')
+    next_tmp=$(mktemp "${config}.XXXXXX") || exit 1
     jq --argjson RontingMapping "$RontingMapping" --argjson IBmapping "$IBmapping" \
       '.routing.rules+=[$RontingMapping] | .inbounds+=[$IBmapping]' \
-      /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
+      "$config_tmp" >"$next_tmp" || exit 1
+    mv -f -- "$next_tmp" "$config_tmp"
+    next_tmp=
   done
 fi
 
-chmod 600 /opt/de_GWD/RproxyS/config.json
+chmod 600 "$config_tmp" && mv -f -- "$config_tmp" "$config" || exit 1
+config_tmp=
 [[ -d /var/www/ssl ]] && chmod 600 /var/www/ssl/*.key 2>/dev/null || true
 
-cat << "EOF" >/etc/systemd/system/RproxyS.service
+if [[ ! -x /opt/de_GWD/RproxyS/RproxyS ]]; then
+  binary_tmp=$(mktemp /opt/de_GWD/RproxyS/RproxyS.XXXXXX) || exit 1
+  cp -f /opt/de_GWD/vtrui/vtrui "$binary_tmp" || exit 1
+  chmod +x "$binary_tmp" || exit 1
+  mv -f -- "$binary_tmp" /opt/de_GWD/RproxyS/RproxyS || exit 1
+  binary_tmp=
+fi
+
+service_tmp=$(mktemp /etc/systemd/system/RproxyS.service.XXXXXX) || exit 1
+if ! cat >"$service_tmp" << "EOF"
 [Unit]
 Description=Rproxy Service
 After=network.target nss-lookup.target
@@ -127,6 +160,11 @@ NoNewPrivileges=true
 [Install]
 WantedBy=multi-user.target
 EOF
-systemctl daemon-reload >/dev/null
-systemctl enable RproxyS >/dev/null 2>&1
-systemctl restart RproxyS
+then
+  exit 1
+fi
+chmod 0644 "$service_tmp" && mv -f -- "$service_tmp" /etc/systemd/system/RproxyS.service || exit 1
+service_tmp=
+systemctl daemon-reload >/dev/null || exit 1
+systemctl enable RproxyS >/dev/null 2>&1 || exit 1
+systemctl restart RproxyS || exit 1

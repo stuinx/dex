@@ -40,11 +40,12 @@ if ! curl -fsSL --connect-timeout 8 --max-time 30 https://get.acme.sh | sh; then
     || wget --no-check-certificate --connect-timeout=4 -qO /tmp/acme.sh-master.zip https://gh-proxy.com/https://github.com/acmesh-official/acme.sh/archive/refs/heads/master.zip \
     || wget --no-check-certificate --connect-timeout=4 -qO /tmp/acme.sh-master.zip https://ghproxy.net/https://github.com/acmesh-official/acme.sh/archive/refs/heads/master.zip \
     || wget --no-check-certificate --connect-timeout=4 -qO /tmp/acme.sh-master.zip https://ghfast.top/https://github.com/acmesh-official/acme.sh/archive/refs/heads/master.zip
-  unzip -qo /tmp/acme.sh-master.zip -d /tmp
-  /tmp/acme.sh-master/acme.sh --install -m "$CF_Email"
+  unzip -qo /tmp/acme.sh-master.zip -d /tmp || return 1
+  /tmp/acme.sh-master/acme.sh --install -m "$CF_Email" || return 1
 fi
-"/root/.acme.sh"/acme.sh --force --upgrade  --auto-upgrade
-"/root/.acme.sh"/acme.sh --force --set-default-ca  --server letsencrypt
+[[ -x /root/.acme.sh/acme.sh ]] || return 1
+"/root/.acme.sh"/acme.sh --force --upgrade --auto-upgrade || return 1
+"/root/.acme.sh"/acme.sh --force --set-default-ca --server letsencrypt || return 1
 acmeWildcardNames(){
 local d=$1 parent n
 [[ -n $d ]] || return 1
@@ -57,14 +58,47 @@ else
   printf '%s %s\n' "$d" "*.$d"
 fi
 }
+
+acmeInstallCert(){
+local certDomain=$1 backupDir keyHad=0 certHad=0
+backupDir=$(mktemp -d /tmp/de_GWD-acme-install.XXXXXX) || return 1
+if [[ -f /var/www/ssl/de_GWD.key ]]; then
+  cp -p -- /var/www/ssl/de_GWD.key "$backupDir/key" || { rm -rf -- "$backupDir"; return 1; }
+  keyHad=1
+fi
+if [[ -f /var/www/ssl/de_GWD.cer ]]; then
+  cp -p -- /var/www/ssl/de_GWD.cer "$backupDir/cert" || { rm -rf -- "$backupDir"; return 1; }
+  certHad=1
+fi
+if ! "/root/.acme.sh"/acme.sh --force --installcert -d "$certDomain" \
+               --key-file       /var/www/ssl/de_GWD.key \
+               --fullchain-file /var/www/ssl/de_GWD.cer \
+               --reloadcmd     "chmod 600 /var/www/ssl/*.key && systemctl force-reload nginx" \
+               --ecc; then
+  [[ $keyHad = 1 ]] && cp -p -- "$backupDir/key" /var/www/ssl/de_GWD.key || rm -f -- /var/www/ssl/de_GWD.key
+  [[ $certHad = 1 ]] && cp -p -- "$backupDir/cert" /var/www/ssl/de_GWD.cer || rm -f -- /var/www/ssl/de_GWD.cer
+  rm -rf -- "$backupDir"
+  return 1
+fi
+if [[ ! -s /var/www/ssl/de_GWD.key || ! -s /var/www/ssl/de_GWD.cer ]]; then
+  [[ $keyHad = 1 ]] && cp -p -- "$backupDir/key" /var/www/ssl/de_GWD.key || rm -f -- /var/www/ssl/de_GWD.key
+  [[ $certHad = 1 ]] && cp -p -- "$backupDir/cert" /var/www/ssl/de_GWD.cer || rm -f -- /var/www/ssl/de_GWD.cer
+  rm -rf -- "$backupDir"
+  return 1
+fi
+if ! chmod 600 /var/www/ssl/de_GWD.key; then
+  [[ $keyHad = 1 ]] && cp -p -- "$backupDir/key" /var/www/ssl/de_GWD.key || rm -f -- /var/www/ssl/de_GWD.key
+  [[ $certHad = 1 ]] && cp -p -- "$backupDir/cert" /var/www/ssl/de_GWD.cer || rm -f -- /var/www/ssl/de_GWD.cer
+  rm -rf -- "$backupDir"
+  return 1
+fi
+rm -rf -- "$backupDir"
+}
+
 read -r n1 n2 <<<"$(acmeWildcardNames "$domain")"
 [[ -n $n1 && -n $n2 ]] || return 1
-"/root/.acme.sh"/acme.sh --force --issue --dns dns_cf -d "$n1" -d "$n2" -k ec-256 --dnssleep 180
-"/root/.acme.sh"/acme.sh --force --installcert -d "$n1" \
-               --key-file       /var/www/ssl/de_GWD.key  \
-               --fullchain-file /var/www/ssl/de_GWD.cer \
-               --reloadcmd     "chmod 644 /var/www/ssl/*.key && systemctl force-reload nginx" \
-               --ecc
+"/root/.acme.sh"/acme.sh --force --issue --dns dns_cf -d "$n1" -d "$n2" -k ec-256 --dnssleep 180 || return 1
+acmeInstallCert "$n1" || return 1
 
 [[ -d "/opt/de_GWD/vtrui" ]] && systemctl restart vtrui
 [[ -d "/opt/de_GWD/vtrui1" ]] && systemctl restart vtrui1

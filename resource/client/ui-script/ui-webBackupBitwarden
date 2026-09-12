@@ -1,0 +1,14 @@
+#!/bin/bash
+set -euo pipefail
+
+src=/opt/bitwarden
+dest=/var/www/html/restore/Bitwarden_bak.zip
+[[ -d $src ]] || exit 1
+install -d -o www-data -g www-data -m 0750 "$(dirname -- "$dest")"
+tmp=$(mktemp "${dest}.XXXXXX")
+trap 'rm -f -- "$tmp"' EXIT
+zip -r -q "$tmp" "$src" -x '/opt/bitwarden/icon_cache/*'
+chown www-data:www-data "$tmp"
+chmod 0600 "$tmp"
+mv -f -- "$tmp" "$dest"
+trap - EXIT

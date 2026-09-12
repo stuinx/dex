@@ -75,12 +75,13 @@ def test_sudoers_no_wildcard_nopasswd():
     source = (ROOT / 'client').read_text()
     assert 'NOPASSWD:ALL' not in source
     assert '/etc/sudoers.d/degwd' in source
-    assert '/opt/de_GWD/ui_*' in source
-    assert '/bin/cp' in source
-    assert '/bin/rm' in source
-    assert '/bin/cat' in source
-    assert '/usr/bin/zip' in source
-    assert '/usr/bin/curl' in source
+    sudoers_start = source.index("cat << 'EOF' >/etc/sudoers.d/degwd")
+    sudoers = source[sudoers_start:source.index("chmod 0440 /etc/sudoers.d/degwd", sudoers_start)]
+    assert 'NOPASSWD: /opt/de_GWD/ui-*, /opt/de_GWD/ui_*, /opt/de_GWD/autoUpdate' in sudoers
+    for command in ['/bin/cp', '/bin/rm', '/bin/cat', '/usr/bin/zip', '/usr/bin/curl', '/usr/bin/ttyd', '/bin/systemctl', '/usr/bin/dpkg']:
+        assert command not in sudoers
+    for wrapper in ['ui-webBackup', 'ui-webBackupBitwarden', 'ui-webBackupJellyfin', 'ui-webNFSstatus', 'ui-webShowmount', 'ui-webStartInstall', 'ui-webStartUpdate', 'ui-webWGqr']:
+        assert (ROOT / 'resource/client/ui-script' / wrapper).exists()
     assert '/var/lib/php/sessions' in source
     assert 'client_max_body_size 100M;' in source
     assert 'sudo [[' not in (ROOT / 'resource/client/ui-web/act/checkWG.php').read_text()
@@ -118,7 +119,7 @@ def test_conf_permissions_0640():
     assert 'python3' in pwd
     gencer = (ROOT / 'resource/client/ui-web/act/genCER.php').read_text()
     assert "sudo nohup /usr/bin/ttyd" not in gencer
-    assert "sudo /usr/bin/ttyd" in gencer
+    assert "sudo /opt/de_GWD/ui-webStartInstall CER" in gencer
 
 
 def test_tcp_time_does_not_use_http_date():
@@ -147,7 +148,13 @@ def test_ui_4am_copies_on_probe_failure():
 
 def test_packaged_ui_matches_source():
     with zipfile.ZipFile(ROOT / 'resource/client/Archive.zip') as archive:
-        for name in ['ui-installCER', 'ui-NodeSave', 'ui_4am', 'ui-autoUpdateHour']:
+        for name in [
+            'ui-installCER', 'ui-NodeSave', 'ui_4am', 'ui-autoUpdateHour',
+            'ui-FWD0save', 'ui-FWD1save', 'ui-RproxyCsave', 'ui-RproxySsave',
+            'ui-installMariaDB', 'ui-updateSave', 'ui-webBackup',
+            'ui-webBackupBitwarden', 'ui-webBackupJellyfin', 'ui-webNFSstatus',
+            'ui-webShowmount', 'ui-webStartInstall', 'ui-webStartUpdate', 'ui-webWGqr',
+        ]:
             assert archive.read('ui-script/' + name) == (ROOT / 'resource/client/ui-script' / name).read_bytes()
         assert archive.read('ui-web/index.php') == (ROOT / 'resource/client/ui-web/index.php').read_bytes()
 
@@ -244,12 +251,22 @@ def test_server_tcppf_multi_rule():
     assert 'Input local port to delete, or all' in server
 
 
+def test_server_rproxy_save_transaction():
+    result = subprocess.run(
+        ['bash', str(ROOT / 'tests' / 'test_server_rproxy_save.sh')],
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'PASS:' in result.stdout
+
+
 def test_server_rproxy_matches_client_schema():
     save = (ROOT / 'resource/server/rproxyS-save').read_text()
     apply = (ROOT / 'resource/server/rproxyS-apply').read_text()
     client_c = (ROOT / 'resource/client/ui-script/ui-RproxyCsave').read_text()
     assert 'reverse.localhost' in save
-    assert '"tag": "reverseTunnel"' in save
+    assert 'tag:"reverseTunnel"' in save
     assert 'reverseTunnelWS' not in save
     assert '/rpws' not in save
     assert 'tcp+udp' in save
@@ -274,7 +291,8 @@ def test_acme_issues_full_domain_not_last_two_labels():
     for source in (cer, srv):
         assert 'acmeWildcardNames' in source
         assert '--issue --dns dns_cf -d "$n1" -d "$n2"' in source
-        assert '--installcert -d "$n1"' in source
+        assert 'acmeInstallCert "$n1"' in source
+        assert '--installcert -d "$certDomain"' in source
         assert '-d $topDomain -d *.$topDomain' not in source
         assert '-d $domain -d *.$domain' not in source
 
@@ -282,7 +300,7 @@ def test_acme_issues_full_domain_not_last_two_labels():
 def test_findings_p1_and_p2_fixes():
     # P1-9, P1-10: RproxyS permissions
     rproxy_save = (ROOT / 'resource/server/rproxyS-save').read_text()
-    assert 'chmod 600 /opt/de_GWD/RproxyS/config.json' in rproxy_save
+    assert 'chmod 600 "$config_tmp"' in rproxy_save
     assert 'chmod 666 /opt/de_GWD/RproxyS/config.json' not in rproxy_save
     assert 'chmod 600 /var/www/ssl/*.key' in rproxy_save
     assert 'chmod 644 /var/www/ssl/*.key' not in rproxy_save
@@ -292,9 +310,11 @@ def test_findings_p1_and_p2_fixes():
     assert 'port > 65535' in rproxy_save
 
     # P1-6: Kernel dpkg lock wait
+    for path in ['client', 'server', 'resource/kernel/installkernel', 'resource/kernel/zabbly', 'resource/client/ui-script/ui-installMariaDB']:
+        source = (ROOT / path).read_text()
+        assert 'wait_for_dpkg_lock' in source
+        assert not re.search(r'rm -f(?: --)? .*?(?:apt|dpkg).*(?:lock|lock-frontend)', source)
     ik = (ROOT / 'resource/kernel/installkernel').read_text()
-    assert 'wait_for_dpkg_lock' in ik
-    assert 'rm -f /var/cache/apt/archives/lock' not in ik
 
     # P1-7: Line-by-line foreign source cleaning
     assert "sed -i -E '/xanmod\\.org|liquorix\\.net|pkgs\\.zabbly\\.com/d'" in ik
@@ -317,6 +337,18 @@ def test_findings_p1_and_p2_fixes():
     assert 'chmod 644 /var/www/ssl/*.key' not in server_src
     assert 'if ! makeSSL_D; then' in server_src
     assert 'systemctl restart vtrui >/dev/null 2>&1 || true' in server_src
+
+    # Web UI must not sudo arbitrary root file/network/system binaries.
+    web = '\n'.join(path.read_text() for path in (ROOT / 'resource/client/ui-web').rglob('*.php'))
+    for command in ['sudo cp ', 'sudo rm ', 'sudo cat ', 'sudo zip ', 'sudo curl ', 'sudo showmount ', 'sudo nfsstat ', 'sudo dpkg ', 'sudo uname ', 'sudo systemctl ', 'sudo /usr/bin/ttyd']:
+        assert command not in web
+    for path in [ROOT / 'resource/client/ui-script/ui-installCER', ROOT / 'resource/client/ui-script/ui-FWD0save', ROOT / 'resource/client/ui-script/ui-FWD1save', ROOT / 'resource/client/ui-script/ui-RproxyCsave', ROOT / 'resource/client/ui-script/ui-RproxySsave']:
+        assert 'chmod 644 /var/www/ssl/*.key' not in path.read_text()
+
+    # Candidate updates must not touch the live Xray config until jq succeeds.
+    assert 'extraXrayJqUpdate' in server_src
+    assert 'candidate=$(mktemp' in server_src
+    assert 'tcppf_config_is_managed' in server_src
 
     # P1-8: Dedicated HAProxy comment
     assert '[de_GWD] Dedicated Managed HAProxy Configuration' in server_src

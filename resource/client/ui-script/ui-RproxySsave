@@ -1,110 +1,130 @@
 #!/bin/bash
-rm -rf /opt/de_GWD/RproxyS
+set -euo pipefail
+
 mkdir -p /opt/de_GWD/RproxyS
-cp -f /opt/de_GWD/vtrui/vtrui /opt/de_GWD/RproxyS/RproxyS
-chmod +x /opt/de_GWD/RproxyS/RproxyS
 
-RproxySinStatus=$(jq -r '.FORWARD.Rproxy.server.inStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-RproxySmappingStatus=$(jq -r '.FORWARD.Rproxy.server.mappingStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+RproxySinStatus=$(jq -r '.FORWARD.Rproxy.server.inStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$' || true)
+RproxySmappingStatus=$(jq -r '.FORWARD.Rproxy.server.mappingStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$' || true)
+RproxyStunnelPort=$(jq -r '.FORWARD.Rproxy.server.tunnel.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$' || true)
+RproxyStunnelUUID=$(jq -r '.FORWARD.Rproxy.server.tunnel.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$' || true)
+RproxySinUUID=$(jq -r '.FORWARD.Rproxy.server.inUUID[].RproxyS0uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$' || true)
+RproxySmappingList=$(jq -r '.FORWARD.Rproxy.server.mapping' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$' || true)
 
-RproxyStunnelPort=$(jq -r '.FORWARD.Rproxy.server.tunnel.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-RproxyStunnelUUID=$(jq -r '.FORWARD.Rproxy.server.tunnel.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-RproxySinUUID=$(jq -r '.FORWARD.Rproxy.server.inUUID[].RproxyS0uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-RproxySmappingList=$(jq -r '.FORWARD.Rproxy.server.mapping' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-
-cat << EOF >/opt/de_GWD/RproxyS/config.json
-{
-  "log": {
-    "access":"none",
-    "error":"none",
-    "loglevel":"none"
-  },
-  "dns":{
-    "queryStrategy":"UseIP",
-    "disableCache":true,
-    "servers":["tcp+local://127.0.0.1:53"]
-  },
-  "routing":{
-    "rules":[
-      {"type":"field","inboundTag":["reverseTunnel"],"domain":["full:reverse.localhost"],"outboundTag":"portal"},
-      {"type":"field","inboundTag":["reverseTunnel"],"outboundTag":"portal"}
-    ]
-  },
-  "reverse": {
-    "portals": [{
-        "tag": "portal",
-        "domain": "reverse.localhost"
-     }]
-  },
-  "inbounds": [
-    {
-      "tag": "reverseTunnel",
-      "port": $RproxyStunnelPort,
-      "protocol": "vmess",
-      "settings":{
-        "clients":[
-          {
-            "id":"$RproxyStunnelUUID",
-            "alterId": 0
-          }
-        ]
-      },
-      "streamSettings": {
-        "network": "tcp"
-      }
-    }
-  ]
+rproxy_normalize_protocol(){
+local protocol=${1-}
+protocol=$(printf '%s' "$protocol" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+case $protocol in
+  ""|null) printf '%s\n' 'tcp,udp' ;;
+  tcp|udp) printf '%s\n' "$protocol" ;;
+  tcp+udp|both|all|udp,tcp) printf '%s\n' 'tcp,udp' ;;
+  *) return 1 ;;
+esac
 }
-EOF
 
+if [[ -z $RproxyStunnelPort || -z $RproxyStunnelUUID ]] || [[ ! $RproxyStunnelPort =~ ^[1-9][0-9]{0,4}$ ]] || (( RproxyStunnelPort > 65535 )); then
+  echo "invalid RproxyS tunnel settings" >&2
+  exit 1
+fi
+if [[ $RproxyStunnelPort = "55443" || $RproxyStunnelPort = "443" ]]; then
+  echo "RproxyS tunnel port conflicts with nginx" >&2
+  exit 1
+fi
+if [[ $RproxySmappingStatus = "on" ]]; then
+  if [[ -z $RproxySmappingList || $RproxySmappingList = "null" ]] || ! jq -e 'type == "array"' <<<"$RproxySmappingList" >/dev/null 2>&1; then
+    echo "RproxyS mapping must be a JSON array when enabled" >&2
+    exit 1
+  fi
+  len=$(jq 'length' <<<"$RproxySmappingList") || exit 1
+  for (( i=0; i<len; i++ )); do
+    port=$(jq -r --argjson i "$i" '.[$i].port // empty' <<<"$RproxySmappingList")
+    protocol=$(jq -r --argjson i "$i" '.[$i].protocol // empty' <<<"$RproxySmappingList")
+    protocol=$(rproxy_normalize_protocol "$protocol") || { echo "mapping $i has unsupported protocol" >&2; exit 1; }
+    [[ $port =~ ^[1-9][0-9]{0,4}$ ]] && (( port <= 65535 )) || { echo "mapping $i has invalid port" >&2; exit 1; }
+    [[ $port != "$RproxyStunnelPort" && $port != "55443" && $port != "443" ]] || { echo "mapping $i conflicts with nginx or tunnel" >&2; exit 1; }
+    if jq -e --argjson i "$i" --arg port "$port" '[.[:$i][].port | tostring] | index($port) != null' <<<"$RproxySmappingList" >/dev/null 2>&1; then
+      echo "mapping $i duplicates port $port" >&2
+      exit 1
+    fi
+  done
+fi
+
+[[ -f /opt/de_GWD/vtrui/vtrui ]] || { echo "RproxyS source binary is missing" >&2; exit 1; }
+
+config=/opt/de_GWD/RproxyS/config.json
+config_tmp=
+next_tmp=
+service_tmp=
+binary_tmp=
+cleanup(){
+  [[ -n $config_tmp ]] && rm -f -- "$config_tmp"
+  [[ -n $next_tmp ]] && rm -f -- "$next_tmp"
+  [[ -n $service_tmp ]] && rm -f -- "$service_tmp"
+  [[ -n $binary_tmp ]] && rm -f -- "$binary_tmp"
+  return 0
+}
+trap cleanup EXIT
+
+config_tmp=$(mktemp "${config}.XXXXXX") || exit 1
+jq -n --arg uuid "$RproxyStunnelUUID" --argjson port "$RproxyStunnelPort" '
+{
+  log: {access:"none", error:"none", loglevel:"none"},
+  dns: {queryStrategy:"UseIP", disableCache:true, servers:["tcp+local://127.0.0.1:53"]},
+  routing: {rules:[
+    {type:"field", inboundTag:["reverseTunnel"], domain:["full:reverse.localhost"], outboundTag:"portal"},
+    {type:"field", inboundTag:["reverseTunnel"], outboundTag:"portal"}
+  ]},
+  reverse: {portals:[{tag:"portal", domain:"reverse.localhost"}]},
+  inbounds: [{
+    tag:"reverseTunnel", port:$port, protocol:"vmess",
+    settings:{clients:[{id:$uuid, alterId:0}]},
+    streamSettings:{network:"tcp"}
+  }]
+}' >"$config_tmp" || exit 1
 
 if [[ $RproxySinStatus = "on" ]]; then
-for uuid in $RproxySinUUID; do
-uuidStr='{"id":"'$uuid'", "alterId":0}'
-jq --argjson uuidStr "$uuidStr" '.inbounds[0].settings.clients+=[$uuidStr]' /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
-done
-
-uniqueClient=$(jq -r '.inbounds[0].settings.clients | unique' /opt/de_GWD/RproxyS/config.json 2>/dev/null | grep -v '^null$')
-jq --argjson uniqueClient "$uniqueClient" '.inbounds[0].settings.clients=$uniqueClient' /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
+  for uuid in $RproxySinUUID; do
+    next_tmp=$(mktemp "${config}.XXXXXX") || exit 1
+    jq --arg uuid "$uuid" '.inbounds[0].settings.clients += [{id:$uuid, alterId:0}]' "$config_tmp" >"$next_tmp" || exit 1
+    mv -f -- "$next_tmp" "$config_tmp"
+    next_tmp=
+  done
+  next_tmp=$(mktemp "${config}.XXXXXX") || exit 1
+  jq '.inbounds[0].settings.clients |= unique' "$config_tmp" >"$next_tmp" || exit 1
+  mv -f -- "$next_tmp" "$config_tmp"
+  next_tmp=
 fi
 
-
-if [[ $RproxySmappingStatus = "on" ]]; then
-
-len=$(echo $RproxySmappingList | jq length)
-
-for (( i=0; i<$len; i++ )); do
-port=$(echo $RproxySmappingList | jq -r --argjson i "$i" '.[$i].port')
-protocol=$(echo $RproxySmappingList | jq -r --argjson i "$i" '.[$i].protocol')
-
-RontingMapping=`cat << EOF
-      {"type":"field","inboundTag":["mapping$i"],"outboundTag":"portal"}
-EOF
-`
-
-IBmapping=`cat << EOF
-    {
-      "tag": "mapping$i",
-      "port": $port,
-      "protocol": "dokodemo-door",
-      "settings": {
-        "address": "127.0.0.1",
-        "port": $port,
-        "network": "$protocol"
-      }
-    }
-EOF
-`
-jq --argjson RontingMapping "$RontingMapping" '.routing.rules+=[$RontingMapping]' /opt/de_GWD/RproxyS/config.json |\
-jq --argjson IBmapping "$IBmapping" '.inbounds+=[$IBmapping]' | sponge /opt/de_GWD/RproxyS/config.json
-done
+if [[ $RproxySmappingStatus = "on" && -n $RproxySmappingList && $RproxySmappingList != "null" ]]; then
+  for (( i=0; i<len; i++ )); do
+    port=$(jq -r --argjson i "$i" '.[$i].port' <<<"$RproxySmappingList")
+    protocol=$(jq -r --argjson i "$i" '.[$i].protocol // empty' <<<"$RproxySmappingList")
+    protocol=$(rproxy_normalize_protocol "$protocol") || exit 1
+    RontingMapping=$(jq -nc --arg tag "mapping$i" '{type:"field",inboundTag:[$tag],outboundTag:"portal"}')
+    IBmapping=$(jq -nc --arg tag "mapping$i" --argjson port "$port" --arg net "$protocol" \
+      '{tag:$tag,port:$port,protocol:"dokodemo-door",settings:{address:"127.0.0.1",port:$port,network:$net}}')
+    next_tmp=$(mktemp "${config}.XXXXXX") || exit 1
+    jq --argjson RontingMapping "$RontingMapping" --argjson IBmapping "$IBmapping" \
+      '.routing.rules += [$RontingMapping] | .inbounds += [$IBmapping]' \
+      "$config_tmp" >"$next_tmp" || exit 1
+    mv -f -- "$next_tmp" "$config_tmp"
+    next_tmp=
+  done
 fi
 
-chmod 666 /opt/de_GWD/RproxyS/config.json
-[[ -d /var/www/ssl ]] && chmod 644 /var/www/ssl/*.key 2>/dev/null || true
+chmod 600 "$config_tmp" && mv -f -- "$config_tmp" "$config" || exit 1
+config_tmp=
+[[ -d /var/www/ssl ]] && chmod 600 /var/www/ssl/*.key 2>/dev/null || true
 
-rm -rf /lib/systemd/system/RproxyS.service
-cat << "EOF" >/etc/systemd/system/RproxyS.service
+if [[ ! -x /opt/de_GWD/RproxyS/RproxyS ]]; then
+  binary_tmp=$(mktemp /opt/de_GWD/RproxyS/RproxyS.XXXXXX) || exit 1
+  cp -f /opt/de_GWD/vtrui/vtrui "$binary_tmp" || exit 1
+  chmod +x "$binary_tmp" || exit 1
+  mv -f -- "$binary_tmp" /opt/de_GWD/RproxyS/RproxyS || exit 1
+  binary_tmp=
+fi
+
+service_tmp=$(mktemp /etc/systemd/system/RproxyS.service.XXXXXX) || exit 1
+cat >"$service_tmp" << "EOF"
 [Unit]
 Description=Rproxy Service
 After=network.target nss-lookup.target
@@ -123,6 +143,8 @@ NoNewPrivileges=true
 [Install]
 WantedBy=multi-user.target
 EOF
+chmod 0644 "$service_tmp" && mv -f -- "$service_tmp" /etc/systemd/system/RproxyS.service || exit 1
+service_tmp=
 systemctl daemon-reload >/dev/null
 systemctl enable RproxyS >/dev/null 2>&1
 systemctl restart RproxyS
