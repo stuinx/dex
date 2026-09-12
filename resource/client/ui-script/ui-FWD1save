@@ -143,7 +143,7 @@ jq --argjson OBfwd "$OBfwd" '.outbounds+=[$OBfwd]' |\
 jq --argjson OBdir "$OBdir" '.outbounds+=[$OBdir]' | sponge /opt/de_GWD/vtrui1/config.json
 
 chmod 666 /opt/de_GWD/vtrui1/config.json
-chmod 600 /var/www/ssl/*.key 2>/dev/null || true
+chmod 644 /var/www/ssl/*.key
 
 rm -rf /lib/systemd/system/vtrui1.service
 cat << "EOF" >/etc/systemd/system/vtrui1.service

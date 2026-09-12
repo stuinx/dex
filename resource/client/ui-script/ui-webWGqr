@@ -1,7 +1,0 @@
-#!/bin/bash
-set -euo pipefail
-
-[[ $# -eq 1 && ${1-} =~ ^[0-9]{1,3}$ ]] || exit 1
-file="/etc/wireguard/client${1}.conf"
-[[ -f $file ]] || exit 1
-exec /bin/cat -- "$file"

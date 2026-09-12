@@ -20,8 +20,7 @@ if acmeWildcardNames '' >/dev/null 2>&1; then fail "empty domain accepted"; fi
 cer="$repo_dir/resource/client/ui-script/ui-installCER"
 grep -q 'acmeWildcardNames' "$cer" || fail "ui-installCER missing acmeWildcardNames"
 grep -q -- '--issue --dns dns_cf -d "$n1" -d "$n2"' "$cer" || fail "ui-installCER issue must use n1 n2"
-grep -q -- 'acmeInstallCert "$n1"' "$cer" || fail "ui-installCER installcert must use n1"
-grep -q -- '--installcert -d "$certDomain"' "$cer" || fail "ui-installCER installcert helper missing"
+grep -q -- '--installcert -d "$n1"' "$cer" || fail "ui-installCER installcert must use n1"
 if grep -Fq -- '-d $domain -d *.$domain' "$cer"; then fail "ui-installCER still uses apex+wildcard SAN"; fi
 if grep -Fq -- '-d $topDomain -d *.$topDomain' "$cer"; then fail "ui-installCER still uses last-two-labels SAN"; fi
 echo OK

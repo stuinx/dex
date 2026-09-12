@@ -185,7 +185,7 @@
 
           <div class="card-body" id="NFSbody" style="display:<?php if ($checkNFS === true) echo 'block'; else echo 'none';?>">
 <?php
-$arrayNFS=shell_exec('sudo /opt/de_GWD/ui-webNFSstatus');
+$arrayNFS=shell_exec("sudo nfsstat -m | sed '/Flags/d' | sed '/^\s*$/d'");
 $arrayNFS=explode("\n", $arrayNFS);
 $NFSnum=count($arrayNFS)-1;
 for( $i=0; $i<$NFSnum; $i++){

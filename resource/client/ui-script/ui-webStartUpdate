@@ -1,5 +1,0 @@
-#!/bin/bash
-set -euo pipefail
-
-[[ $# -eq 0 ]] || exit 1
-exec /bin/systemctl start updateGWD

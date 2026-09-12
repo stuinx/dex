@@ -202,7 +202,7 @@
               </div>
               <a class="card-footer text-white clearfix small z-1">
                 <span id="uptime" class="float-left"></span>
-                <span class="float-right"><?php $kernelV=exec('uname -r'); echo str_replace("-arm64", "", str_replace("-amd64", "", $kernelV));?></span>
+                <span class="float-right"><?php $kernelV=exec('sudo uname -r'); echo str_replace("-arm64", "", str_replace("-amd64", "", $kernelV));?></span>
               </a>
             </div>
           </div>

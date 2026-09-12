@@ -81,7 +81,7 @@ extProtocol=$(echo $RproxyCmappingList | jq -r --argjson i "$i" '.[$i].extProtoc
 intIP=$(echo $RproxyCmappingList | jq -r --argjson i "$i" '.[$i].intIP')
 intPort=$(echo $RproxyCmappingList | jq -r --argjson i "$i" '.[$i].intPort')
 
-RoutingMapping=`cat << EOF
+RontingMapping=`cat << EOF
       {"type":"field","inboundTag":["bridge"],"port":"$extPort","network":"$extProtocol","outboundTag":"mapping$i"}
 EOF
 `
@@ -95,7 +95,7 @@ OBmapping=`cat << EOF
     }
 EOF
 `
-jq --argjson RoutingMapping "$RoutingMapping" '.routing.rules+=[$RoutingMapping]' /opt/de_GWD/RproxyC/config.json |\
+jq --argjson RontingMapping "$RontingMapping" '.routing.rules+=[$RontingMapping]' /opt/de_GWD/RproxyC/config.json |\
 jq --argjson OBmapping "$OBmapping" '.outbounds+=[$OBmapping]' | sponge /opt/de_GWD/RproxyC/config.json
 done
 fi
@@ -120,8 +120,8 @@ jq --argjson RontingOut "$RontingOut" '.routing.rules+=[$RontingOut]' /opt/de_GW
 jq --argjson OBout "$OBout" '.outbounds+=[$OBout]' | sponge /opt/de_GWD/RproxyC/config.json
 fi
 
-chmod 600 /opt/de_GWD/RproxyC/config.json
-chmod 600 /var/www/ssl/*.key 2>/dev/null || true
+chmod 666 /opt/de_GWD/RproxyC/config.json
+chmod 644 /var/www/ssl/*.key
 
 rm -rf /lib/systemd/system/RproxyC.service
 cat << "EOF" >/etc/systemd/system/RproxyC.service

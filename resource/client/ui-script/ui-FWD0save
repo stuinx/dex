@@ -22,6 +22,6 @@ for uuid in $FWD0uuid; do
 uuidStr='{"id":"'$uuid'","alterId":0}'
 jq --argjson uuidStr1 "$uuidStr" '.inbounds[1].settings.clients+=[$uuidStr1]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
 done
-chmod 600 /var/www/ssl/*.key 2>/dev/null || true
+chmod 644 /var/www/ssl/*.key
 
 [[ $1 = "r" ]] && systemctl restart vtrui >/dev/null

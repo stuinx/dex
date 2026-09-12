@@ -74,13 +74,14 @@ frontend relay0
 backend relay0
   server endpoint hnn.example:32096 check resolvers local init-addr none
 EOF
-cp "$DE_GWD_HAPROXY_CONFIG" "$test_root/unmanaged.before"
-if tcppf_sync_runtime >/dev/null 2>&1; then
-  fail "unmanaged HAProxy config was accepted for overwrite"
+tcppf_load
+if tcppf_runtime_matches; then
+  fail "stale HAProxy config was treated as in sync with tcppf.json"
 fi
-cmp -s "$test_root/unmanaged.before" "$DE_GWD_HAPROXY_CONFIG" || fail "unmanaged HAProxy config was modified"
-rm -f -- "$DE_GWD_HAPROXY_CONFIG"
-tcppf_apply_runtime
+tcppf_sync_runtime >/dev/null
+assert_contains 'frontend p20001' "$DE_GWD_HAPROXY_CONFIG" "sync did not restore json frontends"
+assert_contains 'frontend p20002' "$DE_GWD_HAPROXY_CONFIG" "sync did not restore second frontend"
+assert_not_contains 'frontend relay0' "$DE_GWD_HAPROXY_CONFIG" "sync left legacy frontend"
 
 if printf '%s\n' 'duplicate.example:443' '20002' | tcppf_add >/dev/null 2>&1; then
   fail "duplicate local port was accepted"
@@ -109,15 +110,10 @@ frontend legacy-name
 backend legacy-name
   server endpoint [2001:db8::1]:10443 check resolvers local init-addr none
 EOF
-cp "$DE_GWD_HAPROXY_CONFIG" "$test_root/config.before"
-if tcppf_load >/dev/null 2>&1; then
-  fail "legacy HAProxy config was imported"
-fi
-[[ ! -e $DE_GWD_TCPPF_SETTINGS ]] || fail "unmanaged HAProxy config caused settings creation"
-cmp -s "$test_root/config.before" "$DE_GWD_HAPROXY_CONFIG" || fail "legacy HAProxy config was modified"
+tcppf_load
+[[ $(jq '.rules | length' "$DE_GWD_TCPPF_SETTINGS") = 1 ]] || fail "legacy HAProxy rule was not imported"
+jq -e '.rules[0].localPort == 21001 and .rules[0].upstream == "[2001:db8::1]:10443"' "$DE_GWD_TCPPF_SETTINGS" >/dev/null || fail "legacy HAProxy rule was imported incorrectly"
 
-rm -f -- "$DE_GWD_HAPROXY_CONFIG"
-printf '%s\n' '{"rules":[{"localPort":21001,"upstream":"[2001:db8::1]:10443"}]}' >"$DE_GWD_TCPPF_SETTINGS"
 tcppf_apply_runtime
 cp "$DE_GWD_TCPPF_SETTINGS" "$test_root/settings.before"
 cp "$DE_GWD_HAPROXY_CONFIG" "$test_root/config.before"

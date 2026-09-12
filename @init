@@ -7,17 +7,18 @@ fi
 if [[ $(free -m | awk 'NR==3{print$2}') = "0" ]] && [[ $virt_type != "container" ]]; then
 if [[ $(df -T / | awk '{print$2}' | tail -n 1) = "btrfs" ]]; then
 btrfs subvolume create /swap 2>/dev/null
-if btrfs filesystem mkswapfile --size 1g --uuid clear /swap/swapfile 2>/dev/null && swapon /swap/swapfile 2>/dev/null; then
+btrfs filesystem mkswapfile --size 1g --uuid clear /swap/swapfile 2>/dev/null
+swapon /swap/swapfile
 sed -i "/swapfile/d" /etc/fstab
 echo "/swap/swapfile none swap defaults 0 0" >>/etc/fstab
-fi
 else
 fallocate -l 1G /swapfile 2>/dev/null
 dd if=/dev/zero of=/swapfile bs=1M count=1024 status=progress 2>/dev/null
-if [[ -f /swapfile ]] && mkswap -U clear /swapfile >/dev/null 2>&1 && swapon /swapfile 2>/dev/null; then
+chmod 600 /swapfile
+mkswap -U clear /swapfile
+swapon /swapfile
 sed -i "/swapfile/d" /etc/fstab
 echo "/swapfile none swap defaults 0 0" >>/etc/fstab
-fi
 fi
 echo "RESUME=" >/etc/initramfs-tools/conf.d/resume
 fi

@@ -1,9 +1,0 @@
-#!/bin/bash
-set -euo pipefail
-
-case ${1-} in
-  Bitwarden|CER|Docker|FileRun|Jellyfin|MariaDB|NFS|WG) ;;
-  *) exit 1 ;;
-esac
-
-exec /usr/bin/ttyd -p 3000 -o "/opt/de_GWD/ui-install${1}"
