@@ -175,15 +175,15 @@ writeDockerDaemon() {
   mkdir -p /etc/docker/
   systemctl stop docker docker.socket containerd
   if [[ -f /etc/docker/daemon.json ]]; then
-    jq '.iptables=false | .["registry-mirrors"]=["docker.1ms.run","docker.1panel.live","hub.rat.dev"]' /etc/docker/daemon.json | sponge /etc/docker/daemon.json
+    jq '.iptables=false | .["registry-mirrors"]=["https://docker.1ms.run","https://docker.1panel.live","https://hub.rat.dev"]' /etc/docker/daemon.json | sponge /etc/docker/daemon.json
   else
     cat << EOF >/etc/docker/daemon.json
 {
   "iptables": false,
   "registry-mirrors": [
-    "docker.1ms.run",
-    "docker.1panel.live",
-    "hub.rat.dev"
+    "https://docker.1ms.run",
+    "https://docker.1panel.live",
+    "https://hub.rat.dev"
   ]
 }
 EOF
