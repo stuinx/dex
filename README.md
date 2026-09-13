@@ -10,7 +10,6 @@
 
 ## Server (amd64 & arm64) support kvm xen openvz lxc and so on:
 ```
-apt install -y wget
 bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx/dex/feat/scratch-features/server)
 ```
 
@@ -18,7 +17,6 @@ bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx
 
 ## Client (amd64 & arm64):
 ```
-apt install -y wget
 bash <(wget --no-check-certificate -qO- https://ghproxy.net/https://raw.githubusercontent.com/stuinx/dex/feat/scratch-features/client)
 ```
 或
