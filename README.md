@@ -11,7 +11,7 @@
 ## Server (amd64 & arm64) support kvm xen openvz lxc and so on:
 ```
 apt install -y wget
-bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/jacyl4/de_GWD/main/server)
+bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx/dex/feat/scratch-features/server)
 ```
 
 ![de_GWD 0](https://raw.githubusercontent.com/jacyl4/de_GWD/main/resource/screenshot/0.png)
@@ -19,7 +19,7 @@ bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/jacyl4
 ## Client (amd64 & arm64):
 ```
 apt install -y wget
-bash <(wget --no-check-certificate -qO- https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/de_GWD/main/client)
+bash <(wget --no-check-certificate -qO- https://ghproxy.net/https://raw.githubusercontent.com/stuinx/dex/feat/scratch-features/client)
 ```
 或
 
