@@ -143,7 +143,25 @@ wget_gh() {
   local url=$2
   local cand
   for cand in $(gh_candidates "$url"); do
-    if wget --no-check-certificate --show-progress -cq -t 3 --speed-limit 200000 --speed-time 8 -O "$outfile" "$cand" 2>/dev/null; then
+    rm -f "$outfile"
+    # 现代 GNU wget 已移除 --speed-limit/--speed-time,改为后台 wget + 每 1s 采样,
+    # 均速连续 8s 低于 200KB/s 即熔断该候选(与 curl_gh 的低速熔断语义一致)。
+    wget --no-check-certificate -cq -t 3 -O "$outfile" "$cand" 2>/dev/null &
+    local pid=$!
+    local e=0
+    local sz=0
+    while kill -0 $pid 2>/dev/null; do
+      sleep 1
+      e=$((e+1))
+      sz=$(wc -c < "$outfile" 2>/dev/null || echo 0)
+      if [[ $e -ge 8 ]] && [[ $((sz / e)) -lt 204800 ]]; then
+        kill $pid 2>/dev/null
+        wait $pid 2>/dev/null
+        break
+      fi
+    done
+    if [[ -s "$outfile" ]]; then
+      wait $pid 2>/dev/null
       return 0
     fi
     rm -f "$outfile"
