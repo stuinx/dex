@@ -1,4 +1,4 @@
-v1.26.5
+v1.26.6
 -
 <?php
 $str= file_get_contents('https://raw.githubusercontent.com/stuinx/dex/feat/scratch-features/version.php');
