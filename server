@@ -143,6 +143,11 @@ wget --show-progress -cqO /tmp/version.php https://raw.githubusercontent.com/stu
 [[ $(du -sk /tmp/version.php 2>/dev/null | awk '{print$1}') -ge 4 ]] && mv -f /tmp/version.php /opt/de_GWD/version.php
 fi
 
+if [[ ! -s /opt/de_GWD/rproxyS-save ]]; then
+wget -t 5 -T 15 -cqO /opt/de_GWD/rproxyS-save "https://raw.githubusercontent.com/stuinx/dex/$branch/resource/server/rproxyS-save" 2>/dev/null || true
+[[ -s /opt/de_GWD/rproxyS-save ]] && chmod +x /opt/de_GWD/rproxyS-save
+fi
+
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Repository${cRES}"
 }
 
@@ -2022,14 +2027,34 @@ esac
 
 rproxyScommit(){
 # Auto-deploy after every mutation (no standalone Apply option).
-local deploy rc
+# Deployer is /opt/de_GWD/rproxyS-save (the same resource installRproxyS ships).
+# The old ui-RproxySsave name exists on client-side UIs, not on the server.
+local f=/opt/de_GWD/rproxyS-save
+local here=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)
+local src url rc
 [[ ${DE_GWD_TEST_MODE:-0} = 1 ]] && return 0
-deploy="${DE_GWD_DATA_DIR:-/opt/de_GWD}/ui-RproxySsave"
-[[ -x $deploy ]] || { echo -e "${RED}missing $deploy${cRES}"; return 1; }
-"$deploy" >/dev/null 2>&1
-rc=$?
-[[ $rc = 0 ]] || echo -e "${RED}RproxyS deploy failed (rc=$rc)${cRES}"
-return $rc
+for src in "$f" "$here/rproxyS-save" "$here/resource/server/rproxyS-save" /opt/de_GWD/resource/server/rproxyS-save; do
+  [[ -f $src ]] || continue
+  if [[ $src != $f ]]; then
+    cp -f "$src" "$f" && chmod +x "$f"
+  fi
+  bash "$f" >/dev/null 2>&1
+  rc=$?
+  [[ $rc = 0 ]] || echo -e "${RED}RproxyS deploy failed (rc=$rc)${cRES}"
+  return $rc
+done
+url="https://raw.githubusercontent.com/stuinx/dex/${branch:-dev}/resource/server/rproxyS-save"
+mkdir -p /opt/de_GWD
+wget -t 5 -T 15 -cqO "$f" "$url" 2>/dev/null || curl -fsSLo "$f" "$url" 2>/dev/null || true
+if [[ -s $f ]]; then
+  chmod +x "$f"
+  bash "$f" >/dev/null 2>&1
+  rc=$?
+  [[ $rc = 0 ]] || echo -e "${RED}RproxyS deploy failed (rc=$rc)${cRES}"
+  return $rc
+fi
+echo -e "${RED}missing $f${cRES}"
+return 1
 }
 
 rproxySstop(){
