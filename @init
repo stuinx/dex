@@ -242,8 +242,8 @@ deb http://cloudfront.debian.net/debian-security bookworm-security main contrib 
 deb http://cloudfront.debian.net/debian bookworm-updates main contrib non-free non-free-firmware
 deb http://cloudfront.debian.net/debian bookworm-backports main contrib non-free non-free-firmware
 EOF
-apt update --fix-missing && apt upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
-apt full-upgrade -y && apt --purge autoremove -y && apt clean -y && apt autoclean -y || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
+apt-get update -o APT::Update::Error-Mode=any && apt-get upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt-get full-upgrade -y && apt-get --purge autoremove -y && apt-get clean && apt-get autoclean || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge haveged
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober$') ]] && apt remove --purge os-prober
@@ -266,7 +266,10 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^chrony$') ]] && aptPKG+=(chrony)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^irqbalance$') ]] && [[ $(nproc --all) -gt 1 ]] && aptPKG+=(irqbalance)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^libmimalloc2.0') ]] && aptPKG+=(libmimalloc2.0)
-[[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
+if [[ -n $aptPKG ]]; then
+  apt-get update -o APT::Update::Error-Mode=any || exit 1
+  apt-get install -y $(echo ${aptPKG[@]}) || exit 1
+fi
 
 [[ -f "/etc/ld.so.preload" ]] && sed -i "/libjemalloc/d" /etc/ld.so.preload
 ldconfig

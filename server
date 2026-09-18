@@ -63,8 +63,8 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^libmimalloc2.0') ]] && aptPKG+=(libmimalloc2.0)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^irqbalance$') ]] && [[ $(nproc --all) -gt 1 ]] && aptPKG+=(irqbalance)
 if [[ -n $aptPKG ]]; then
-  apt update || { echo -e "${WHITE}Base dependencies${RED} APT update Failed${cRES}"; exit 1; }
-  apt install -y $(echo ${aptPKG[@]}) || { echo -e "${WHITE}Base dependencies${RED} APT install Failed${cRES}"; exit 1; }
+  apt-get update -o APT::Update::Error-Mode=any || { echo -e "${WHITE}Base dependencies${RED} APT update Failed${cRES}"; exit 1; }
+  apt-get install -y $(echo ${aptPKG[@]}) || { echo -e "${WHITE}Base dependencies${RED} APT install Failed${cRES}"; exit 1; }
 fi
 }
 
@@ -77,7 +77,10 @@ fi
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^wget$') ]] && aptPKG+=(wget)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^cron$') ]] && aptPKG+=(cron)
-[[ -n $aptPKG ]] && apt update && apt install -y $(echo ${aptPKG[@]})
+if [[ -n $aptPKG ]]; then
+  apt-get update -o APT::Update::Error-Mode=any || exit 1
+  apt-get install -y $(echo ${aptPKG[@]}) || exit 1
+fi
 }
 
 
@@ -145,35 +148,35 @@ fi
 if [[ $(checkSum /opt/de_GWD/doh-server $sha256sum_don_server) = "false" ]]; then
 rm -rf /tmp/doh-server
 wget --show-progress -cqO /tmp/doh-server "$repoBase/resource/doh/doh_s_$architecture"
-[[ $(checkSum /tmp/doh-server $sha256sum_don_server) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
+[[ $(checkSum /tmp/doh-server $sha256sum_don_server) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit 1
 [[ $(checkSum /tmp/doh-server $sha256sum_don_server) = "true" ]] && mv -f /tmp/doh-server /opt/de_GWD/doh-server && chmod +x /opt/de_GWD/doh-server
 fi
 
 if [[ $(checkSum /usr/sbin/nginx $sha256sum_nginx) = "false" ]]; then
 rm -rf /tmp/nginx
 wget --show-progress -cqO /tmp/nginx "$repoBase/resource/nginx/nginx_${architecture}"
-[[ $(checkSum /tmp/nginx $sha256sum_nginx) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
+[[ $(checkSum /tmp/nginx $sha256sum_nginx) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit 1
 [[ $(checkSum /tmp/nginx $sha256sum_nginx) = "true" ]] && mv -f /tmp/nginx /usr/sbin/nginx && chmod +x /usr/sbin/nginx
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/de_GWD.zip $sha256sum_de_GWD) = "false" ]]; then
 rm -rf /tmp/de_GWD.zip
 wget --show-progress -cqO /tmp/de_GWD.zip "$repoBase/de_GWD_${architecture}.zip"
-[[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
+[[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit 1
 [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "true" ]] && mv -f /tmp/de_GWD.zip /opt/de_GWD/.repo/de_GWD.zip
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/nginxConf.zip $sha256sum_nginxConf) = "false" ]]; then
 rm -rf /tmp/nginxConf.zip
 wget --show-progress -cqO /tmp/nginxConf.zip "$repoBase/resource/nginx/nginxConf.zip"
-[[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
+[[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit 1
 [[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "true" ]] && mv -f /tmp/nginxConf.zip /opt/de_GWD/.repo/nginxConf.zip
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/sample.zip $sha256sum_sample) = "false" ]]; then
 rm -rf /tmp/sample.zip
 wget --show-progress -cqO /tmp/sample.zip "$repoBase/resource/server/sample.zip"
-[[ $(checkSum /tmp/sample.zip $sha256sum_sample) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
+[[ $(checkSum /tmp/sample.zip $sha256sum_sample) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit 1
 [[ $(checkSum /tmp/sample.zip $sha256sum_sample) = "true" ]] && mv -f /tmp/sample.zip /opt/de_GWD/.repo/sample.zip
 fi
 
@@ -183,7 +186,7 @@ remoteVer=$(curl -fsSLo- "$repoBase/version.php" | head -n 1)
 if [[ $localVer != $remoteVer ]]; then
 rm -rf /tmp/version.php
 wget --show-progress -cqO /tmp/version.php "$repoBase/version.php"
-[[ $? -ne 0 ]] && echo -e "${WHITE}Version File${RED} Download Failed${cRES}" && exit
+[[ $? -ne 0 ]] && echo -e "${WHITE}Version File${RED} Download Failed${cRES}" && exit 1
 [[ $(du -sk /tmp/version.php 2>/dev/null | awk '{print$1}') -ge 4 ]] && mv -f /tmp/version.php /opt/de_GWD/version.php
 fi
 
@@ -410,8 +413,8 @@ deb http://cloudfront.debian.net/debian bookworm-updates main contrib non-free n
 deb http://cloudfront.debian.net/debian bookworm-backports main contrib non-free non-free-firmware
 EOF
 
-apt update --fix-missing && apt upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
-apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
+apt-get update -o APT::Update::Error-Mode=any && apt-get upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt-get full-upgrade -y && apt-get autoremove --purge -y && apt-get clean && apt-get autoclean || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 
 pkgDEP
 
@@ -1041,7 +1044,7 @@ chmod +x /opt/de_GWD/vtrui/vtrui
 rm -rf /tmp/de_GWD*
 else
 rm -rf /opt/de_GWD/.repo/de_GWD.zip
-echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit
+echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit 1
 fi
 
 rm -rf /lib/systemd/system/vtrui.service
@@ -1096,7 +1099,7 @@ unzip /opt/de_GWD/.repo/nginxConf.zip -d /etc/nginx >/dev/null
 rm -rf /tmp/nginxConf
 else
 rm -rf /opt/de_GWD/.repo/nginxConf.zip
-echo -e "${WHITE}NGINX Configure${RED} Download Failed${cRES}" && exit
+echo -e "${WHITE}NGINX Configure${RED} Download Failed${cRES}" && exit 1
 fi
 
 rm -rf /tmp/nginx
@@ -1454,7 +1457,7 @@ cp -rf /tmp/sample/* /var/www/html/
 rm -rf /tmp/sample
 else
 rm -rf /opt/de_GWD/.repo/sample.zip
-echo -e "${WHITE}Sample Zip${RED} Download Failed${cRES}" && exit
+echo -e "${WHITE}Sample Zip${RED} Download Failed${cRES}" && exit 1
 fi
 fi
 
@@ -1692,7 +1695,10 @@ localAddrIPv4=$(ip -4 a | grep inet | grep -v '127.0.0.1' | awk '{print $2}' | c
 if [[ -n $localAddrIPv4 ]]; then
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^wireguard-tools$') ]] && aptPKG+=(wireguard-tools)
-[[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
+if [[ -n $aptPKG ]]; then
+  apt-get update -o APT::Update::Error-Mode=any || exit 1
+  apt-get install -y $(echo ${aptPKG[@]}) || exit 1
+fi
 
 ghREPO="ViRb3/wgcf"
 ghPackage="linux_$architecture"
@@ -1832,7 +1838,10 @@ upPort=$(echo $upDomainP | cut -d: -f2| grep '^[[:digit:]]*$')
 
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^haproxy$') ]] && aptPKG+=(haproxy)
-[[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
+if [[ -n $aptPKG ]]; then
+  apt-get update -o APT::Update::Error-Mode=any || exit 1
+  apt-get install -y $(echo ${aptPKG[@]}) || exit 1
+fi
 
 cat << EOF >/etc/haproxy/haproxy.cfg
 global
@@ -2000,8 +2009,8 @@ deb-src http://deb.debian.org/debian bookworm-updates main non-free-firmware
 EOF
 
 sed -i "s/ stretch / buster /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
-apt update --fix-missing && apt upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
-apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
+apt-get update -o APT::Update::Error-Mode=any && apt-get upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt-get full-upgrade -y && apt-get autoremove --purge -y && apt-get clean && apt-get autoclean || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 fi
 
 cat << EOF >/etc/apt/sources.list
@@ -2020,8 +2029,8 @@ EOF
 
 sed -i "s/ buster / bookworm /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
 sed -i "s/ bullseye / bookworm /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
-apt update --fix-missing && apt upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
-apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
+apt-get update -o APT::Update::Error-Mode=any && apt-get upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt-get full-upgrade -y && apt-get autoremove --purge -y && apt-get clean && apt-get autoclean || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 
 preInstall
 

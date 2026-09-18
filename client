@@ -39,7 +39,7 @@ Freeze_Package+=($(dpkg -l | grep 'linux-image-' | awk '{print $2}'))
 Freeze_Package+=($(dpkg -l | grep 'linux-headers-' | awk '{print $2}'))
 Freeze_Package+=($(dpkg -l | grep 'linux-dtb-' | awk '{print $2}'))
 echo ${Freeze_Package[@]} | xargs -n1 apt-mark hold
-apt update && apt install -y apparmor apparmor-utils google-perftools || exit 1
+apt-get update -o APT::Update::Error-Mode=any && apt-get install -y apparmor apparmor-utils google-perftools || exit 1
 fi
 
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^ipset$') ]] && apt remove --purge ipset
@@ -72,8 +72,8 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^chrony$') ]] && aptPKG+=(chrony)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^irqbalance$') ]] && [[ $(nproc --all) -gt 1 ]] && aptPKG+=(irqbalance)
 if [[ -n $aptPKG ]]; then
-  apt update || { echo -e "${WHITE}Base dependencies${RED} APT update Failed${cRES}"; exit 1; }
-  apt install -y $(echo ${aptPKG[@]}) || { echo -e "${WHITE}Base dependencies${RED} APT install Failed${cRES}"; exit 1; }
+  apt-get update -o APT::Update::Error-Mode=any || { echo -e "${WHITE}Base dependencies${RED} APT update Failed${cRES}"; exit 1; }
+  apt-get install -y $(echo ${aptPKG[@]}) || { echo -e "${WHITE}Base dependencies${RED} APT install Failed${cRES}"; exit 1; }
 fi
 }
 
@@ -85,7 +85,10 @@ fi
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^wget$') ]] && aptPKG+=(wget)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^cron$') ]] && aptPKG+=(cron)
-[[ -n $aptPKG ]] && apt update && apt install -y $(echo ${aptPKG[@]})
+if [[ -n $aptPKG ]]; then
+  apt-get update -o APT::Update::Error-Mode=any || exit 1
+  apt-get install -y $(echo ${aptPKG[@]}) || exit 1
+fi
 }
 
 pkgDEP2(){
@@ -126,8 +129,8 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sqlite3$') ]] && aptPKG+=(sqlite3)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^libmimalloc2.0') ]] && aptPKG+=(libmimalloc2.0)
 if [[ -n $aptPKG ]]; then
-  apt update || { echo -e "${WHITE}Docker dependencies${RED} APT update Failed${cRES}"; exit 1; }
-  apt install -y $(echo ${aptPKG[@]}) || { echo -e "${WHITE}Docker dependencies${RED} APT install Failed${cRES}"; exit 1; }
+  apt-get update -o APT::Update::Error-Mode=any || { echo -e "${WHITE}Docker dependencies${RED} APT update Failed${cRES}"; exit 1; }
+  apt-get install -y $(echo ${aptPKG[@]}) || { echo -e "${WHITE}Docker dependencies${RED} APT install Failed${cRES}"; exit 1; }
 fi
 
 for requiredPackage in docker-ce containerd.io php7.4-fpm python3-toml libmimalloc2.0; do
@@ -202,7 +205,7 @@ sha256sum_IPchnroute=$(curl -fsSLo- "$chnrouteBase/IPchnroute.sha256sum")
 if [[ -n $sha256sum_IPchnroute ]] && [[ $(checkSum /opt/de_GWD/.repo/IPchnroute $sha256sum_IPchnroute) = "false" ]] ; then
 rm -rf /tmp/IPchnroute
 wget --no-check-certificate --show-progress -cqO /tmp/IPchnroute "$chnrouteBase/IPchnroute"
-[[ $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "false" ]] && echo -e "${WHITE}IPchnroute${RED} Download Failed${cRES}" && exit
+[[ $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "false" ]] && echo -e "${WHITE}IPchnroute${RED} Download Failed${cRES}" && exit 1
 [[ $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "true" ]] && mv -f /tmp/IPchnroute /opt/de_GWD/.repo/IPchnroute
 fi
 [[ ! -s /opt/de_GWD/.repo/IPchnroute ]] && echo -e "${WHITE}IPchnroute${RED} Resource Missing${cRES}" && exit 1
@@ -216,12 +219,12 @@ else
     rm -rf /tmp/de_GWD.zip
     wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip "$repoBase/de_GWD_${architecture}.zip"
     [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && rm -rf /tmp/de_GWD.zip && wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip "https://de-gwd.accxio.workers.dev/de_GWD_${architecture}.zip"
-    [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit
+    [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit 1
     [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "true" ]] && mv -f /tmp/de_GWD.zip /opt/de_GWD/.repo/de_GWD.zip
     fi
 fi
 
-[[ -z $(unzip -tq /opt/de_GWD/.repo/de_GWD.zip | grep "No errors detected in compressed data") ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit
+[[ -z $(unzip -tq /opt/de_GWD/.repo/de_GWD.zip | grep "No errors detected in compressed data") ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit 1
 
 cat << "EOF" >/opt/de_GWD/tcpTime
 #!/bin/bash
@@ -251,31 +254,31 @@ fi
 if [[ $(checkSum /usr/sbin/nginx $sha256sum_nginx) = "false" ]]; then
 rm -rf /tmp/nginx
 wget --show-progress -cqO /tmp/nginx "$repoBase/resource/nginx/nginx_${architecture}"
-[[ $(checkSum /tmp/nginx $sha256sum_nginx) = "false" ]] && echo -e "${WHITE}NGINX Core${RED} Download Failed${cRES}" && exit
+[[ $(checkSum /tmp/nginx $sha256sum_nginx) = "false" ]] && echo -e "${WHITE}NGINX Core${RED} Download Failed${cRES}" && exit 1
 [[ $(checkSum /tmp/nginx $sha256sum_nginx) = "true" ]] && mv -f /tmp/nginx /usr/sbin/nginx && chmod +x /usr/sbin/nginx
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/nginxConf.zip $sha256sum_nginxConf) = "false" ]]; then
 rm -rf /tmp/nginxConf.zip
 wget --show-progress -cqO /tmp/nginxConf.zip "$repoBase/resource/nginx/nginxConf.zip"
-[[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
+[[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit 1
 [[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "true" ]] && mv -f /tmp/nginxConf.zip /opt/de_GWD/.repo/nginxConf.zip
 fi
 
 if [[ $(ttyd -v 2>&1 | grep -o '[0-9]\.[0-9]\.[0-9]') != $TTYD_Ver ]]; then
 wget --show-progress -cqO /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/$TTYD_Ver/ttyd.$(uname -m)
-[[ $? -ne 0 ]] && echo -e "${WHITE}TTYD${RED} Download Failed${cRES}"
+[[ $? -ne 0 ]] && echo -e "${WHITE}TTYD${RED} Download Failed${cRES}" && exit 1
 [[ $(du -sk /tmp/ttyd 2>/dev/null | awk '{print$1}') -gt 1000 ]] && mv -f /tmp/ttyd /usr/bin/ttyd && chmod +x /usr/bin/ttyd && TTYD_UPDATE="true"
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/client.zip $sha256sum_client) = "false" ]]; then
 rm -rf /tmp/client.zip
 wget --show-progress -cqO /tmp/client.zip "$repoBase/resource/client/Archive.zip"
-[[ $(checkSum /tmp/client.zip $sha256sum_client) = "false" ]] && echo -e "${WHITE}Client Zip${RED} Download Failed${cRES}" && exit
+[[ $(checkSum /tmp/client.zip $sha256sum_client) = "false" ]] && echo -e "${WHITE}Client Zip${RED} Download Failed${cRES}" && exit 1
 [[ $(checkSum /tmp/client.zip $sha256sum_client) = "true" ]] && mv -f /tmp/client.zip /opt/de_GWD/.repo/client.zip
 fi
 
-[[ -z $(unzip -tq /opt/de_GWD/.repo/client.zip | grep "No errors detected in compressed data") ]] && echo -e "${WHITE}Client Zip${RED} Download Failed${cRES}" && exit
+[[ -z $(unzip -tq /opt/de_GWD/.repo/client.zip | grep "No errors detected in compressed data") ]] && echo -e "${WHITE}Client Zip${RED} Download Failed${cRES}" && exit 1
 [[ ! -s /opt/de_GWD/.repo/nginxConf.zip ]] && echo -e "${WHITE}Nginx Config${RED} Resource Missing${cRES}" && exit 1
 
 localVer=$(awk 'NR==1' /opt/de_GWD/.repo/version.php 2>/dev/null)
@@ -284,7 +287,7 @@ remoteVer=$(curl -fsSLo- "$repoBase/version.php" | head -n 1)
 if [[ $localVer != $remoteVer ]] || [[ ! -f '/opt/de_GWD/.repo/version.php' ]]; then
 rm -rf /opt/de_GWD/.repo/version.php
 wget --show-progress -cqO /opt/de_GWD/.repo/version.php "$repoBase/version.php"
-[[ $? -ne 0 ]] && echo -e "${WHITE}Version file${RED} Download Failed${cRES}" && exit
+[[ $? -ne 0 ]] && echo -e "${WHITE}Version file${RED} Download Failed${cRES}" && exit 1
 fi
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Repo Download${cRES}"
@@ -1098,7 +1101,7 @@ chmod +x /opt/de_GWD/vtrui/vtrui
 rm -rf /tmp/de_GWD*
 else
 rm -rf /opt/de_GWD/.repo/de_GWD.zip
-echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit
+echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit 1
 fi
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Proxy Components Prepared${cRES}"
 
@@ -1860,10 +1863,10 @@ EOF
 echo "deb [signed-by=/etc/apt/keyrings/deb.sury.org.gpg] https://packages.sury.org/php/ $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) main" >/etc/apt/sources.list.d/php.list
 apt-key del 95BD4743 >/dev/null 2>&1
 curl -sSLo /etc/apt/keyrings/deb.sury.org.gpg https://packages.sury.org/php/apt.gpg
-[[ $? -ne 0 ]] && echo -e "${WHITE}PHP apt key${RED} Download Failed${cRES}"
+[[ $? -ne 0 ]] && echo -e "${WHITE}PHP apt key${RED} Download Failed${cRES}" && exit 1
 
-apt update --fix-missing && apt upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
-apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
+apt-get update -o APT::Update::Error-Mode=any && apt-get upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt-get full-upgrade -y && apt-get autoremove --purge -y && apt-get clean && apt-get autoclean || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Debian ${GREEN}Updated${cRES}"
 }
@@ -2042,7 +2045,7 @@ unzip /opt/de_GWD/.repo/nginxConf.zip -d /etc/nginx >/dev/null
 rm -rf /tmp/nginxConf
 else
 rm -rf /opt/de_GWD/.repo/nginxConf.zip
-echo -e "${WHITE}NGINX Configure${RED} Download Failed${cRES}" && exit
+echo -e "${WHITE}NGINX Configure${RED} Download Failed${cRES}" && exit 1
 fi
 
 rm -rf /tmp/nginx
@@ -2637,8 +2640,8 @@ deb http://$chnAPTsource/debian-security buster/updates main contrib non-free
 EOF
 
 sed -i "s/ stretch / buster /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
-apt update --fix-missing && apt upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
-apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
+apt-get update -o APT::Update::Error-Mode=any && apt-get upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt-get full-upgrade -y && apt-get autoremove --purge -y && apt-get clean && apt-get autoclean || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 fi
 
 cat << EOF >/etc/apt/sources.list
@@ -2650,8 +2653,8 @@ EOF
 
 sed -i "s/ buster / bookworm /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
 sed -i "s/ bullseye / bookworm /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
-apt update --fix-missing && apt upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
-apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
+apt-get update -o APT::Update::Error-Mode=any && apt-get upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt-get full-upgrade -y && apt-get autoremove --purge -y && apt-get clean && apt-get autoclean || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 
 preInstall
 
@@ -2692,7 +2695,7 @@ de_GWDconnect
 
 updateAPT
 
-apt --reinstall install ca-certificates
+apt-get --reinstall install -y ca-certificates || exit 1
 
 installDep
 
