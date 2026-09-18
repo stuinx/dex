@@ -2666,8 +2666,6 @@ installSmartDNS
 
 installXray
 
-installNftables
-
 echo "{}" >/opt/de_GWD/0conf
 jq '.address={}' /opt/de_GWD/0conf |\
 jq '.dns={}' |\
@@ -2712,6 +2710,8 @@ pullpihole
 installPihole
 
 piholeSet
+
+installNftables
 
 postInstall
 
