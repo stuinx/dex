@@ -13,11 +13,14 @@ chmod 777 /tmp
 architecture=$(dpkg --print-architecture)
 export DEBIAN_FRONTEND=noninteractive
 TTYD_Ver="1.7.3"
-branch="main"
+repoOwner="${DE_GWD_REPO_OWNER:-stuinx}"
+repoName="${DE_GWD_REPO_NAME:-dex}"
+branch="${DE_GWD_BRANCH:-dev}"
+repoBase="${DE_GWD_RAW_BASE:-https://gh.stuinx.eu.org/https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}}"
 
 
 installCMD=`cat << EOF
-bash <(wget --no-check-certificate -qO- https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/de_GWD/main/client)
+bash <(wget --no-check-certificate -qO- "$repoBase/client")
 EOF
 `
 
@@ -35,7 +38,7 @@ Freeze_Package+=($(dpkg -l | grep 'linux-image-' | awk '{print $2}'))
 Freeze_Package+=($(dpkg -l | grep 'linux-headers-' | awk '{print $2}'))
 Freeze_Package+=($(dpkg -l | grep 'linux-dtb-' | awk '{print $2}'))
 echo ${Freeze_Package[@]} | xargs -n1 apt-mark hold
-apt update && apt install apparmor apparmor-utils google-perftools
+apt update && apt install -y apparmor apparmor-utils google-perftools || exit 1
 fi
 
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^ipset$') ]] && apt remove --purge ipset
@@ -46,6 +49,7 @@ fi
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sudo$') ]] && aptPKG+=(sudo)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^wget$') ]] && aptPKG+=(wget)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^cron$') ]] && aptPKG+=(cron)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^curl$') ]] && aptPKG+=(curl)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^git$') ]] && aptPKG+=(git)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^locales$') ]] && aptPKG+=(locales)
@@ -66,12 +70,40 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^rng-tools-debian$') ]] && aptPKG+=(rng-tools-debian)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^chrony$') ]] && aptPKG+=(chrony)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^irqbalance$') ]] && [[ $(nproc --all) -gt 1 ]] && aptPKG+=(irqbalance)
-[[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
+if [[ -n $aptPKG ]]; then
+  apt update || { echo -e "${WHITE}Base dependencies${RED} APT update Failed${cRES}"; exit 1; }
+  apt install -y $(echo ${aptPKG[@]}) || { echo -e "${WHITE}Base dependencies${RED} APT install Failed${cRES}"; exit 1; }
+fi
+}
+
+menuDEP(){
+if [[ -x "$(command -v wget 2>/dev/null)" ]] && [[ -x "$(command -v crontab 2>/dev/null)" ]]; then
+  return
+fi
+
+unset aptPKG
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^wget$') ]] && aptPKG+=(wget)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^cron$') ]] && aptPKG+=(cron)
+[[ -n $aptPKG ]] && apt update && apt install -y $(echo ${aptPKG[@]})
 }
 
 pkgDEP2(){
-curl -fsSL https://download.docker.com/linux/debian/gpg | install -m 0644 -D /dev/stdin /usr/share/keyrings/docker-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) stable" >/etc/apt/sources.list.d/docker.list
+local debianCodename
+debianCodename=$( . /etc/os-release && printf '%s' "$VERSION_CODENAME" )
+install -m 0644 -D /dev/null /etc/apt/keyrings/docker.asc
+curl -fsSL https://mirrors.ustc.edu.cn/docker-ce/linux/debian/gpg -o /etc/apt/keyrings/docker.asc || {
+  echo -e "${WHITE}Docker CE key${RED} Download Failed${cRES}"
+  exit 1
+}
+rm -f /etc/apt/sources.list.d/docker.list
+cat << EOF >/etc/apt/sources.list.d/docker.sources
+Types: deb
+URIs: https://mirrors.ustc.edu.cn/docker-ce/linux/debian
+Suites: $debianCodename
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 
 unset aptPKG
@@ -92,7 +124,17 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-json$') ]] && aptPKG+=(php7.4-json)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sqlite3$') ]] && aptPKG+=(sqlite3)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^libmimalloc2.0') ]] && aptPKG+=(libmimalloc2.0)
-[[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
+if [[ -n $aptPKG ]]; then
+  apt update || { echo -e "${WHITE}Docker dependencies${RED} APT update Failed${cRES}"; exit 1; }
+  apt install -y $(echo ${aptPKG[@]}) || { echo -e "${WHITE}Docker dependencies${RED} APT install Failed${cRES}"; exit 1; }
+fi
+
+for requiredPackage in docker-ce containerd.io php7.4-fpm python3-toml libmimalloc2.0; do
+  if ! dpkg-query -W -f='${Status}\n' "$requiredPackage" 2>/dev/null | grep -q 'install ok installed'; then
+    echo -e "${WHITE}Dependencies${RED} Missing package: $requiredPackage${cRES}"
+    exit 1
+  fi
+done
 }
 
 checkSum(){
@@ -104,6 +146,37 @@ elif [[ $sha256sumL != $2 ]]; then
 fi
 }
 
+checkTimeStatus(){
+local currentEpoch
+currentEpoch=$(date +%s 2>/dev/null) || {
+  echo -e "${WHITE}System time${RED} Read Failed${cRES}"
+  exit 1
+}
+if [[ $currentEpoch -lt 1700000000 ]]; then
+  echo -e "${WHITE}System time${RED} Clock is not plausible${cRES}"
+  exit 1
+fi
+if command -v timedatectl >/dev/null 2>&1 && [[ $(timedatectl show -p NTPSynchronized --value 2>/dev/null) = "no" ]]; then
+  echo -e "${WHITE}System time${YELLOW} NTP is not synchronized; TLS results require follow-up${cRES}"
+fi
+}
+
+verifyRuntimeResources(){
+for resourceFile in geoip.dat geosite.dat; do
+  if [[ ! -s "/opt/de_GWD/vtrui/$resourceFile" ]] && [[ -s "/opt/de_GWD/.repo/$resourceFile" ]]; then
+    cp -f "/opt/de_GWD/.repo/$resourceFile" "/opt/de_GWD/vtrui/$resourceFile"
+  fi
+  if [[ ! -s "/opt/de_GWD/vtrui/$resourceFile" ]]; then
+    echo -e "${WHITE}Runtime resource${RED} Missing $resourceFile${cRES}"
+    exit 1
+  fi
+done
+if [[ ! -s /opt/de_GWD/nftables/IP_CHNROUTE ]]; then
+  echo -e "${WHITE}Runtime resource${RED} Missing IP_CHNROUTE${cRES}"
+  exit 1
+fi
+}
+
 
 
 preDL(){
@@ -111,21 +184,24 @@ mkdir -p /opt/de_GWD
 mkdir -p /opt/de_GWD/.repo
 
 sha256sum_IPchnroute=$(curl -fsSLo- https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum)
+[[ -z $sha256sum_IPchnroute ]] && echo -e "${WHITE}IPchnroute checksum${RED} Download Failed${cRES}" && exit 1
 if [[ -n $sha256sum_IPchnroute ]] && [[ $(checkSum /opt/de_GWD/.repo/IPchnroute $sha256sum_IPchnroute) = "false" ]] ; then
 rm -rf /tmp/IPchnroute
 wget --no-check-certificate --show-progress -cqO /tmp/IPchnroute https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute
 [[ $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "false" ]] && echo -e "${WHITE}IPchnroute${RED} Download Failed${cRES}" && exit
 [[ $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "true" ]] && mv -f /tmp/IPchnroute /opt/de_GWD/.repo/IPchnroute
 fi
+[[ ! -s /opt/de_GWD/.repo/IPchnroute ]] && echo -e "${WHITE}IPchnroute${RED} Resource Missing${cRES}" && exit 1
 
 if [[ -f "./de_GWD_$architecture.zip" ]]; then
     mv -f ./de_GWD_$architecture.zip /opt/de_GWD/.repo/de_GWD.zip
 else
-    sha256sum_de_GWD=$(curl -fsSLo- https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/de_GWD/main/de_GWD_"$architecture".zip.sha256sum)
+    sha256sum_de_GWD=$(curl -fsSLo- "$repoBase/de_GWD_${architecture}.zip.sha256sum")
+    [[ -z $sha256sum_de_GWD ]] && echo -e "${WHITE}de_GWD checksum${RED} Download Failed${cRES}" && exit 1
     if [[ -n $sha256sum_de_GWD ]] && [[ $(checkSum /opt/de_GWD/.repo/de_GWD.zip $sha256sum_de_GWD) = "false" ]]; then
     rm -rf /tmp/de_GWD.zip
-    wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/de_GWD/main/de_GWD_"$architecture".zip
-    [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && rm -rf /tmp/de_GWD.zip && wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip https://de-gwd.accxio.workers.dev/de_GWD_"$architecture".zip
+    wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip "$repoBase/de_GWD_${architecture}.zip"
+    [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && rm -rf /tmp/de_GWD.zip && wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip "https://de-gwd.accxio.workers.dev/de_GWD_${architecture}.zip"
     [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit
     [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "true" ]] && mv -f /tmp/de_GWD.zip /opt/de_GWD/.repo/de_GWD.zip
     fi
@@ -143,26 +219,31 @@ echo
 EOF
 chmod +x /opt/de_GWD/tcpTime
 /opt/de_GWD/tcpTime
+checkTimeStatus
 }
 
 
 
 repoDL(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Repo Download${cRES}\r\c"
-sha256sum_nginx=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/nginx/nginx_"$architecture".sha256sum)
-sha256sum_nginxConf=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/nginx/nginxConf.zip.sha256sum)
-sha256sum_client=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/client/Archive.zip.sha256sum)
+sha256sum_nginx=$(curl -fsSLo- "$repoBase/resource/nginx/nginx_${architecture}.sha256sum")
+sha256sum_nginxConf=$(curl -fsSLo- "$repoBase/resource/nginx/nginxConf.zip.sha256sum")
+sha256sum_client=$(curl -fsSLo- "$repoBase/resource/client/Archive.zip.sha256sum")
+if [[ -z $sha256sum_nginx ]] || [[ -z $sha256sum_nginxConf ]] || [[ -z $sha256sum_client ]]; then
+  echo -e "${WHITE}Repository${RED} Checksum download failed${cRES}"
+  exit 1
+fi
 
 if [[ $(checkSum /usr/sbin/nginx $sha256sum_nginx) = "false" ]]; then
 rm -rf /tmp/nginx
-wget --show-progress -cqO /tmp/nginx https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/nginx/nginx_"$architecture"
+wget --show-progress -cqO /tmp/nginx "$repoBase/resource/nginx/nginx_${architecture}"
 [[ $(checkSum /tmp/nginx $sha256sum_nginx) = "false" ]] && echo -e "${WHITE}NGINX Core${RED} Download Failed${cRES}" && exit
 [[ $(checkSum /tmp/nginx $sha256sum_nginx) = "true" ]] && mv -f /tmp/nginx /usr/sbin/nginx && chmod +x /usr/sbin/nginx
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/nginxConf.zip $sha256sum_nginxConf) = "false" ]]; then
 rm -rf /tmp/nginxConf.zip
-wget --show-progress -cqO /tmp/nginxConf.zip https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/nginx/nginxConf.zip
+wget --show-progress -cqO /tmp/nginxConf.zip "$repoBase/resource/nginx/nginxConf.zip"
 [[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
 [[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "true" ]] && mv -f /tmp/nginxConf.zip /opt/de_GWD/.repo/nginxConf.zip
 fi
@@ -175,17 +256,20 @@ fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/client.zip $sha256sum_client) = "false" ]]; then
 rm -rf /tmp/client.zip
-wget --show-progress -cqO /tmp/client.zip https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/client/Archive.zip
+wget --show-progress -cqO /tmp/client.zip "$repoBase/resource/client/Archive.zip"
 [[ $(checkSum /tmp/client.zip $sha256sum_client) = "false" ]] && echo -e "${WHITE}Client Zip${RED} Download Failed${cRES}" && exit
 [[ $(checkSum /tmp/client.zip $sha256sum_client) = "true" ]] && mv -f /tmp/client.zip /opt/de_GWD/.repo/client.zip
 fi
 
+[[ -z $(unzip -tq /opt/de_GWD/.repo/client.zip | grep "No errors detected in compressed data") ]] && echo -e "${WHITE}Client Zip${RED} Download Failed${cRES}" && exit
+[[ ! -s /opt/de_GWD/.repo/nginxConf.zip ]] && echo -e "${WHITE}Nginx Config${RED} Resource Missing${cRES}" && exit 1
+
 localVer=$(awk 'NR==1' /opt/de_GWD/.repo/version.php 2>/dev/null)
-remoteVer=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/main/version.php | head -n 1)
+remoteVer=$(curl -fsSLo- "$repoBase/version.php" | head -n 1)
 
 if [[ $localVer != $remoteVer ]] || [[ ! -f '/opt/de_GWD/.repo/version.php' ]]; then
 rm -rf /opt/de_GWD/.repo/version.php
-wget --show-progress -cqO /opt/de_GWD/.repo/version.php https://raw.githubusercontent.com/jacyl4/de_GWD/main/version.php
+wget --show-progress -cqO /opt/de_GWD/.repo/version.php "$repoBase/version.php"
 [[ $? -ne 0 ]] && echo -e "${WHITE}Version file${RED} Download Failed${cRES}" && exit
 fi
 
@@ -1763,8 +1847,8 @@ apt-key del 95BD4743 >/dev/null 2>&1
 curl -sSLo /etc/apt/keyrings/deb.sury.org.gpg https://packages.sury.org/php/apt.gpg
 [[ $? -ne 0 ]] && echo -e "${WHITE}PHP apt key${RED} Download Failed${cRES}"
 
-apt update --fix-missing && apt upgrade --allow-downgrades -y
-apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
+apt update --fix-missing && apt upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Debian ${GREEN}Updated${cRES}"
 }
@@ -2298,6 +2382,7 @@ postInstall(){
 /opt/de_GWD/ui-NodeOne
 /opt/de_GWD/ui_4am
 /opt/de_GWD/ui_4h
+verifyRuntimeResources
 systemctl restart smartdns
 systemctl restart mosdns
 if [[ $? -ne 0 ]]; then
@@ -2396,6 +2481,10 @@ EOF
 crontab /tmp/now.cron
 rm -rf /tmp/now.cron
 service cron restart
+if ! command -v crontab >/dev/null 2>&1 || [[ $(systemctl is-active cron 2>/dev/null) != "active" ]]; then
+  echo -e "${WHITE}Cron${RED} Service or crontab is unavailable${cRES}"
+  exit 1
+fi
 
 rm -rf /tmp/ui-script
 rm -rf /tmp/ui-web
@@ -2410,7 +2499,7 @@ fi
 
 
 installkernel(){
-bash <(wget --show-progress -cqO- https://raw.githubusercontent.com/jacyl4/de_GWD/main/resource/kernel/installkernel)
+bash <(wget --show-progress -cqO- "$repoBase/resource/kernel/installkernel")
 }
 
 
@@ -2533,8 +2622,8 @@ deb http://$chnAPTsource/debian-security buster/updates main contrib non-free
 EOF
 
 sed -i "s/ stretch / buster /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
-apt update --fix-missing && apt upgrade --allow-downgrades -y
-apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
+apt update --fix-missing && apt upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 fi
 
 cat << EOF >/etc/apt/sources.list
@@ -2546,8 +2635,8 @@ EOF
 
 sed -i "s/ buster / bookworm /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
 sed -i "s/ bullseye / bookworm /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
-apt update --fix-missing && apt upgrade --allow-downgrades -y
-apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
+apt update --fix-missing && apt upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 
 preInstall
 
@@ -2779,6 +2868,7 @@ fi
 
 
 start_menu(){
+menuDEP
 serverStatus
 
  echo
@@ -2807,7 +2897,7 @@ echo -e "${YELLOW}9. Change de_GWD password${cRES}"
 echo -e "${YELLOW}0. Update de_GWD${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
 echo ""
-read -p "Select:" num
+read -r -p "Select:" num || exit 0
     case "$num" in
     1)
     installGWD

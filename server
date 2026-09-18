@@ -13,7 +13,10 @@ chmod 777 /tmp
 architecture=$(dpkg --print-architecture)
 [[ "openvz lxc lxc-libvirt systemd-nspawn docker podman proot pouch" =~ $(systemd-detect-virt) ]] && virt_type="container"
 export DEBIAN_FRONTEND=noninteractive
-branch="main"
+repoOwner="${DE_GWD_REPO_OWNER:-stuinx}"
+repoName="${DE_GWD_REPO_NAME:-dex}"
+branch="${DE_GWD_BRANCH:-dev}"
+repoBase="${DE_GWD_RAW_BASE:-https://gh.stuinx.eu.org/https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}}"
 
 [[ -f "/etc/nginx/conf.d/default.conf" ]] && sed -i 's/fastopen=128/fastopen=500/g' /etc/nginx/conf.d/default.conf
 
@@ -29,6 +32,7 @@ pkgDEP(){
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sudo$') ]] && aptPKG+=(sudo)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^wget$') ]] && aptPKG+=(wget)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^cron$') ]] && aptPKG+=(cron)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^curl$') ]] && aptPKG+=(curl)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^git$') ]] && aptPKG+=(git)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^locales$') ]] && aptPKG+=(locales)
@@ -58,9 +62,23 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^unbound$') ]] && aptPKG+=(unbound)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^libmimalloc2.0') ]] && aptPKG+=(libmimalloc2.0)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^irqbalance$') ]] && [[ $(nproc --all) -gt 1 ]] && aptPKG+=(irqbalance)
-[[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
+if [[ -n $aptPKG ]]; then
+  apt update || { echo -e "${WHITE}Base dependencies${RED} APT update Failed${cRES}"; exit 1; }
+  apt install -y $(echo ${aptPKG[@]}) || { echo -e "${WHITE}Base dependencies${RED} APT install Failed${cRES}"; exit 1; }
+fi
 }
 
+
+menuDEP(){
+if [[ -x "$(command -v wget 2>/dev/null)" ]] && [[ -x "$(command -v crontab 2>/dev/null)" ]]; then
+  return
+fi
+
+unset aptPKG
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^wget$') ]] && aptPKG+=(wget)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^cron$') ]] && aptPKG+=(cron)
+[[ -n $aptPKG ]] && apt update && apt install -y $(echo ${aptPKG[@]})
+}
 
 
 checkSum(){
@@ -72,60 +90,109 @@ elif [[ $sha256sumL != $2 ]]; then
 fi
 }
 
+checkTimeStatus(){
+local currentEpoch
+currentEpoch=$(date +%s 2>/dev/null) || {
+  echo -e "${WHITE}System time${RED} Read Failed${cRES}"
+  exit 1
+}
+if [[ $currentEpoch -lt 1700000000 ]]; then
+  echo -e "${WHITE}System time${RED} Clock is not plausible${cRES}"
+  exit 1
+fi
+if command -v timedatectl >/dev/null 2>&1 && [[ $(timedatectl show -p NTPSynchronized --value 2>/dev/null) = "no" ]]; then
+  echo -e "${WHITE}System time${YELLOW} NTP is not synchronized; TLS results require follow-up${cRES}"
+fi
+}
+
+validateCertificate(){
+if [[ ! -s /var/www/ssl/de_GWD.cer ]] || [[ ! -s /var/www/ssl/de_GWD.key ]]; then
+  echo -e "${WHITE}TLS certificate${RED} Certificate or key is missing${cRES}"
+  exit 1
+fi
+openssl x509 -in /var/www/ssl/de_GWD.cer -noout >/dev/null 2>&1 || {
+  echo -e "${WHITE}TLS certificate${RED} Certificate is invalid${cRES}"
+  exit 1
+}
+openssl x509 -in /var/www/ssl/de_GWD.cer -noout -checkhost "$domain" >/dev/null 2>&1 || {
+  echo -e "${WHITE}TLS certificate${RED} Hostname is not covered${cRES}"
+  exit 1
+}
+nginx -t >/dev/null 2>&1 || {
+  echo -e "${WHITE}TLS certificate${RED} Nginx validation failed${cRES}"
+  exit 1
+}
+systemctl force-reload nginx || {
+  echo -e "${WHITE}TLS certificate${RED} Nginx reload failed${cRES}"
+  exit 1
+}
+}
+
 
 
 repoDL(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Repository${cRES}\r\c"
-sha256sum_de_GWD=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/de_GWD_"$architecture".zip.sha256sum)
-sha256sum_don_server=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/doh/doh_s_"$architecture".sha256sum)
-sha256sum_nginx=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/nginx/nginx_"$architecture".sha256sum)
-sha256sum_nginxConf=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/nginx/nginxConf.zip.sha256sum)
-sha256sum_sample=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/server/sample.zip.sha256sum)
+sha256sum_de_GWD=$(curl -fsSLo- "$repoBase/de_GWD_${architecture}.zip.sha256sum")
+sha256sum_don_server=$(curl -fsSLo- "$repoBase/resource/doh/doh_s_${architecture}.sha256sum")
+sha256sum_nginx=$(curl -fsSLo- "$repoBase/resource/nginx/nginx_${architecture}.sha256sum")
+sha256sum_nginxConf=$(curl -fsSLo- "$repoBase/resource/nginx/nginxConf.zip.sha256sum")
+sha256sum_sample=$(curl -fsSLo- "$repoBase/resource/server/sample.zip.sha256sum")
+if [[ -z $sha256sum_de_GWD ]] || [[ -z $sha256sum_don_server ]] || [[ -z $sha256sum_nginx ]] || [[ -z $sha256sum_nginxConf ]] || [[ -z $sha256sum_sample ]]; then
+  echo -e "${WHITE}Repository${RED} Checksum download failed${cRES}"
+  exit 1
+fi
 
 if [[ $(checkSum /opt/de_GWD/doh-server $sha256sum_don_server) = "false" ]]; then
 rm -rf /tmp/doh-server
-wget --show-progress -cqO /tmp/doh-server https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/doh/doh_s_$architecture
+wget --show-progress -cqO /tmp/doh-server "$repoBase/resource/doh/doh_s_$architecture"
 [[ $(checkSum /tmp/doh-server $sha256sum_don_server) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
 [[ $(checkSum /tmp/doh-server $sha256sum_don_server) = "true" ]] && mv -f /tmp/doh-server /opt/de_GWD/doh-server && chmod +x /opt/de_GWD/doh-server
 fi
 
 if [[ $(checkSum /usr/sbin/nginx $sha256sum_nginx) = "false" ]]; then
 rm -rf /tmp/nginx
-wget --show-progress -cqO /tmp/nginx https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/nginx/nginx_"$architecture"
+wget --show-progress -cqO /tmp/nginx "$repoBase/resource/nginx/nginx_${architecture}"
 [[ $(checkSum /tmp/nginx $sha256sum_nginx) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
 [[ $(checkSum /tmp/nginx $sha256sum_nginx) = "true" ]] && mv -f /tmp/nginx /usr/sbin/nginx && chmod +x /usr/sbin/nginx
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/de_GWD.zip $sha256sum_de_GWD) = "false" ]]; then
 rm -rf /tmp/de_GWD.zip
-wget --show-progress -cqO /tmp/de_GWD.zip https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/de_GWD_"$architecture".zip
+wget --show-progress -cqO /tmp/de_GWD.zip "$repoBase/de_GWD_${architecture}.zip"
 [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
 [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "true" ]] && mv -f /tmp/de_GWD.zip /opt/de_GWD/.repo/de_GWD.zip
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/nginxConf.zip $sha256sum_nginxConf) = "false" ]]; then
 rm -rf /tmp/nginxConf.zip
-wget --show-progress -cqO /tmp/nginxConf.zip https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/nginx/nginxConf.zip
+wget --show-progress -cqO /tmp/nginxConf.zip "$repoBase/resource/nginx/nginxConf.zip"
 [[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
 [[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "true" ]] && mv -f /tmp/nginxConf.zip /opt/de_GWD/.repo/nginxConf.zip
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/sample.zip $sha256sum_sample) = "false" ]]; then
 rm -rf /tmp/sample.zip
-wget --show-progress -cqO /tmp/sample.zip https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/server/sample.zip
+wget --show-progress -cqO /tmp/sample.zip "$repoBase/resource/server/sample.zip"
 [[ $(checkSum /tmp/sample.zip $sha256sum_sample) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
 [[ $(checkSum /tmp/sample.zip $sha256sum_sample) = "true" ]] && mv -f /tmp/sample.zip /opt/de_GWD/.repo/sample.zip
 fi
 
 localVer=$(awk 'NR==1' /opt/de_GWD/version.php 2>/dev/null)
-remoteVer=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/main/version.php | head -n 1)
+remoteVer=$(curl -fsSLo- "$repoBase/version.php" | head -n 1)
 
 if [[ $localVer != $remoteVer ]]; then
 rm -rf /tmp/version.php
-wget --show-progress -cqO /tmp/version.php https://raw.githubusercontent.com/jacyl4/de_GWD/main/version.php
+wget --show-progress -cqO /tmp/version.php "$repoBase/version.php"
 [[ $? -ne 0 ]] && echo -e "${WHITE}Version File${RED} Download Failed${cRES}" && exit
 [[ $(du -sk /tmp/version.php 2>/dev/null | awk '{print$1}') -ge 4 ]] && mv -f /tmp/version.php /opt/de_GWD/version.php
 fi
+
+for requiredResource in /opt/de_GWD/doh-server /opt/de_GWD/.repo/de_GWD.zip /opt/de_GWD/.repo/nginxConf.zip /opt/de_GWD/.repo/sample.zip; do
+  [[ -s $requiredResource ]] || { echo -e "${WHITE}Repository${RED} Missing resource: $requiredResource${cRES}"; exit 1; }
+done
+[[ -z $(unzip -tq /opt/de_GWD/.repo/de_GWD.zip | grep "No errors detected in compressed data") ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit 1
+[[ -z $(unzip -tq /opt/de_GWD/.repo/nginxConf.zip | grep "No errors detected in compressed data") ]] && echo -e "${WHITE}Nginx Config${RED} Download Failed${cRES}" && exit 1
+[[ -z $(unzip -tq /opt/de_GWD/.repo/sample.zip | grep "No errors detected in compressed data") ]] && echo -e "${WHITE}Sample Config${RED} Download Failed${cRES}" && exit 1
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Repository${cRES}"
 }
@@ -198,7 +265,6 @@ localAddrCIDR=$(ip -4 a | grep "$ethernetnum" | grep -Po '\d{1,3}\.\d{1,3}\.\d{1
 localAddr=$(echo $localAddrCIDR | cut -d/ -f1)
 
 domain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf | sed 's/.$//')
-topDomain=$(echo $domain | rev | awk -F. '{print $1"."$2}' | rev)
 port=$(awk '/ssl .* reuseport/ {print$2}' /etc/nginx/conf.d/default.conf | grep '^[[:digit:]]*$' | head -n1)
 [[ -z $port ]] && port="443"
 
@@ -344,8 +410,8 @@ deb http://cloudfront.debian.net/debian bookworm-updates main contrib non-free n
 deb http://cloudfront.debian.net/debian bookworm-backports main contrib non-free non-free-firmware
 EOF
 
-apt update --fix-missing && apt upgrade --allow-downgrades -y
-apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
+apt update --fix-missing && apt upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 
 pkgDEP
 
@@ -453,6 +519,8 @@ EOF
 systemctl daemon-reload >/dev/null
 systemctl restart unbound >/dev/null 2>&1
 systemctl enable unbound >/dev/null 2>&1
+systemctl disable --now unbound-resolvconf.service >/dev/null 2>&1
+systemctl reset-failed unbound-resolvconf.service >/dev/null 2>&1
 
 rm -rf /etc/resolvconf/update.d/unbound >/dev/null 2>&1
 rm -rf /etc/systemd/resolved.conf >/dev/null 2>&1
@@ -1070,12 +1138,15 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install NGINX$
 
 
 makeSSL_D(){
+checkTimeStatus
+if [[ -z $domain ]] || [[ $domain != *.* ]] || [[ -z $topDomain ]] || [[ $topDomain = $domain ]] || [[ -z $CFapikey ]] || [[ -z $CFemail ]]; then
+  echo -e "${WHITE}TLS certificate${RED} Domain or Cloudflare variables are invalid${cRES}"
+  exit 1
+fi
 crontab -l 2>/dev/null >/tmp/now.cron
 sed -i '/acme.sh/d' /tmp/now.cron
 crontab /tmp/now.cron
 rm -rf /tmp/now.cron
-rm -rf "/root/.acme.sh"
-
 export CF_Key="$CFapikey"
 export CF_Email="$CFemail"
 
@@ -1090,32 +1161,29 @@ else
 systemctl force-reload nginx
 fi
 
-rm -rf /var/www/ssl/*.cer
-rm -rf /var/www/ssl/*.key
-find /var/www/ssl/*.pem | grep -v "dhparam.pem" | xargs -I {} rm -rf {}
-
-curl https://get.acme.sh | sh
-"/root/.acme.sh"/acme.sh --upgrade  --auto-upgrade
-"/root/.acme.sh"/acme.sh --set-default-ca  --server letsencrypt
-"/root/.acme.sh"/acme.sh --issue --dns dns_cf -d $topDomain -d *.$topDomain -k ec-256 --dnssleep 180
-"/root/.acme.sh"/acme.sh --installcert -d $topDomain \
+curl -fsSL https://get.acme.sh | sh || exit 1
+"/root/.acme.sh"/acme.sh --upgrade --auto-upgrade || exit 1
+"/root/.acme.sh"/acme.sh --set-default-ca --server letsencrypt || exit 1
+"/root/.acme.sh"/acme.sh --issue --dns dns_cf -d "$domain" -d "*.$topDomain" -k ec-256 --dnssleep 180 || exit 1
+"/root/.acme.sh"/acme.sh --installcert -d "$domain" \
                --key-file       /var/www/ssl/de_GWD.key  \
                --fullchain-file /var/www/ssl/de_GWD.cer \
-               --reloadcmd     "systemctl force-reload nginx" \
-               --ecc
-
-chmod 644 /var/www/ssl/*.key
+               --ecc || exit 1
+validateCertificate
 }
 
 
 
 makeSSL_W(){
+checkTimeStatus
+if [[ -z $domain ]] || [[ $domain != *.* ]]; then
+  echo -e "${WHITE}TLS certificate${RED} Domain is invalid${cRES}"
+  exit 1
+fi
 crontab -l 2>/dev/null >/tmp/now.cron
 sed -i '/acme.sh/d' /tmp/now.cron
 crontab /tmp/now.cron
 rm -rf /tmp/now.cron
-rm -rf "/root/.acme.sh"
-
 rm -rf /etc/nginx/conf.d/80.conf
 rm -rf /etc/nginx/conf.d/default.conf
 cat << EOF >/etc/nginx/conf.d/default.conf
@@ -1140,21 +1208,15 @@ else
 systemctl force-reload nginx
 fi
 
-rm -rf /var/www/ssl/*.cer
-rm -rf /var/www/ssl/*.key
-find /var/www/ssl/*.pem | grep -v "dhparam.pem" | xargs -I {} rm -rf {}
-
-curl https://get.acme.sh | sh
-"/root/.acme.sh"/acme.sh --upgrade  --auto-upgrade
-"/root/.acme.sh"/acme.sh --set-default-ca  --server letsencrypt
-"/root/.acme.sh"/acme.sh --issue -d $domain -w /var/www/html -k ec-256
-"/root/.acme.sh"/acme.sh --installcert -d $domain \
+curl -fsSL https://get.acme.sh | sh || exit 1
+"/root/.acme.sh"/acme.sh --upgrade --auto-upgrade || exit 1
+"/root/.acme.sh"/acme.sh --set-default-ca --server letsencrypt || exit 1
+"/root/.acme.sh"/acme.sh --issue -d "$domain" -w /var/www/html -k ec-256 || exit 1
+"/root/.acme.sh"/acme.sh --installcert -d "$domain" \
                --key-file       /var/www/ssl/de_GWD.key  \
                --fullchain-file /var/www/ssl/de_GWD.cer \
-               --reloadcmd     "systemctl force-reload nginx" \
-               --ecc
-
-chmod 644 /var/www/ssl/*.key
+               --ecc || exit 1
+validateCertificate
 }
 
 
@@ -1429,7 +1491,6 @@ sslFolder=$(ls "/root/.acme.sh" | grep '_ecc')
 cp -f "/root/.acme.sh"/$sslFolder/fullchain.cer /var/www/ssl/de_GWD.cer
 cp -f "/root/.acme.sh"/$sslFolder/*.key /var/www/ssl/de_GWD.key
 
-chmod 644 /var/www/ssl/*.key
 fi
 EOF
 chmod +x /opt/de_GWD/Qday
@@ -1472,6 +1533,10 @@ EOF
 crontab /tmp/now.cron
 rm -rf /tmp/now.cron
 service cron restart
+if ! command -v crontab >/dev/null 2>&1 || [[ $(systemctl is-active cron 2>/dev/null) != "active" ]]; then
+  echo -e "${WHITE}Cron${RED} Service or crontab is unavailable${cRES}"
+  exit 1
+fi
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Post Install${cRES}"
 
@@ -1530,7 +1595,7 @@ fi
 
 
 installkernel(){
-bash <(wget --show-progress -cqO- https://raw.githubusercontent.com/jacyl4/de_GWD/main/resource/kernel/installkernel)
+bash <(wget --show-progress -cqO- "$repoBase/resource/kernel/installkernel")
 }
 
 
@@ -1542,7 +1607,6 @@ changeDomain(){
     read vpsdomainP
 
 domain=$(echo $vpsdomainP | cut -d: -f1)
-topDomain=$(echo $domain | rev | awk -F. '{print $1"."$2}' | rev)
 port=$(echo $vpsdomainP | cut -d: -f2| grep '^[[:digit:]]*$')
 [[ -z $port ]] && port="443"
 
@@ -1562,6 +1626,7 @@ else
     echo -e "${GREEN}=============================== ${cRES}"
     read CFemail
 
+    topDomain="${domain#*.}"
 makeSSL_D
 fi
 
@@ -1586,7 +1651,6 @@ changeXrayVerify(){
     read npath
 
 domain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf | sed 's/.$//')
-topDomain=$(echo $domain | rev | awk -F. '{print $1"."$2}' | rev)
 port=$(awk '/ssl .* reuseport/ {print$2}' /etc/nginx/conf.d/default.conf | grep '^[[:digit:]]*$')
 
 path=$npath
@@ -1901,7 +1965,6 @@ installGWD(){
     read vpsdomainP
 
 domain=$(echo $vpsdomainP | cut -d: -f1)
-topDomain=$(echo $domain | rev | awk -F. '{print $1"."$2}' | rev)
 port=$(echo $vpsdomainP | cut -d: -f2 | grep '^[[:digit:]]*$')
 [[ -z $port ]] && port="443"
 
@@ -1937,8 +2000,8 @@ deb-src http://deb.debian.org/debian bookworm-updates main non-free-firmware
 EOF
 
 sed -i "s/ stretch / buster /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
-apt update --fix-missing && apt upgrade --allow-downgrades -y
-apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
+apt update --fix-missing && apt upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 fi
 
 cat << EOF >/etc/apt/sources.list
@@ -1957,10 +2020,14 @@ EOF
 
 sed -i "s/ buster / bookworm /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
 sed -i "s/ bullseye / bookworm /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
-apt update --fix-missing && apt upgrade --allow-downgrades -y
-apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
+apt update --fix-missing && apt upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 
 preInstall
+
+if [[ $port != "443" ]]; then
+  topDomain="${domain#*.}"
+fi
 
 [[ $virt_type != "container" ]] && installNftables
 
@@ -2030,8 +2097,9 @@ checkKernel
 enableAutoUpdate(){
 cat << "EOF" >/opt/de_GWD/autoUpdate
 #!/bin/bash
+repoBase="https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/dev"
 localVer=$(awk 'NR==1' /opt/de_GWD/version.php)
-remoteVer=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/main/version.php | head -n 1)
+remoteVer=$(curl -fsSLo- "$repoBase/version.php" | head -n 1)
 
 echo $localVer >/tmp/de_GWD_Ver
 echo $remoteVer >>/tmp/de_GWD_Ver
@@ -2040,7 +2108,7 @@ VerCP=$(cat /tmp/de_GWD_Ver | sort -rV | uniq | awk NR==2)
 
 if [[ $VerCP == $localVer ]]; then
 rm -rf /tmp/autoUpdate
-wget -t 5 -T 10 -cqO /tmp/autoUpdate https://raw.githubusercontent.com/jacyl4/de_GWD/main/server
+wget -t 5 -T 10 -cqO /tmp/autoUpdate "$repoBase/server"
 
 if [[ $(du -sk /tmp/autoUpdate 2>/dev/null | awk '{print$1}') -gt 70 ]]; then
 sed -i '$d' /tmp/autoUpdate
@@ -2115,6 +2183,7 @@ exit
 
 
 start_menu(){
+menuDEP
 echo
 if [[ -f "/var/www/ssl/de_GWD.cer" ]]; then
   sslExpireDate=$(openssl x509 -enddate -noout -in /var/www/ssl/de_GWD.cer | sed 's/notAfter=//')
@@ -2186,7 +2255,7 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
   echo -e "${CYAN}44.Set TCP Port Forward${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
 echo
-read -p "Select:" num
+read -r -p "Select:" num || exit 0
     case "$num" in
     1)
     installGWD
@@ -2261,7 +2330,7 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
   echo -e "${CYAN}44.Set TCP Port Forward${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
 echo
-read -p "Select:" num
+read -r -p "Select:" num || exit 0
     case "$num" in
     1)
     installGWD

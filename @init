@@ -242,8 +242,8 @@ deb http://cloudfront.debian.net/debian-security bookworm-security main contrib 
 deb http://cloudfront.debian.net/debian bookworm-updates main contrib non-free non-free-firmware
 deb http://cloudfront.debian.net/debian bookworm-backports main contrib non-free non-free-firmware
 EOF
-apt update --fix-missing && apt upgrade --allow-downgrades -y
-apt full-upgrade -y && apt --purge autoremove -y && apt clean -y && apt autoclean -y
+apt update --fix-missing && apt upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt full-upgrade -y && apt --purge autoremove -y && apt clean -y && apt autoclean -y || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge haveged
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober$') ]] && apt remove --purge os-prober
@@ -252,6 +252,7 @@ apt full-upgrade -y && apt --purge autoremove -y && apt clean -y && apt autoclea
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sudo$') ]] && aptPKG+=(sudo)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^wget$') ]] && aptPKG+=(wget)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^cron$') ]] && aptPKG+=(cron)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^curl$') ]] && aptPKG+=(curl)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^git$') ]] && aptPKG+=(git)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^locales$') ]] && aptPKG+=(locales)

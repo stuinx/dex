@@ -38,6 +38,7 @@ rm -rf /etc/apt/sources.list.d/xanmod-kernel.list
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^gnupg2$') ]] && aptPKG+=(gnupg2)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^curl$') ]] && aptPKG+=(curl)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^cron$') ]] && aptPKG+=(cron)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^python3$') ]] && aptPKG+=(python3)
 [[ -z $(which 'update-grub') ]] && [[ -d "/sys/firmware/efi" ]] && aptPKG+=(grub-efi)
 [[ -z $(which 'update-grub') ]] && [[ ! -d "/sys/firmware/efi" ]] && aptPKG+=(grub2-common)
@@ -174,7 +175,7 @@ ZBqN6R8SuRc5NWWPDcSdr1myXY2YpB0AVEV8zGtF
 EOF
 echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] http://pkgs.zabbly.com/kernel/stable $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) main" >/etc/apt/sources.list.d/zabbly-kernel.list
 
-apt update && apt install linux-zabbly
+apt update && apt install -y linux-zabbly || exit 1
 
 if [[ -n $(dpkg --list | grep linux-image | grep zabbly) ]]; then
   cleanOldKernels "zabbly"
@@ -264,7 +265,7 @@ EOF
 cat /tmp/xanmod.gpg.key | gpg --dearmor >/etc/apt/keyrings/xanmod.gpg
 echo "deb [signed-by=/etc/apt/keyrings/xanmod.gpg] http://deb.xanmod.org releases main" >/etc/apt/sources.list.d/xanmod-kernel.list
 
-apt update && apt install linux-xanmod-x64$CPU_LEVEL
+apt update && apt install -y linux-xanmod-x64$CPU_LEVEL || exit 1
 
 if [[ -n $(dpkg --list | grep linux-image | grep xanmod) ]]; then
   # 清理旧内核
@@ -299,7 +300,7 @@ curl -fsSLo /tmp/liquorix.gpg.key https://liquorix.net/liquorix-keyring.gpg
 cat /tmp/liquorix.gpg.key | gpg --dearmor >/etc/apt/keyrings/liquorix.gpg
 echo "deb [signed-by=/etc/apt/keyrings/liquorix.gpg] http://liquorix.net/debian $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) main" >/etc/apt/sources.list.d/liquorix-kernel.list
 
-apt update && apt install linux-image-liquorix-amd64 linux-headers-liquorix-amd64
+apt update && apt install -y linux-image-liquorix-amd64 linux-headers-liquorix-amd64 || exit 1
 
 if [[ -n $(dpkg --list | grep linux-image | grep liquorix) ]]; then
   cleanOldKernels "liquorix"
