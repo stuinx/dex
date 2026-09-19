@@ -9,7 +9,7 @@ WHITE='\E[1;37m'
 cRES='\E[0m'
 
 rawProxyBase="${DE_GWD_GH_RAW_BASE:-https://gh.stuinx.eu.org/https://raw.githubusercontent.com}"
-chnrouteBase="${DE_GWD_CHNROUTE_BASE:-$rawProxyBase/jacyl4/chnroute/main}"
+chnrouteBase="${DE_GWD_CHNROUTE_BASE:-$rawProxyBase/stuinx/chnroute/main}"
 
 
 /opt/de_GWD/tcpTime

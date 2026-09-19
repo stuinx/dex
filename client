@@ -18,7 +18,7 @@ repoOwner="${DE_GWD_REPO_OWNER:-stuinx}"
 repoName="${DE_GWD_REPO_NAME:-dex}"
 branch="${DE_GWD_BRANCH:-dev}"
 repoBase="${DE_GWD_RAW_BASE:-https://gh.stuinx.eu.org/https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}}"
-chnrouteBase="${DE_GWD_CHNROUTE_BASE:-https://gh.stuinx.eu.org/https://raw.githubusercontent.com/jacyl4/chnroute/main}"
+chnrouteBase="${DE_GWD_CHNROUTE_BASE:-https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/chnroute/main}"
 
 
 installCMD=`cat << EOF
