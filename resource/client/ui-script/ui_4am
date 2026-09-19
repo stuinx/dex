@@ -8,13 +8,14 @@ CYAN='\E[1;36m'
 WHITE='\E[1;37m'
 cRES='\E[0m'
 
+rawProxyBase="${DE_GWD_GH_RAW_BASE:-https://gh.stuinx.eu.org/https://raw.githubusercontent.com}"
+chnrouteBase="${DE_GWD_CHNROUTE_BASE:-$rawProxyBase/jacyl4/chnroute/main}"
 
 
 /opt/de_GWD/tcpTime
 
-serverConnect1=$(curl -Is -m 5 google.com | grep 'HTTP')
-serverConnect2=$(curl -Is -m 5 youtube.com | grep 'HTTP')
-[[ -z $serverConnect1 ]] && [[ -z $serverConnect2 ]] && exit
+serverConnect=$(curl -Is -m 5 "$chnrouteBase/IPchnroute.sha256sum" | grep 'HTTP')
+[[ -z $serverConnect ]] && exit 1
 
 [[ $1 = "u" ]] && service cron stop
 
@@ -28,17 +29,21 @@ elif [[ $sha256sumL != $2 ]]; then
 fi
 }
 
-geosite_sha256sum=$(curl -fsSLo- https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat.sha256sum | awk '{print$1}')
-geoip_sha256sum=$(curl -fsSLo- https://raw.githubusercontent.com/Loyalsoldier/geoip/release/geoip.dat.sha256sum | awk '{print$1}')
-IPchnroute_sha256sum=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum)
-DomainsChn_sha256sum=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.chn.txt.sha256sum)
-DomainsApple_sha256sum=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.apple.txt.sha256sum)
-DomainsGames_sha256sum=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.games.txt.sha256sum)
-bogusNxdomain_sha256sum=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/99-bogus-nxdomain.china.conf.sha256sum)
+geosite_sha256sum=$(curl -fsSLo- "$rawProxyBase/Loyalsoldier/v2ray-rules-dat/release/geosite.dat.sha256sum" | awk '{print$1}')
+geoip_sha256sum=$(curl -fsSLo- "$rawProxyBase/Loyalsoldier/geoip/release/geoip.dat.sha256sum" | awk '{print$1}')
+IPchnroute_sha256sum=$(curl -fsSLo- "$chnrouteBase/IPchnroute.sha256sum")
+DomainsChn_sha256sum=$(curl -fsSLo- "$chnrouteBase/mosdns_chnlist/Domains.chn.txt.sha256sum")
+DomainsApple_sha256sum=$(curl -fsSLo- "$chnrouteBase/mosdns_chnlist/Domains.apple.txt.sha256sum")
+DomainsGames_sha256sum=$(curl -fsSLo- "$chnrouteBase/mosdns_chnlist/Domains.games.txt.sha256sum")
+bogusNxdomain_sha256sum=$(curl -fsSLo- "$chnrouteBase/mosdns_chnlist/99-bogus-nxdomain.china.conf.sha256sum")
+if [[ -z $geosite_sha256sum ]] || [[ -z $geoip_sha256sum ]] || [[ -z $IPchnroute_sha256sum ]] || [[ -z $DomainsChn_sha256sum ]] || [[ -z $DomainsApple_sha256sum ]] || [[ -z $DomainsGames_sha256sum ]] || [[ -z $bogusNxdomain_sha256sum ]]; then
+  echo -e "${WHITE}Runtime resource${RED} Checksum download failed${cRES}"
+  exit 1
+fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/geosite.dat $geosite_sha256sum) = "false" ]]; then
 rm -rf /tmp/geosite.dat
-wget --show-progress -cqO /tmp/geosite.dat https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat
+wget --show-progress -cqO /tmp/geosite.dat "$rawProxyBase/Loyalsoldier/v2ray-rules-dat/release/geosite.dat"
   if [[ $(checkSum /tmp/geosite.dat $geosite_sha256sum) = "true" ]]; then
     mv -f /tmp/geosite.dat /opt/de_GWD/.repo/geosite.dat
   else
@@ -48,7 +53,7 @@ fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/geoip.dat $geoip_sha256sum) = "false" ]]; then
 rm -rf /tmp/geoip.dat
-wget --show-progress -cqO /tmp/geoip.dat https://raw.githubusercontent.com/Loyalsoldier/geoip/release/geoip.dat
+wget --show-progress -cqO /tmp/geoip.dat "$rawProxyBase/Loyalsoldier/geoip/release/geoip.dat"
   if [[ $(checkSum /tmp/geoip.dat $geoip_sha256sum) = "true" ]]; then
     mv -f /tmp/geoip.dat /opt/de_GWD/.repo/geoip.dat
   else
@@ -58,7 +63,7 @@ fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/IPchnroute $IPchnroute_sha256sum) = "false" ]]; then
 rm -rf /tmp/IPchnroute
-wget --show-progress -cqO /tmp/IPchnroute https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute
+wget --show-progress -cqO /tmp/IPchnroute "$chnrouteBase/IPchnroute"
   if [[ $(checkSum /tmp/IPchnroute $IPchnroute_sha256sum) = "true" ]]; then
     mv -f /tmp/IPchnroute /opt/de_GWD/.repo/IPchnroute
   else
@@ -68,7 +73,7 @@ fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/Domains.chn.txt $DomainsChn_sha256sum) = "false" ]]; then
 rm -rf /tmp/Domains.chn.txt
-wget --show-progress -cqO /tmp/Domains.chn.txt https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.chn.txt
+wget --show-progress -cqO /tmp/Domains.chn.txt "$chnrouteBase/mosdns_chnlist/Domains.chn.txt"
   if [[ $(checkSum /tmp/Domains.chn.txt $DomainsChn_sha256sum) = "true" ]]; then
     mv -f /tmp/Domains.chn.txt /opt/de_GWD/.repo/Domains.chn.txt
   else
@@ -78,7 +83,7 @@ fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/Domains.apple.txt $DomainsApple_sha256sum) = "false" ]]; then
 rm -rf /tmp/Domains.apple.txt
-wget --show-progress -cqO /tmp/Domains.apple.txt https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.apple.txt
+wget --show-progress -cqO /tmp/Domains.apple.txt "$chnrouteBase/mosdns_chnlist/Domains.apple.txt"
   if [[ $(checkSum /tmp/Domains.apple.txt $DomainsApple_sha256sum) = "true" ]]; then
     mv -f /tmp/Domains.apple.txt /opt/de_GWD/.repo/Domains.apple.txt
   else
@@ -88,7 +93,7 @@ fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/Domains.games.txt $DomainsGames_sha256sum) = "false" ]]; then
 rm -rf /tmp/Domains.games.txt
-wget --show-progress -cqO /tmp/Domains.games.txt https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.games.txt
+wget --show-progress -cqO /tmp/Domains.games.txt "$chnrouteBase/mosdns_chnlist/Domains.games.txt"
   if [[ $(checkSum /tmp/Domains.games.txt $DomainsGames_sha256sum) = "true" ]]; then
     mv -f /tmp/Domains.games.txt /opt/de_GWD/.repo/Domains.games.txt
   else
@@ -98,7 +103,7 @@ fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/99-bogus-nxdomain.china.conf $bogusNxdomain_sha256sum) = "false" ]]; then
 rm -rf /tmp/99-bogus-nxdomain.china.conf
-wget --show-progress -cqO /tmp/99-bogus-nxdomain.china.conf https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/99-bogus-nxdomain.china.conf
+wget --show-progress -cqO /tmp/99-bogus-nxdomain.china.conf "$chnrouteBase/mosdns_chnlist/99-bogus-nxdomain.china.conf"
   if [[ $(checkSum /tmp/99-bogus-nxdomain.china.conf $bogusNxdomain_sha256sum) = "true" ]]; then
     mv -f /tmp/99-bogus-nxdomain.china.conf /opt/de_GWD/.repo/99-bogus-nxdomain.china.conf
   else
