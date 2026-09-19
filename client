@@ -266,7 +266,8 @@ wget --show-progress -cqO /tmp/nginxConf.zip "$repoBase/resource/nginx/nginxConf
 fi
 
 if [[ $(ttyd -v 2>&1 | grep -o '[0-9]\.[0-9]\.[0-9]') != $TTYD_Ver ]]; then
-wget --show-progress -cqO /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/$TTYD_Ver/ttyd.$(uname -m)
+ttydBase="${DE_GWD_TTYD_BASE:-https://gh.stuinx.eu.org/https://github.com/tsl0922/ttyd/releases/download}"
+wget --show-progress -cqO /tmp/ttyd "$ttydBase/$TTYD_Ver/ttyd.$(uname -m)"
 [[ $? -ne 0 ]] && echo -e "${WHITE}TTYD${RED} Download Failed${cRES}" && exit 1
 [[ $(du -sk /tmp/ttyd 2>/dev/null | awk '{print$1}') -gt 1000 ]] && mv -f /tmp/ttyd /usr/bin/ttyd && chmod +x /usr/bin/ttyd && TTYD_UPDATE="true"
 fi
