@@ -127,8 +127,9 @@ if [[ $(checkSum /opt/de_GWD/.repo/IPchnroute $IPchnroute_sha256sum) = "true" ]]
 cp -f /opt/de_GWD/.repo/IPchnroute /opt/de_GWD/nftables/IP_CHNROUTE
 sed -i '/^\s*$/d' /opt/de_GWD/nftables/IP_CHNROUTE
 sed -i 's/$/,/g' /opt/de_GWD/nftables/IP_CHNROUTE
-nft flush set ip de_GWD CHNROUTE
-cat << EOF >/opt/de_GWD/nftables/SET_CHNROUTE.nft
+if nft list set ip de_GWD CHNROUTE >/dev/null 2>&1; then
+  nft flush set ip de_GWD CHNROUTE
+  cat << EOF >/opt/de_GWD/nftables/SET_CHNROUTE.nft
 #!/usr/sbin/nft -f
 table ip de_GWD {
         set CHNROUTE {
@@ -139,8 +140,9 @@ table ip de_GWD {
         }
 }
 EOF
-chmod +x /opt/de_GWD/nftables/SET_CHNROUTE.nft
-/opt/de_GWD/nftables/SET_CHNROUTE.nft
+  chmod +x /opt/de_GWD/nftables/SET_CHNROUTE.nft
+  /opt/de_GWD/nftables/SET_CHNROUTE.nft
+fi
 fi
 
 if [[ -n $(openssl x509 -enddate -noout -in /var/www/ssl/de_GWD.cer -checkend 259200 | grep "Certificate will expire") ]] && [[ -d "/root/.acme.sh" ]]; then
