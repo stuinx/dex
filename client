@@ -2325,7 +2325,7 @@ piholePW='$BALLOON-SHA256$v=1$s=1024,t=32$LwoqshC8cGQ60io+j+h3yQ==$/zfv150BWOgSi
 fi
 
 mkdir -p /opt/de_GWD/pihole
-docker run -d \
+if ! docker run -d \
 --name=pihole \
 --cap-add NET_RAW \
 --cap-add NET_ADMIN \
@@ -2336,9 +2336,17 @@ docker run -d \
 -v /etc/localtime:/etc/localtime \
 -v /opt/de_GWD/pihole:/etc/pihole \
 -v /etc/dnsmasq.d:/etc/dnsmasq.d \
-"$dockerImage"
+"$dockerImage"; then
+  echo -e "${WHITE}Pi-hole${RED} Container setup failed${cRES}"
+  exit 1
+fi
 
-if [[ $? -ne 0 ]] || [[ ! -s "/opt/de_GWD/pihole/pihole.toml" ]]; then
+for i in {1..60}; do
+  [[ -s "/opt/de_GWD/pihole/pihole.toml" ]] && break
+  sleep 1
+done
+
+if [[ ! -s "/opt/de_GWD/pihole/pihole.toml" ]]; then
   echo -e "${WHITE}Pi-hole${RED} Container setup failed${cRES}"
   exit 1
 fi
