@@ -2419,6 +2419,7 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Pi-hole Config
 
 
 postInstall(){
+mkdir -p /opt/de_GWD/nftables
 /opt/de_GWD/ui-NodeOne
 /opt/de_GWD/ui_4am || exit 1
 /opt/de_GWD/ui_4h || exit 1
@@ -2733,9 +2734,9 @@ installPihole
 
 piholeSet
 
-installNftables
-
 postInstall
+
+installNftables
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}de_GWD ${GREEN}Installed${cRES}"
 }
