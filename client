@@ -13,7 +13,7 @@ chmod 777 /tmp
 architecture=$(dpkg --print-architecture)
 export DEBIAN_FRONTEND=noninteractive
 TTYD_Ver="1.7.3"
-aptGetOpts=(-o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+aptGetOpts=(-o Acquire::Retries=2 -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
 repoOwner="${DE_GWD_REPO_OWNER:-stuinx}"
 repoName="${DE_GWD_REPO_NAME:-dex}"
 branch="${DE_GWD_BRANCH:-dev}"
@@ -177,6 +177,23 @@ for attempt in $(seq 1 10); do
   sleep 1
 done
 return 1
+}
+
+preflightTime(){
+local remoteDate
+if command -v curl >/dev/null 2>&1; then
+  remoteDate=$(curl -fsSI --max-time 10 http://mirrors.ustc.edu.cn/debian/dists/bookworm/InRelease 2>/dev/null | sed -n 's/^[Dd]ate:[[:space:]]*//p' | head -n1)
+fi
+if [[ -z $remoteDate ]] && command -v wget >/dev/null 2>&1; then
+  remoteDate=$(wget -qSO- --max-redirect=0 --timeout=10 http://mirrors.ustc.edu.cn/debian/dists/bookworm/InRelease 2>&1 | sed -n 's/^[[:space:]]*[Dd]ate:[[:space:]]*//p' | head -n1)
+fi
+if [[ -n $remoteDate ]]; then
+  date -s "$remoteDate" >/dev/null 2>&1 || true
+  hwclock -w >/dev/null 2>&1 || true
+fi
+if command -v timedatectl >/dev/null 2>&1; then
+  timedatectl set-ntp true >/dev/null 2>&1 || true
+fi
 }
 
 verifyRuntimeResources(){
@@ -2974,4 +2991,5 @@ read -r -p "Select:" num || exit 0
     esac
 }
 
+preflightTime
 start_menu
