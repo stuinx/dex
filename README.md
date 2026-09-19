@@ -10,16 +10,14 @@
 
 ## Server (amd64 & arm64) support kvm xen openvz lxc and so on:
 ```
-apt install -y wget
-bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx/dex/main/server)
+bash <(wget --no-check-certificate -qO- https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/main/server)
 ```
 
 ![de_GWD 0](https://raw.githubusercontent.com/stuinx/dex/main/resource/screenshot/0.png)
 
 ## Client (amd64 & arm64):
 ```
-apt install -y wget
-bash <(wget --no-check-certificate -qO- https://ghproxy.net/https://raw.githubusercontent.com/stuinx/dex/main/client)
+bash <(wget --no-check-certificate -qO- https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/main/client)
 ```
 或
 
