@@ -28,7 +28,7 @@ EOF
 if [[ $architecture = "arm64" ]];then
 chnAPTsource="mirrors.tuna.tsinghua.edu.cn"
 elif [[ $architecture = "amd64" ]]; then
-chnAPTsource="mirrors.aliyun.com"
+chnAPTsource="mirrors.ustc.edu.cn"
 fi
 
 pkgDEP1(){
