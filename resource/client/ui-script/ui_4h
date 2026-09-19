@@ -16,3 +16,5 @@ cRES='\E[0m'
 
 [[ $1 = "r" ]] && systemctl restart smartdns && systemctl restart mosdns
 [[ $1 = "n" ]] && systemctl restart nftables
+
+exit 0
