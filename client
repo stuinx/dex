@@ -13,6 +13,7 @@ chmod 777 /tmp
 architecture=$(dpkg --print-architecture)
 export DEBIAN_FRONTEND=noninteractive
 TTYD_Ver="1.7.3"
+aptGetOpts=(-o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
 repoOwner="${DE_GWD_REPO_OWNER:-stuinx}"
 repoName="${DE_GWD_REPO_NAME:-dex}"
 branch="${DE_GWD_BRANCH:-dev}"
@@ -39,7 +40,7 @@ Freeze_Package+=($(dpkg -l | grep 'linux-image-' | awk '{print $2}'))
 Freeze_Package+=($(dpkg -l | grep 'linux-headers-' | awk '{print $2}'))
 Freeze_Package+=($(dpkg -l | grep 'linux-dtb-' | awk '{print $2}'))
 echo ${Freeze_Package[@]} | xargs -n1 apt-mark hold
-apt-get update -o APT::Update::Error-Mode=any && apt-get install -y apparmor apparmor-utils google-perftools || exit 1
+apt-get "${aptGetOpts[@]}" update -o APT::Update::Error-Mode=any && apt-get "${aptGetOpts[@]}" install -y apparmor apparmor-utils google-perftools || exit 1
 fi
 
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^ipset$') ]] && apt remove --purge ipset
@@ -72,8 +73,8 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^chrony$') ]] && aptPKG+=(chrony)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^irqbalance$') ]] && [[ $(nproc --all) -gt 1 ]] && aptPKG+=(irqbalance)
 if [[ -n $aptPKG ]]; then
-  apt-get update -o APT::Update::Error-Mode=any || { echo -e "${WHITE}Base dependencies${RED} APT update Failed${cRES}"; exit 1; }
-  apt-get install -y $(echo ${aptPKG[@]}) || { echo -e "${WHITE}Base dependencies${RED} APT install Failed${cRES}"; exit 1; }
+  apt-get "${aptGetOpts[@]}" update -o APT::Update::Error-Mode=any || { echo -e "${WHITE}Base dependencies${RED} APT update Failed${cRES}"; exit 1; }
+  apt-get "${aptGetOpts[@]}" install -y $(echo ${aptPKG[@]}) || { echo -e "${WHITE}Base dependencies${RED} APT install Failed${cRES}"; exit 1; }
 fi
 }
 
@@ -86,8 +87,8 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^wget$') ]] && aptPKG+=(wget)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^cron$') ]] && aptPKG+=(cron)
 if [[ -n $aptPKG ]]; then
-  apt-get update -o APT::Update::Error-Mode=any || exit 1
-  apt-get install -y $(echo ${aptPKG[@]}) || exit 1
+  apt-get "${aptGetOpts[@]}" update -o APT::Update::Error-Mode=any || exit 1
+  apt-get "${aptGetOpts[@]}" install -y $(echo ${aptPKG[@]}) || exit 1
 fi
 }
 
@@ -129,8 +130,8 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sqlite3$') ]] && aptPKG+=(sqlite3)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^libmimalloc2.0') ]] && aptPKG+=(libmimalloc2.0)
 if [[ -n $aptPKG ]]; then
-  apt-get update -o APT::Update::Error-Mode=any || { echo -e "${WHITE}Docker dependencies${RED} APT update Failed${cRES}"; exit 1; }
-  apt-get install -y $(echo ${aptPKG[@]}) || { echo -e "${WHITE}Docker dependencies${RED} APT install Failed${cRES}"; exit 1; }
+  apt-get "${aptGetOpts[@]}" update -o APT::Update::Error-Mode=any || { echo -e "${WHITE}Docker dependencies${RED} APT update Failed${cRES}"; exit 1; }
+  apt-get "${aptGetOpts[@]}" install -y $(echo ${aptPKG[@]}) || { echo -e "${WHITE}Docker dependencies${RED} APT install Failed${cRES}"; exit 1; }
 fi
 
 for requiredPackage in docker-ce containerd.io php7.4-fpm python3-toml libmimalloc2.0; do
@@ -1866,8 +1867,8 @@ apt-key del 95BD4743 >/dev/null 2>&1
 curl -sSLo /etc/apt/keyrings/deb.sury.org.gpg https://packages.sury.org/php/apt.gpg
 [[ $? -ne 0 ]] && echo -e "${WHITE}PHP apt key${RED} Download Failed${cRES}" && exit 1
 
-apt-get update -o APT::Update::Error-Mode=any && apt-get upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
-apt-get full-upgrade -y && apt-get autoremove --purge -y && apt-get clean && apt-get autoclean || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
+apt-get "${aptGetOpts[@]}" update -o APT::Update::Error-Mode=any && apt-get "${aptGetOpts[@]}" upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt-get "${aptGetOpts[@]}" full-upgrade -y && apt-get "${aptGetOpts[@]}" autoremove --purge -y && apt-get "${aptGetOpts[@]}" clean && apt-get "${aptGetOpts[@]}" autoclean || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Debian ${GREEN}Updated${cRES}"
 }
@@ -2653,8 +2654,8 @@ deb http://$chnAPTsource/debian-security buster/updates main contrib non-free
 EOF
 
 sed -i "s/ stretch / buster /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
-apt-get update -o APT::Update::Error-Mode=any && apt-get upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
-apt-get full-upgrade -y && apt-get autoremove --purge -y && apt-get clean && apt-get autoclean || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
+apt-get "${aptGetOpts[@]}" update -o APT::Update::Error-Mode=any && apt-get "${aptGetOpts[@]}" upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt-get "${aptGetOpts[@]}" full-upgrade -y && apt-get "${aptGetOpts[@]}" autoremove --purge -y && apt-get "${aptGetOpts[@]}" clean && apt-get "${aptGetOpts[@]}" autoclean || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 fi
 
 cat << EOF >/etc/apt/sources.list
@@ -2666,8 +2667,8 @@ EOF
 
 sed -i "s/ buster / bookworm /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
 sed -i "s/ bullseye / bookworm /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
-apt-get update -o APT::Update::Error-Mode=any && apt-get upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
-apt-get full-upgrade -y && apt-get autoremove --purge -y && apt-get clean && apt-get autoclean || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
+apt-get "${aptGetOpts[@]}" update -o APT::Update::Error-Mode=any && apt-get "${aptGetOpts[@]}" upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt-get "${aptGetOpts[@]}" full-upgrade -y && apt-get "${aptGetOpts[@]}" autoremove --purge -y && apt-get "${aptGetOpts[@]}" clean && apt-get "${aptGetOpts[@]}" autoclean || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 
 preInstall
 
@@ -2706,7 +2707,7 @@ de_GWDconnect
 
 updateAPT
 
-apt-get --reinstall install -y ca-certificates || exit 1
+apt-get "${aptGetOpts[@]}" --reinstall install -y ca-certificates || exit 1
 
 installDep
 
