@@ -554,8 +554,8 @@ try_connect() {
 }
 
 # Execute connections
-serverConnect1=$(try_connect "google.com")
-serverConnect2=$(try_connect "1.1.1.1")
+serverConnect1=$(try_connect "$repoBase/version.php")
+serverConnect2=$(try_connect "$chnrouteBase/IPchnroute.sha256sum")
 
 if [[ $1 = "u" ]]; then
     if [[ $2 = "a" ]]; then
