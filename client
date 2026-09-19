@@ -13,7 +13,7 @@ chmod 777 /tmp
 architecture=$(dpkg --print-architecture)
 export DEBIAN_FRONTEND=noninteractive
 TTYD_Ver="1.7.3"
-aptGetOpts=(-o Acquire::Retries=2 -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+aptGetOpts=(-o Acquire::Retries=2 -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::http::Pipeline-Depth=0 -o Acquire::https::Pipeline-Depth=0)
 repoOwner="${DE_GWD_REPO_OWNER:-stuinx}"
 repoName="${DE_GWD_REPO_NAME:-dex}"
 branch="${DE_GWD_BRANCH:-dev}"
@@ -1628,14 +1628,25 @@ chmod +x /opt/de_GWD/nftables/SET_listWlan.nft
 
 cat << "EOF" >/opt/de_GWD/nftables/flowtable_eth.sh
 #!/bin/bash
-interface_FT=$(find /sys/class/net ! -type d | xargs --max-args=1 realpath | grep 'device' | awk -F'/' '{print$NF}' | xargs -n1 | grep -v '^lo$' | grep -v '^ifb4lo$')
+set -euo pipefail
+
+interface_FT=$(ip -o link show | awk -F': ' '{print$2}' | sed 's/@.*//' | grep -Ev '^(lo|ifb4lo)$' | sort -u || true)
 
 interface_BF=()
 while IFS= read -r line; do
-    interface_BF+=("$line")
+    [[ -n "$line" ]] && interface_BF+=("$line")
 done <<< "$interface_FT"
 
-echo "define flowtable_eth = { $(IFS=, ; echo "${interface_BF[*]}") };" >/opt/de_GWD/nftables/flowtable.eth
+if ((${#interface_BF[@]} == 0)); then
+    echo "No network interfaces available for nftables flowtable" >&2
+    exit 1
+fi
+
+{
+    printf 'define flowtable_eth = { '
+    (IFS=,; printf '%s' "${interface_BF[*]}")
+    printf ' };\n'
+} >/opt/de_GWD/nftables/flowtable.eth
 EOF
 chmod +x /opt/de_GWD/nftables/flowtable_eth.sh
 
@@ -1836,10 +1847,10 @@ rm -rf /lib/systemd/system/nftables.service
 cat << EOF >/etc/systemd/system/nftables.service
 [Unit]
 Description=nftables
-Wants=network-pre.target
-Before=network-pre.target shutdown.target
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+Before=shutdown.target
 Conflicts=shutdown.target
-DefaultDependencies=no
 
 [Service]
 Type=oneshot
@@ -1847,22 +1858,25 @@ RemainAfterExit=yes
 StandardInput=null
 ProtectSystem=full
 ProtectHome=true
-ExecStart=/bin/bash -c '/etc/rc_online.local' ; /bin/bash -c '/opt/de_GWD/nftables/flowtable_eth.sh' ; /usr/sbin/nft -f /opt/de_GWD/nftables/nftables ; $(which ip) route add local default dev lo scope host table 220 ; $(which ip) rule add fwmark 0x9 table 220 prio 100
-ExecStop=/usr/sbin/nft flush ruleset ; $(which ip) rule del table 220 ; $(which ip) route del local default dev lo table 220
+ExecStart=/bin/bash -c '/etc/rc_online.local'
+ExecStart=/bin/bash -c '/opt/de_GWD/nftables/flowtable_eth.sh'
+ExecStart=/usr/sbin/nft -f /opt/de_GWD/nftables/nftables
+ExecStart=/usr/sbin/ip route replace local default dev lo scope host table 220
+ExecStart=/bin/bash -c '/usr/sbin/ip rule add fwmark 0x9 table 220 priority 100 2>/dev/null || /usr/sbin/ip rule list priority 100 | grep -Fq "fwmark 0x9 lookup 220"'
+ExecStop=/bin/bash -c '/usr/sbin/nft flush ruleset; /usr/sbin/ip rule del fwmark 0x9 table 220 priority 100 2>/dev/null || true; /usr/sbin/ip route del local default dev lo table 220 2>/dev/null || true; /usr/sbin/ip route flush cache 2>/dev/null || true'
 
 [Install]
-WantedBy=sysinit.target
+WantedBy=multi-user.target
 EOF
 systemctl daemon-reload >/dev/null
+systemctl disable nftables >/dev/null 2>&1 || true
 systemctl enable nftables >/dev/null 2>&1
-systemctl restart nftables
+systemctl restart nftables || exit 1
 
-if [[ $(systemctl is-active 'nftables') != "active" ]]; then
-  systemctl restart nftables
-  if [[ $? -ne 0 ]]; then
-  rm -rf /opt/de_GWD/nftables/flowtable.nft >/dev/null 2>&1
-  systemctl restart nftables
-  fi
+if [[ $(systemctl is-active 'nftables') != "active" ]] || ! ip rule list priority 100 | grep -Fq "fwmark 0x9 lookup 220" || ! ip route show table 220 | grep -Fq "local default dev lo"; then
+  echo -e "${WHITE}nftables${RED} policy routing validation Failed${cRES}"
+  systemctl --no-pager --full status nftables || true
+  exit 1
 fi
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Deploy nftables${cRES}"
@@ -1872,6 +1886,7 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Deploy nftable
 
 updateAPT(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Debian Updated${cRES}\r\c"
+rm -f /etc/apt/sources.list.d/debian.sources
 cat << EOF >/etc/apt/sources.list
 deb http://$chnAPTsource/debian bookworm main contrib non-free non-free-firmware
 deb http://$chnAPTsource/debian-security bookworm-security main contrib non-free non-free-firmware
@@ -2671,6 +2686,7 @@ nameserver 114.114.114.114
 nameserver 223.5.5.5
 EOF
 
+rm -f /etc/apt/sources.list.d/debian.sources
 if [[ $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) = "stretch" ]]; then
 cat << EOF >/etc/apt/sources.list
 deb http://$chnAPTsource/debian buster main contrib non-free

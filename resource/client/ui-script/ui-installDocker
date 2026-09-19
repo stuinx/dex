@@ -13,14 +13,28 @@ dockerComposeVer_reserved="1.29.2"
 
 
 installDocker(){
-curl -fsSLo- https://download.docker.com/linux/debian/gpg | gpg --dearmor >/usr/share/keyrings/docker-ce-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-ce-archive-keyring.gpg] https://download.docker.com/linux/debian $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) stable" >/etc/apt/sources.list.d/docker.list
+local debianCodename
+debianCodename=$( . /etc/os-release && printf '%s' "$VERSION_CODENAME" )
+install -m 0644 -D /dev/null /etc/apt/keyrings/docker.asc
+curl -fsSL https://mirrors.ustc.edu.cn/docker-ce/linux/debian/gpg -o /etc/apt/keyrings/docker.asc || return 1
+rm -f /etc/apt/sources.list.d/docker.list
+cat << EOF >/etc/apt/sources.list.d/docker.sources
+Types: deb
+URIs: https://mirrors.ustc.edu.cn/docker-ce/linux/debian
+Suites: $debianCodename
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && aptPKG+=(docker-ce)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^docker-ce-cli$') ]] && aptPKG+=(docker-ce-cli)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^containerd.io$') ]] && aptPKG+=(containerd.io)
-[[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
+if [[ -n $aptPKG ]]; then
+apt-get -o Acquire::Retries=2 -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::http::Pipeline-Depth=0 -o Acquire::https::Pipeline-Depth=0 update -o APT::Update::Error-Mode=any || return 1
+apt-get -o Acquire::Retries=2 -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::http::Pipeline-Depth=0 -o Acquire::https::Pipeline-Depth=0 install -y $(echo ${aptPKG[@]}) || return 1
+fi
 
 if [[ -n $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && [[ -n $(dpkg -l | awk '{print$2}' | grep '^containerd.io$') ]]; then
 mkdir -p /etc/docker/
@@ -45,7 +59,7 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install Docker
 
 
 uninstallDocker(){
-rm -rf /etc/apt/sources.list.d/docker.list
+rm -f /etc/apt/sources.list.d/docker.list /etc/apt/sources.list.d/docker.sources
 apt remove --purge docker-ce docker-ce-cli containerd.io
 rm -rf /usr/local/bin/docker-compose
 
