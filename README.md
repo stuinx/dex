@@ -10,14 +10,14 @@
 
 ## Server (amd64 & arm64) support kvm xen openvz lxc and so on:
 ```
-bash <(wget --no-check-certificate -qO- https://github.com/stuinx/dex/raw/refs/heads/main/server)
+bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx/dex/dev/server)
 ```
 
 ![de_GWD 0](https://raw.githubusercontent.com/stuinx/dex/main/resource/screenshot/0.png)
 
 ## Client (amd64 & arm64):
 ```
-bash <(wget --no-check-certificate -qO- https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/main/client)
+bash <(wget --no-check-certificate -qO- https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/dev/client)
 ```
 或
 
