@@ -1386,6 +1386,12 @@ extraNginxWebConf || return 1
 
 
 XrayInbound(){
+local mainPath=${path:-} mainUUIDs=${uuids:-}
+if [[ -z $mainPath || -z $mainUUIDs ]]; then
+mainPath=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // empty' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+mainUUIDs=$(jq -r '.inbounds[0].settings.clients[].id // empty' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+fi
+[[ -n $mainPath && -n $mainUUIDs ]] || return 1
 cat << EOF >/opt/de_GWD/vtrui/config.json
 {
   "log": {
@@ -1414,7 +1420,7 @@ cat << EOF >/opt/de_GWD/vtrui/config.json
         "network":"ws",
         "security":"none",
         "wsSettings":{
-          "path":"$path"
+          "path":"$mainPath"
         },
         "sockopt": {
           "tcpFastOpen": true,
@@ -1434,7 +1440,7 @@ cat << EOF >/opt/de_GWD/vtrui/config.json
 }
 EOF
 
-for uuid in $uuids; do
+for uuid in $mainUUIDs; do
 uuidStr='{"id": "'$uuid'", "alterId":0}'
 jq --argjson uuidStr "$uuidStr" '.inbounds[0].settings.clients+=[$uuidStr]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
 done
