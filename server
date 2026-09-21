@@ -22,6 +22,13 @@ extraVlessWSConf="/etc/nginx/conf.d/vless-ws.conf"
 haproxyConfig="/etc/haproxy/haproxy.cfg"
 haproxyMarker="# de_GWD managed HAProxy configuration"
 haproxyService="/etc/systemd/system/haproxy.service"
+wireguardUpstreamConfig="/etc/wireguard/wgout.conf"
+wireguardNodeConfig="/etc/wireguard/wgnode.conf"
+wireguardNodePrivateKey="/etc/wireguard/wgnode.key"
+wireguardNodePublicKey="/etc/wireguard/wgnode.pub"
+wireguardNodeState="/opt/de_GWD/wireguard-node.json"
+wireguardNodePeerDir="/etc/wireguard/wgnode-peers"
+wireguardNodeNft="/etc/wireguard/de-gwd-wgnode.nft"
 
 [[ -f "/etc/nginx/conf.d/default.conf" ]] && sed -i 's/fastopen=128/fastopen=500/g' /etc/nginx/conf.d/default.conf
 
@@ -837,6 +844,8 @@ installNftables(){
 rm -rf /etc/nftables*
 rm -rf /opt/de_GWD/nftables
 mkdir -p /opt/de_GWD/nftables
+mkdir -p /etc/wireguard
+[[ -e "$wireguardNodeNft" ]] || printf '%s\n' '# de_GWD WireGuard node rules are disabled' > "$wireguardNodeNft"
 
 cat << "EOF" >/opt/de_GWD/nftables/flowtable_eth.sh
 #!/bin/bash
@@ -866,6 +875,7 @@ cat << "EOF" >/opt/de_GWD/nftables/default.nft
 #!/usr/sbin/nft -f
 
 include "/opt/de_GWD/nftables/flowtable.eth"
+include "/etc/wireguard/de-gwd-wgnode.nft"
 
 table inet bypassflow {
     flowtable Acceleration {
@@ -1842,6 +1852,816 @@ fi
 
 
 
+wireguard_requireTools(){
+local -a packages=()
+command -v wg >/dev/null 2>&1 || packages+=(wireguard-tools)
+command -v wg-quick >/dev/null 2>&1 || packages+=(wireguard-tools)
+if ((${#packages[@]} > 0)); then
+  apt-get update -o APT::Update::Error-Mode=any || {
+    echo -e "${WHITE}WireGuard${RED} APT update Failed${cRES}"
+    return 1
+  }
+  apt-get install -y "${packages[@]}" || {
+    echo -e "${WHITE}WireGuard${RED} dependency installation Failed${cRES}"
+    return 1
+  }
+fi
+command -v wg >/dev/null 2>&1 && command -v wg-quick >/dev/null 2>&1
+}
+
+
+wireguard_node_requireTools(){
+wireguard_requireTools || return 1
+if ! command -v nft >/dev/null 2>&1; then
+  apt-get update -o APT::Update::Error-Mode=any || {
+    echo -e "${WHITE}WireGuard node${RED} APT update Failed${cRES}"
+    return 1
+  }
+  apt-get install -y nftables || {
+    echo -e "${WHITE}WireGuard node${RED} nftables installation Failed${cRES}"
+    return 1
+  }
+fi
+command -v nft >/dev/null 2>&1
+}
+
+
+wireguard_validEndpointHost(){
+local endpointHost=${1:-}
+[[ -n $endpointHost && $endpointHost != *..* ]] || return 1
+[[ $endpointHost =~ ^[A-Za-z0-9.-]+$ || $endpointHost =~ ^[0-9A-Fa-f:.]+$ ]]
+}
+
+
+wireguard_formatEndpoint(){
+if [[ ${1:-} == *:* ]]; then
+  printf '[%s]:%s\n' "$1" "$2"
+else
+  printf '%s:%s\n' "$1" "$2"
+fi
+}
+
+
+wireguard_upstream_sanitize(){
+local source=${1:-}
+awk '
+BEGIN { tableAdded = 0 }
+/^[[:space:]]*\[Interface\][[:space:]]*$/ {
+  section = "interface"
+  print
+  next
+}
+/^[[:space:]]*\[Peer\][[:space:]]*$/ {
+  if (!tableAdded) {
+    print "Table = off"
+    tableAdded = 1
+  }
+  section = "peer"
+  print
+  next
+}
+/^[[:space:]]*(DNS|Table|SaveConfig|PreUp|PostUp|PreDown|PostDown)[[:space:]]*=/ { next }
+{ print }
+END {
+  if (!tableAdded) print "Table = off"
+}
+' "$source"
+}
+
+
+wireguard_upstream_validate(){
+local config=${1:-}
+[[ -s $config ]] || return 1
+wg-quick strip "$config" >/dev/null 2>&1 || return 1
+grep -Eq '^[[:space:]]*PrivateKey[[:space:]]*=' "$config" || return 1
+grep -Eq '^[[:space:]]*Address[[:space:]]*=' "$config" || return 1
+grep -Eq '^[[:space:]]*PublicKey[[:space:]]*=' "$config" || return 1
+grep -Eq '^[[:space:]]*Endpoint[[:space:]]*=' "$config" || return 1
+grep -Eq '^[[:space:]]*AllowedIPs[[:space:]]*=.*0\.0\.0\.0/0' "$config" || return 1
+! grep -Eq '^[[:space:]]*(DNS|SaveConfig|PreUp|PostUp|PreDown|PostDown)[[:space:]]*=' "$config"
+}
+
+
+wireguard_upstream_import(){
+wireguard_requireTools || return 1
+local source tempFile
+if [[ -n ${1:-} ]]; then
+  source=$1
+else
+  read -r -p "WireGuard client config path: " source
+fi
+[[ -f $source ]] || {
+  echo -e "${WHITE}WireGuard${RED} Config file not found${cRES}"
+  return 1
+}
+tempFile=$(mktemp /tmp/de_GWD-wgout.XXXXXX) || return 1
+wireguard_upstream_sanitize "$source" > "$tempFile" || {
+  rm -f "$tempFile"
+  return 1
+}
+wireguard_upstream_validate "$tempFile" || {
+  rm -f "$tempFile"
+  echo -e "${WHITE}WireGuard${RED} Unsupported or invalid client config${cRES}"
+  return 1
+}
+if systemctl is-active --quiet wg-quick@wgout 2>/dev/null; then
+  rm -f "$tempFile"
+  echo -e "${WHITE}WireGuard${YELLOW} Stop wgout before replacing the config${cRES}"
+  return 1
+fi
+umask 077
+mkdir -p /etc/wireguard
+mv -f "$tempFile" "$wireguardUpstreamConfig" || {
+  rm -f "$tempFile"
+  return 1
+}
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] WireGuard upstream config imported: ${YELLOW}$wireguardUpstreamConfig${cRES}"
+echo -e "${YELLOW}DNS and external PostUp/PostDown hooks were not applied.${cRES}"
+}
+
+
+wireguard_upstream_quickApply(){
+local source
+read -r -p "WireGuard node/peer config path: " source
+wireguard_upstream_import "$source" || return 1
+wireguard_upstream_enable
+}
+
+
+wireguard_upstream_routesDown(){
+local ipBin
+ipBin=$(command -v ip 2>/dev/null || true)
+[[ -x $ipBin ]] || return 0
+"$ipBin" rule del pref 32764 table main suppress_prefixlength 0 >/dev/null 2>&1 || true
+"$ipBin" rule del pref 51820 not fwmark 51820 table 51820 >/dev/null 2>&1 || true
+"$ipBin" route del default dev wgout table 51820 >/dev/null 2>&1 || true
+}
+
+
+wireguard_upstream_routeService(){
+local ipBin wgBin
+ipBin=$(command -v ip 2>/dev/null || true)
+wgBin=$(command -v wg 2>/dev/null || true)
+[[ -x $ipBin && -x $wgBin ]] || return 1
+cat << EOF >/etc/systemd/system/de-gwd-wgout-route.service
+[Unit]
+Description=de_GWD WireGuard upstream routes
+Requires=wg-quick@wgout.service
+After=network-online.target wg-quick@wgout.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash -c '$wgBin set wgout fwmark 51820 && $ipBin route replace default dev wgout table 51820 && $ipBin rule add pref 51820 not fwmark 51820 table 51820 && $ipBin rule add pref 32764 table main suppress_prefixlength 0'
+ExecStop=/bin/bash -c '$ipBin rule del pref 32764 table main suppress_prefixlength 0 2>/dev/null || true; $ipBin rule del pref 51820 not fwmark 51820 table 51820 2>/dev/null || true; $ipBin route del default dev wgout table 51820 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload >/dev/null
+}
+
+
+wireguard_upstream_status(){
+local serviceStatus routeStatus handshake
+echo -e "${BLUE}------------------------------------------------ ${cRES}"
+echo -e "${GREEN}WireGuard exit${cRES}"
+if [[ -s $wireguardUpstreamConfig ]]; then
+  echo -e "${BLUE}Config:        ${YELLOW}$wireguardUpstreamConfig${cRES}"
+else
+  echo -e "${BLUE}Config:        ${YELLOW}not configured${cRES}"
+fi
+serviceStatus=$(systemctl is-active wg-quick@wgout 2>/dev/null || true)
+routeStatus=$(systemctl is-active de-gwd-wgout-route 2>/dev/null || true)
+echo -e "${BLUE}Tunnel:        ${YELLOW}${serviceStatus:-inactive}${cRES}"
+echo -e "${BLUE}Local egress:  ${YELLOW}${routeStatus:-inactive}${cRES}"
+if [[ $serviceStatus = "active" ]]; then
+  handshake=$(wg show wgout latest-handshakes 2>/dev/null | awk 'NR==1 {print $2}')
+  [[ -n $handshake && $handshake != 0 ]] && echo -e "${BLUE}Handshake:     ${YELLOW}$(date -d "@$handshake" '+%F %T' 2>/dev/null || printf '%s' "$handshake")${cRES}" || echo -e "${BLUE}Handshake:     ${YELLOW}not received${cRES}"
+fi
+echo -e "${BLUE}------------------------------------------------ ${cRES}"
+}
+
+
+wireguard_upstream_test(){
+wireguard_upstream_validate "$wireguardUpstreamConfig" || {
+  echo -e "${WHITE}WireGuard${YELLOW} Import a valid upstream config first${cRES}"
+  return 1
+}
+if [[ $(systemctl is-active wg-quick@wgcf 2>/dev/null) = "active" ]]; then
+  echo -e "${WHITE}WireGuard${YELLOW} WARP is active; disable menu 33 first${cRES}"
+  return 1
+fi
+systemctl stop de-gwd-wgout-route >/dev/null 2>&1 || true
+wireguard_upstream_routesDown
+systemctl start wg-quick@wgout || {
+  echo -e "${WHITE}WireGuard${RED} Tunnel start failed${cRES}"
+  return 1
+}
+sleep 1
+wg show wgout
+}
+
+
+wireguard_upstream_enable(){
+wireguard_upstream_validate "$wireguardUpstreamConfig" || {
+  echo -e "${WHITE}WireGuard${YELLOW} Import a valid upstream config first${cRES}"
+  return 1
+}
+if [[ $(systemctl is-active wg-quick@wgcf 2>/dev/null) = "active" ]]; then
+  echo -e "${WHITE}WireGuard${YELLOW} WARP is active; disable menu 33 first${cRES}"
+  return 1
+fi
+if [[ $(systemctl is-active wg-quick@wgnode 2>/dev/null) = "active" ]]; then
+  echo -e "${WHITE}WireGuard${YELLOW} Disable the local WireGuard node before enabling a global upstream${cRES}"
+  return 1
+fi
+systemctl start wg-quick@wgout || {
+  echo -e "${WHITE}WireGuard${RED} Tunnel start failed${cRES}"
+  return 1
+}
+systemctl disable --now de-gwd-wgout-route >/dev/null 2>&1 || true
+wireguard_upstream_routeService || return 1
+wireguard_upstream_routesDown
+systemctl enable --now de-gwd-wgout-route >/dev/null 2>&1 || {
+  wireguard_upstream_routesDown
+  systemctl disable --now de-gwd-wgout-route >/dev/null 2>&1 || true
+  echo -e "${WHITE}WireGuard${RED} Local egress route failed${cRES}"
+  return 1
+}
+systemctl enable wg-quick@wgout >/dev/null 2>&1
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] Custom WireGuard local egress ${GREEN}Enabled${cRES}"
+echo -e "${YELLOW}This is an opt-in default-route change; validate SSH and public services before production use.${cRES}"
+}
+
+
+wireguard_upstream_disable(){
+systemctl disable --now de-gwd-wgout-route >/dev/null 2>&1 || true
+wireguard_upstream_routesDown
+systemctl disable --now wg-quick@wgout >/dev/null 2>&1 || true
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] Custom WireGuard upstream ${RED}Disabled${cRES}"
+}
+
+
+wireguard_upstream_menu(){
+while true; do
+  wireguard_upstream_status
+  echo -e "${GREEN}1. Apply config${cRES}"
+  echo -e "${GREEN}2. Import config${cRES}"
+  echo -e "${GREEN}3. Test tunnel${cRES}"
+  echo -e "${GREEN}4. Enable exit${cRES}"
+  echo -e "${GREEN}5. Disable exit${cRES}"
+  echo -e "${GREEN}0. Back${cRES}"
+  read -r -p "Select: " choice || return
+  case "$choice" in
+    1) wireguard_upstream_quickApply ;;
+    2) wireguard_upstream_import ;;
+    3) wireguard_upstream_test ;;
+    4) wireguard_upstream_enable ;;
+    5) wireguard_upstream_disable ;;
+    0) return ;;
+    *) echo -e "${RED}Wrong number${cRES}" ;;
+  esac
+done
+}
+
+
+wireguard_node_stateValid(){
+[[ -s $wireguardNodeState ]] || return 1
+jq -e '
+  type == "object" and
+  (.endpoint | type == "string") and
+  (.listenPort | type == "number") and
+  (.network == "10.79.0.0/24") and
+  (.address == "10.79.0.1/24") and
+  (.peers | type == "array") and
+  all(.peers[]?;
+    type == "object" and
+    (.name | type == "string") and
+    (.name | test("^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$")) and
+    (.address | test("^10\\.79\\.0\\.[2-9][0-9]?/32$|^10\\.79\\.0\\.[1-9][0-9]{2}/32$")) and
+    (.publicKey | type == "string") and
+    (.config | type == "string")
+  ) and
+  ([.peers[]?.name] | length == (unique | length)) and
+  ([.peers[]?.address] | length == (unique | length)) and
+  ([.peers[]?.publicKey] | length == (unique | length))
+' "$wireguardNodeState" >/dev/null 2>&1
+}
+
+
+wireguard_node_prepareState(){
+mkdir -p /etc/wireguard "$wireguardNodePeerDir" /opt/de_GWD
+if [[ -s $wireguardNodeState ]]; then
+  wireguard_node_stateValid || {
+    echo -e "${WHITE}WireGuard node${RED} Settings are invalid${cRES}"
+    return 1
+  }
+  return 0
+fi
+local endpointDefault
+endpointDefault=$(deGWD_featureMainDomain 2>/dev/null || true)
+umask 077
+jq -n --arg endpoint "$endpointDefault" '{endpoint:$endpoint,listenPort:51820,network:"10.79.0.0/24",address:"10.79.0.1/24",peers:[]}' > "$wireguardNodeState"
+wireguard_node_stateValid
+}
+
+
+wireguard_node_ensureKeys(){
+wireguard_requireTools || return 1
+mkdir -p /etc/wireguard
+if [[ ! -s $wireguardNodePrivateKey ]]; then
+  umask 077
+  wg genkey > "$wireguardNodePrivateKey" || return 1
+fi
+if [[ ! -s $wireguardNodePublicKey ]]; then
+  umask 077
+  wg pubkey < "$wireguardNodePrivateKey" > "$wireguardNodePublicKey" || return 1
+fi
+}
+
+
+wireguard_node_writePeerConfig(){
+local peerName=${1:-} peerFile peerPrivate endpoint listenPort peerAddress serverPublic tempFile
+wireguard_node_stateValid || return 1
+peerFile=$(jq -r --arg name "$peerName" '.peers[]? | select(.name == $name) | .config' "$wireguardNodeState")
+peerAddress=$(jq -r --arg name "$peerName" '.peers[]? | select(.name == $name) | .address' "$wireguardNodeState")
+[[ -s $peerFile && -n $peerAddress ]] || return 1
+peerPrivate=$(awk -F'= ' '$1 ~ /^[[:space:]]*PrivateKey[[:space:]]*$/ {print $2; exit}' "$peerFile")
+[[ -n $peerPrivate ]] || return 1
+endpoint=$(jq -r '.endpoint' "$wireguardNodeState")
+listenPort=$(jq -r '.listenPort' "$wireguardNodeState")
+serverPublic=$(cat "$wireguardNodePublicKey")
+tempFile=$(mktemp /tmp/de_GWD-wgnode-peer.XXXXXX) || return 1
+cat << EOF > "$tempFile"
+[Interface]
+PrivateKey = $peerPrivate
+Address = $peerAddress
+
+[Peer]
+PublicKey = $serverPublic
+Endpoint = $(wireguard_formatEndpoint "$endpoint" "$listenPort")
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
+EOF
+wg-quick strip "$tempFile" >/dev/null 2>&1 || {
+  rm -f "$tempFile"
+  echo -e "${WHITE}WireGuard node${RED} Generated peer config is invalid${cRES}"
+  return 1
+}
+mv -f "$tempFile" "$peerFile" || {
+  rm -f "$tempFile"
+  return 1
+}
+}
+
+
+wireguard_node_writeConfig(){
+wireguard_node_stateValid || return 1
+wireguard_node_ensureKeys || return 1
+local listenPort serverPrivate tempFile peerPublic peerAddress peerName
+listenPort=$(jq -r '.listenPort' "$wireguardNodeState")
+serverPrivate=$(cat "$wireguardNodePrivateKey")
+tempFile=$(mktemp /tmp/de_GWD-wgnode.XXXXXX) || return 1
+cat << EOF > "$tempFile"
+[Interface]
+Address = 10.79.0.1/24
+ListenPort = $listenPort
+PrivateKey = $serverPrivate
+EOF
+while IFS=$'\t' read -r peerPublic peerAddress; do
+  [[ -n $peerPublic && -n $peerAddress ]] || continue
+  cat << EOF >> "$tempFile"
+
+[Peer]
+PublicKey = $peerPublic
+AllowedIPs = $peerAddress
+EOF
+done < <(jq -r '.peers[]? | [.publicKey,.address] | @tsv' "$wireguardNodeState")
+wg-quick strip "$tempFile" >/dev/null 2>&1 || {
+  rm -f "$tempFile"
+  echo -e "${WHITE}WireGuard node${RED} Generated server config is invalid${cRES}"
+  return 1
+}
+mv -f "$tempFile" "$wireguardNodeConfig" || {
+  rm -f "$tempFile"
+  return 1
+}
+while IFS= read -r peerName; do
+  [[ -n $peerName ]] && wireguard_node_writePeerConfig "$peerName" || return 1
+done < <(jq -r '.peers[]?.name' "$wireguardNodeState")
+}
+
+
+wireguard_node_writeFirewall(){
+local tempFile
+tempFile=$(mktemp /tmp/de_GWD-wgnode-nft.XXXXXX) || return 1
+cat << EOF > "$tempFile"
+table ip de_gwd_wgnode {
+    chain postrouting {
+        type nat hook postrouting priority 100; policy accept;
+        oifname != "wgnode" ip saddr 10.79.0.0/24 masquerade
+    }
+}
+EOF
+nft -c -f "$tempFile" >/dev/null 2>&1 || {
+  rm -f "$tempFile"
+  echo -e "${WHITE}WireGuard node${RED} nftables validation failed${cRES}"
+  return 1
+}
+mkdir -p /etc/wireguard
+mv -f "$tempFile" "$wireguardNodeNft" || {
+  rm -f "$tempFile"
+  return 1
+}
+nft delete table ip de_gwd_wgnode >/dev/null 2>&1 || true
+nft -f "$wireguardNodeNft" || return 1
+}
+
+
+wireguard_node_ensureNftInclude(){
+local defaultNft="/opt/de_GWD/nftables/default.nft"
+[[ -f $defaultNft ]] || return 0
+grep -Fq 'include "/etc/wireguard/de-gwd-wgnode.nft"' "$defaultNft" && return 0
+sed -i '/include "/opt\/de_GWD\/nftables\/flowtable.eth"/a include "/etc/wireguard/de-gwd-wgnode.nft"' "$defaultNft"
+}
+
+
+wireguard_node_configure(){
+wireguard_requireTools || return 1
+wireguard_node_prepareState || return 1
+if systemctl is-active --quiet wg-quick@wgnode 2>/dev/null; then
+  echo -e "${WHITE}WireGuard node${YELLOW} Stop the node before changing its endpoint or port${cRES}"
+  return 1
+fi
+local currentEndpoint currentPort endpointInput newEndpoint portInput newPort tempState
+currentEndpoint=$(jq -r '.endpoint' "$wireguardNodeState")
+currentPort=$(jq -r '.listenPort' "$wireguardNodeState")
+if [[ -n ${1:-} ]]; then
+  endpointInput=$1
+else
+  read -r -p "Endpoint host [$currentEndpoint]: " endpointInput
+fi
+newEndpoint=${endpointInput:-$currentEndpoint}
+wireguard_validEndpointHost "$newEndpoint" || {
+  echo -e "${WHITE}WireGuard node${RED} Invalid endpoint host${cRES}"
+  return 1
+}
+if [[ -n ${2:-} ]]; then
+  portInput=$2
+else
+  read -r -p "Listen port [$currentPort]: " portInput
+fi
+newPort=${portInput:-$currentPort}
+deGWD_featureValidPort "$newPort" || {
+  echo -e "${WHITE}WireGuard node${RED} Invalid listen port${cRES}"
+  return 1
+}
+newPort=$((10#$newPort))
+deGWD_featurePortAvailable "$newPort" "$currentPort" || {
+  echo -e "${WHITE}WireGuard node${RED} Listen port is already in use${cRES}"
+  return 1
+}
+tempState=$(mktemp /tmp/de_GWD-wgnode-state.XXXXXX) || return 1
+jq --arg endpoint "$newEndpoint" --argjson port "$newPort" '.endpoint=$endpoint | .listenPort=$port' "$wireguardNodeState" > "$tempState" || {
+  rm -f "$tempState"
+  return 1
+}
+mv -f "$tempState" "$wireguardNodeState" || {
+  rm -f "$tempState"
+  return 1
+}
+wireguard_node_ensureKeys || return 1
+wireguard_node_writeConfig || return 1
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] WireGuard node configured: ${YELLOW}$newEndpoint:$newPort${cRES}"
+echo -e "${YELLOW}IPv4 exit network: 10.79.0.0/24${cRES}"
+}
+
+
+wireguard_node_addPeer(){
+wireguard_requireTools || return 1
+wireguard_node_stateValid || {
+  echo -e "${WHITE}WireGuard node${YELLOW} Configure the node first${cRES}"
+  return 1
+}
+wireguard_validEndpointHost "$(jq -r '.endpoint' "$wireguardNodeState")" || {
+  echo -e "${WHITE}WireGuard node${YELLOW} Configure a valid endpoint first${cRES}"
+  return 1
+}
+if systemctl is-active --quiet wg-quick@wgnode 2>/dev/null; then
+  echo -e "${WHITE}WireGuard node${YELLOW} Stop the node before adding a peer${cRES}"
+  return 1
+fi
+wireguard_node_ensureKeys || return 1
+local peerName peerAddress peerPrivate peerPublic peerFile tempFile tempState octet used
+if [[ -n ${1:-} ]]; then
+  peerName=$1
+else
+  read -r -p "Peer name: " peerName
+fi
+[[ $peerName =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$ ]] || {
+  echo -e "${WHITE}WireGuard node${RED} Invalid peer name${cRES}"
+  return 1
+}
+jq -e --arg name "$peerName" 'any(.peers[]?; .name == $name)' "$wireguardNodeState" >/dev/null 2>&1 && {
+  echo -e "${WHITE}WireGuard node${RED} Peer name already exists${cRES}"
+  return 1
+}
+peerAddress=""
+for ((octet=2; octet<=254; octet++)); do
+  jq -e --arg address "10.79.0.$octet/32" 'any(.peers[]?; .address == $address)' "$wireguardNodeState" >/dev/null 2>&1
+  used=$?
+  if [[ $used -ne 0 ]]; then
+    peerAddress="10.79.0.$octet/32"
+    break
+  fi
+done
+[[ -n $peerAddress ]] || {
+  echo -e "${WHITE}WireGuard node${RED} Peer address pool is full${cRES}"
+  return 1
+}
+peerPrivate=$(wg genkey) || return 1
+peerPublic=$(printf '%s\n' "$peerPrivate" | wg pubkey) || return 1
+umask 077
+mkdir -p "$wireguardNodePeerDir"
+peerFile="$wireguardNodePeerDir/$peerName.conf"
+tempFile=$(mktemp /tmp/de_GWD-wgnode-peer.XXXXXX) || return 1
+cat << EOF > "$tempFile"
+[Interface]
+PrivateKey = $peerPrivate
+Address = $peerAddress
+
+[Peer]
+PublicKey = $(cat "$wireguardNodePublicKey" 2>/dev/null || true)
+Endpoint = $(wireguard_formatEndpoint "$(jq -r '.endpoint' "$wireguardNodeState")" "$(jq -r '.listenPort' "$wireguardNodeState")")
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
+EOF
+[[ -s $tempFile ]] || { rm -f "$tempFile"; return 1; }
+mv -f "$tempFile" "$peerFile" || { rm -f "$tempFile"; return 1; }
+tempState=$(mktemp /tmp/de_GWD-wgnode-state.XXXXXX) || { rm -f "$peerFile"; return 1; }
+jq --arg name "$peerName" --arg address "$peerAddress" --arg publicKey "$peerPublic" --arg config "$peerFile" '.peers += [{name:$name,address:$address,publicKey:$publicKey,config:$config}]' "$wireguardNodeState" > "$tempState" || {
+  rm -f "$tempState" "$peerFile"
+  return 1
+}
+mv -f "$tempState" "$wireguardNodeState" || {
+  rm -f "$tempState" "$peerFile"
+  return 1
+}
+wireguard_node_writeConfig || {
+  echo -e "${WHITE}WireGuard node${RED} Failed to update node config${cRES}"
+  return 1
+}
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] Peer generated${cRES}"
+echo -e "${BLUE}Name:         ${YELLOW}$peerName${cRES}"
+echo -e "${BLUE}Address:      ${YELLOW}$peerAddress${cRES}"
+echo -e "${BLUE}Public key:   ${YELLOW}$peerPublic${cRES}"
+echo -e "${BLUE}Config file:  ${YELLOW}$peerFile${cRES}"
+echo -e "${YELLOW}Use 'Show peer config' to display the private key for copying.${cRES}"
+}
+
+
+wireguard_node_quickGenerate(){
+wireguard_requireTools || return 1
+wireguard_node_prepareState || return 1
+if systemctl is-active --quiet wg-quick@wgnode 2>/dev/null; then
+  echo -e "${WHITE}WireGuard node${YELLOW} Stop the node before generating new node information${cRES}"
+  return 1
+fi
+local currentEndpoint currentPort endpointInput newEndpoint portInput newPort peerName peerInput suffix showConfig enableNode
+currentEndpoint=$(jq -r '.endpoint' "$wireguardNodeState")
+currentPort=$(jq -r '.listenPort' "$wireguardNodeState")
+read -r -p "Endpoint host [$currentEndpoint]: " endpointInput
+newEndpoint=${endpointInput:-$currentEndpoint}
+read -r -p "Listen port [$currentPort]: " portInput
+newPort=${portInput:-$currentPort}
+wireguard_node_configure "$newEndpoint" "$newPort" || return 1
+peerName="peer1"
+suffix=1
+while jq -e --arg name "$peerName" 'any(.peers[]?; .name == $name)' "$wireguardNodeState" >/dev/null 2>&1; do
+  suffix=$((suffix + 1))
+  peerName="peer$suffix"
+done
+read -r -p "Peer name [$peerName]: " peerInput
+peerName=${peerInput:-$peerName}
+wireguard_node_addPeer "$peerName" || return 1
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] WireGuard node information generated${cRES}"
+echo -e "${BLUE}Server public key: ${YELLOW}$(cat "$wireguardNodePublicKey")${cRES}"
+echo -e "${BLUE}Peer config:       ${YELLOW}$(jq -r --arg name "$peerName" '.peers[] | select(.name == $name) | .config' "$wireguardNodeState")${cRES}"
+read -r -p "Show the complete peer config now? [y/N]: " showConfig
+if [[ $showConfig =~ ^[Yy]$ ]]; then
+  wireguard_node_showPeerByName "$peerName"
+fi
+read -r -p "Enable the WireGuard node now? [y/N]: " enableNode
+[[ $enableNode =~ ^[Yy]$ ]] && wireguard_node_enable
+}
+
+
+wireguard_node_showPeerByName(){
+local peerName=${1:-} peerFile
+wireguard_node_stateValid || return 1
+peerFile=$(jq -r --arg name "$peerName" '.peers[]? | select(.name == $name) | .config' "$wireguardNodeState")
+[[ -s $peerFile ]] || {
+  echo -e "${WHITE}WireGuard node${RED} Peer config is missing${cRES}"
+  return 1
+}
+echo -e "${YELLOW}The following config contains a private key; copy it only to the intended VPS.${cRES}"
+sed -n '1,40p' "$peerFile"
+if command -v qrencode >/dev/null 2>&1; then
+  echo -e "${YELLOW}Scan this QR code with the official WireGuard mobile client:${cRES}"
+  qrencode -t UTF8 -s 1 -m 3 < "$peerFile"
+else
+  echo -e "${YELLOW}qrencode is unavailable; import the .conf file with the official WireGuard client.${cRES}"
+fi
+}
+
+
+wireguard_node_listPeers(){
+wireguard_node_stateValid || {
+  echo -e "${WHITE}WireGuard node${YELLOW} Not configured${cRES}"
+  return 0
+}
+local index=1
+echo -e "${BLUE}------------------------------------------------ ${cRES}"
+echo -e "${GREEN}WireGuard node peers${cRES}"
+while IFS=$'\t' read -r peerName peerAddress peerPublic peerFile; do
+  [[ -n $peerName ]] || continue
+  echo -e "${YELLOW}$index. ${WHITE}$peerName${cRES}  ${peerAddress}  ${peerPublic}"
+  echo -e "   ${BLUE}$peerFile${cRES}"
+  index=$((index + 1))
+done < <(jq -r '.peers[]? | [.name,.address,.publicKey,.config] | @tsv' "$wireguardNodeState")
+(( index == 1 )) && echo -e "${YELLOW}Peer list is empty${cRES}"
+echo -e "${BLUE}------------------------------------------------ ${cRES}"
+}
+
+
+wireguard_node_showPeer(){
+wireguard_node_stateValid || return 1
+local count number index peerName peerFile
+count=$(jq -r '.peers | length' "$wireguardNodeState")
+(( count > 0 )) || { echo -e "${WHITE}WireGuard node${YELLOW} Peer list is empty${cRES}"; return 0; }
+wireguard_node_listPeers
+read -r -p "Peer number: " number
+[[ $number =~ ^[0-9]+$ ]] || return 1
+index=$((10#$number - 1))
+(( index >= 0 && index < count )) || return 1
+peerFile=$(jq -r ".peers[$index].config" "$wireguardNodeState")
+[[ -s $peerFile ]] || { echo -e "${WHITE}WireGuard node${RED} Peer config is missing${cRES}"; return 1; }
+peerName=$(jq -r ".peers[$index].name" "$wireguardNodeState")
+wireguard_node_showPeerByName "$peerName"
+}
+
+
+wireguard_node_removePeer(){
+wireguard_node_stateValid || return 1
+if systemctl is-active --quiet wg-quick@wgnode 2>/dev/null; then
+  echo -e "${WHITE}WireGuard node${YELLOW} Stop the node before removing a peer${cRES}"
+  return 1
+fi
+local count number index peerName peerFile tempState confirm
+count=$(jq -r '.peers | length' "$wireguardNodeState")
+(( count > 0 )) || { echo -e "${WHITE}WireGuard node${YELLOW} Peer list is empty${cRES}"; return 0; }
+wireguard_node_listPeers
+read -r -p "Peer number to delete: " number
+[[ $number =~ ^[0-9]+$ ]] || return 1
+index=$((10#$number - 1))
+(( index >= 0 && index < count )) || return 1
+peerName=$(jq -r ".peers[$index].name" "$wireguardNodeState")
+peerFile=$(jq -r ".peers[$index].config" "$wireguardNodeState")
+read -r -p "Type DELETE to confirm removing $peerName: " confirm
+[[ $confirm = "DELETE" ]] || return 0
+tempState=$(mktemp /tmp/de_GWD-wgnode-state.XXXXXX) || return 1
+jq --arg name "$peerName" 'del(.peers[] | select(.name == $name))' "$wireguardNodeState" > "$tempState" || {
+  rm -f "$tempState"
+  return 1
+}
+mv -f "$tempState" "$wireguardNodeState" || { rm -f "$tempState"; return 1; }
+rm -f "$peerFile"
+wireguard_node_writeConfig || return 1
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] Peer removed${cRES}"
+}
+
+
+wireguard_node_enable(){
+wireguard_node_requireTools || return 1
+wireguard_node_stateValid || {
+  echo -e "${WHITE}WireGuard node${YELLOW} Configure the node first${cRES}"
+  return 1
+}
+if systemctl is-active --quiet de-gwd-wgout-route 2>/dev/null; then
+  echo -e "${WHITE}WireGuard node${YELLOW} Disable the custom global upstream before enabling the node${cRES}"
+  return 1
+fi
+wireguard_node_writeConfig || return 1
+sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || {
+  echo -e "${WHITE}WireGuard node${RED} IPv4 forwarding could not be enabled${cRES}"
+  return 1
+}
+wireguard_node_ensureNftInclude || return 1
+wireguard_node_writeFirewall || return 1
+systemctl enable --now wg-quick@wgnode >/dev/null 2>&1 || {
+  nft delete table ip de_gwd_wgnode >/dev/null 2>&1 || true
+  echo -e "${WHITE}WireGuard node${RED} Service start failed${cRES}"
+  return 1
+}
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] WireGuard node ${GREEN}Enabled${cRES}"
+}
+
+
+wireguard_node_disable(){
+systemctl disable --now wg-quick@wgnode >/dev/null 2>&1 || true
+nft delete table ip de_gwd_wgnode >/dev/null 2>&1 || true
+mkdir -p /etc/wireguard
+printf '%s\n' '# de_GWD WireGuard node rules are disabled' > "$wireguardNodeNft"
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] WireGuard node ${RED}Disabled${cRES}"
+}
+
+
+wireguard_node_status(){
+echo -e "${BLUE}------------------------------------------------ ${cRES}"
+echo -e "${GREEN}WireGuard node${cRES}"
+if ! wireguard_node_stateValid >/dev/null 2>&1; then
+  echo -e "${BLUE}Status:       ${YELLOW}not configured${cRES}"
+  echo -e "${BLUE}Interface:    ${YELLOW}wgnode${cRES}"
+  echo -e "${BLUE}------------------------------------------------ ${cRES}"
+  return 0
+fi
+local endpoint listenPort serviceStatus serviceEnabled peerCount
+endpoint=$(jq -r '.endpoint' "$wireguardNodeState")
+listenPort=$(jq -r '.listenPort' "$wireguardNodeState")
+serviceStatus=$(systemctl is-active wg-quick@wgnode 2>/dev/null || true)
+serviceEnabled=$(systemctl is-enabled wg-quick@wgnode 2>/dev/null || true)
+peerCount=$(jq -r '.peers | length' "$wireguardNodeState")
+echo -e "${BLUE}Service:      ${YELLOW}${serviceStatus:-inactive}${cRES} (boot: ${serviceEnabled:-disabled})"
+echo -e "${BLUE}Endpoint:     ${YELLOW}$(wireguard_formatEndpoint "$endpoint" "$listenPort")${cRES}"
+echo -e "${BLUE}Network:      ${YELLOW}10.79.0.0/24${cRES}"
+echo -e "${BLUE}Peers:        ${YELLOW}$peerCount${cRES}"
+if [[ $serviceStatus = "active" ]]; then
+  wg show wgnode 2>/dev/null | sed -n '/^peer:/,$p'
+fi
+echo -e "${BLUE}------------------------------------------------ ${cRES}"
+}
+
+
+wireguard_node_menu(){
+while true; do
+  wireguard_node_status
+echo -e "${GREEN}1. Quick generate${cRES}"
+echo -e "${GREEN}2. Configure node${cRES}"
+echo -e "${GREEN}3. Add peer${cRES}"
+echo -e "${GREEN}4. List peers${cRES}"
+echo -e "${GREEN}5. Show peer${cRES}"
+echo -e "${GREEN}6. Enable node${cRES}"
+echo -e "${GREEN}7. Disable node${cRES}"
+echo -e "${GREEN}8. Delete peer${cRES}"
+echo -e "${GREEN}0. Back${cRES}"
+read -r -p "Select: " choice || return
+case "$choice" in
+    1) wireguard_node_quickGenerate ;;
+    2) wireguard_node_configure ;;
+    3) wireguard_node_addPeer ;;
+    4) wireguard_node_listPeers ;;
+    5) wireguard_node_showPeer ;;
+    6) wireguard_node_enable ;;
+    7) wireguard_node_disable ;;
+    8) wireguard_node_removePeer ;;
+    0) return ;;
+    *) echo -e "${RED}Wrong number${cRES}" ;;
+  esac
+done
+}
+
+
+wireguard_status(){
+wireguard_upstream_status
+wireguard_node_status
+}
+
+
+wireguard_menu(){
+while true; do
+  wireguard_status
+echo -e "${GREEN}1. Apply to exit${cRES}"
+echo -e "${GREEN}2. Generate node${cRES}"
+echo -e "${GREEN}3. Exit settings${cRES}"
+echo -e "${GREEN}4. Node settings${cRES}"
+echo -e "${GREEN}5. Status${cRES}"
+echo -e "${GREEN}0. Back${cRES}"
+read -r -p "Select: " choice || return
+case "$choice" in
+    1) wireguard_upstream_quickApply ;;
+    2) wireguard_node_quickGenerate ;;
+    3) wireguard_upstream_menu ;;
+    4) wireguard_node_menu ;;
+    5) wireguard_status ;;
+    0) return ;;
+    *) echo -e "${RED}Wrong number${cRES}" ;
+  esac
+done
+}
+
+
 deGWD_featureValidPort(){
 local port=${1:-}
 [[ $port =~ ^[1-9][0-9]{0,4}$ ]] && (( 10#$port <= 65535 ))
@@ -2306,11 +3126,11 @@ local action listenPort upstreamInput upstream upstreamHost upstreamPort candida
 while true; do
   haproxy_checkOwnership || return 1
   haproxy_listRules
-  echo -e "${GREEN}1. Add TCP port forward${cRES}"
-  echo -e "${GREEN}2. Delete one TCP port forward${cRES}"
-  echo -e "${GREEN}3. Delete all de_GWD TCP port forwards${cRES}"
-  echo -e "${GREEN}4. List rules${cRES}"
-  echo -e "${GREEN}0. Return${cRES}"
+  echo -e "${GREEN}1. Add forward${cRES}"
+  echo -e "${GREEN}2. List rules${cRES}"
+  echo -e "${GREEN}3. Delete rule${cRES}"
+  echo -e "${GREEN}4. Delete all${cRES}"
+  echo -e "${GREEN}0. Back${cRES}"
   read -r -p "Select: " action || return
   case "$action" in
     1)
@@ -2335,7 +3155,7 @@ while true; do
       rm -f "$candidate"
       echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\t${WHITE}TCP Port Forward ${GREEN}Deployed${cRES}"
       ;;
-    2)
+    3)
       rules=$(haproxy_extractRules)
       [[ -n $rules ]] || { echo -e "${WHITE}HAProxy${YELLOW} No de_GWD forwarding rules${cRES}"; continue; }
       read -r -p "Local listen port to delete: " listenPort
@@ -2354,7 +3174,7 @@ while true; do
       rm -f "$candidate"
       echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\t${WHITE}TCP Port Forward ${GREEN}Deleted${cRES}"
       ;;
-    3)
+    4)
       rules=$(haproxy_extractRules)
       [[ -n $rules ]] || { echo -e "${WHITE}HAProxy${YELLOW} No de_GWD forwarding rules${cRES}"; continue; }
       candidate=$(mktemp /tmp/de_GWD-haproxy-candidate.XXXXXX) || return 1
@@ -2371,7 +3191,7 @@ while true; do
       rm -f "$candidate"
       echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\t${WHITE}All de_GWD TCP Port Forwards ${GREEN}Deleted${cRES}"
       ;;
-    4)
+    2)
       haproxy_listRules
       ;;
     0)
@@ -2811,10 +3631,10 @@ while true; do
   echo -e "${GREEN}RproxyS Port Mapping${cRES}"
   rproxyS_mappingStatus
   echo -e "${GREEN}1. Add mapping${cRES}"
-  echo -e "${GREEN}2. View status${cRES}"
+  echo -e "${GREEN}2. List mappings${cRES}"
   echo -e "${GREEN}3. Delete mapping${cRES}"
-  echo -e "${GREEN}4. Enable/disable mappings${cRES}"
-  echo -e "${GREEN}0. Return${cRES}"
+  echo -e "${GREEN}4. Enable/disable${cRES}"
+  echo -e "${GREEN}0. Back${cRES}"
   read -r -p "Select: " choice || return
   case "$choice" in
     2)
@@ -2872,18 +3692,18 @@ if [[ ! -x /opt/de_GWD/vtrui/vtrui ]]; then
 fi
 while true; do
   rproxyS_show
-  echo -e "${GREEN}1. View status${cRES}"
-  echo -e "${GREEN}2. Manage port mappings${cRES}"
-  echo -e "${GREEN}3. Configure tunnel${cRES}"
-  echo -e "${GREEN}4. Apply and start${cRES}"
+  echo -e "${GREEN}1. Configure tunnel${cRES}"
+  echo -e "${GREEN}2. Manage mappings${cRES}"
+  echo -e "${GREEN}3. Apply and start${cRES}"
+  echo -e "${GREEN}4. View status${cRES}"
   echo -e "${GREEN}5. Stop service${cRES}"
-  echo -e "${GREEN}0. Return${cRES}"
+  echo -e "${GREEN}0. Back${cRES}"
   read -r -p "Select: " num || return
   case "$num" in
-    1) rproxyS_show ;;
+    1) rproxyS_configureTunnel ;;
     2) rproxyS_mappingMenu ;;
-    3) rproxyS_configureTunnel ;;
-    4) rproxyS_apply ;;
+    3) rproxyS_apply ;;
+    4) rproxyS_show ;;
     5) rproxyS_stop ;;
     0) return ;;
     *) echo -e "${RED}Wrong number${cRES}" ;
@@ -3408,8 +4228,9 @@ fi
 extra_vlessWS(){
 local switch oldDomain oldPort oldUUID oldPath mainDomain input parsed domainPort vlessDomain vlessPort vlessUUID vlessPath candidate base
 echo -e "$GREEN============================== $cRES"
-echo -e "${GREEN}1. Enable VLESS WebSocket TLS${cRES}"
-echo -e "${GREEN}2. Disable VLESS WebSocket TLS${cRES}"
+echo -e "$GREEN VLESS WS$cRES"
+echo -e "${GREEN}1. Enable${cRES}"
+echo -e "${GREEN}2. Disable${cRES}"
 echo -e "$GREEN============================== $cRES"
 read -r -p "Select: " switch || return
 
@@ -3483,8 +4304,9 @@ extra_printNodes
 extra_reality(){
 local switch oldDomain oldPort oldUUID oldFlow oldDest oldServerName oldPrivateKey oldPublicKey oldShortId mainDomain addressDefault addressInput parsed realityDomain realityPort realityUUID realityFlow realityDestInput parsedDest realityDestHost realityDestPort realityDest realityServerName realityPrivateKey realityPublicKey realityShortId keyPair visionChoice candidate base
 echo -e "$GREEN============================== $cRES"
-echo -e "${GREEN}1. Enable VLESS TCP/RAW REALITY${cRES}"
-echo -e "${GREEN}2. Disable VLESS TCP/RAW REALITY${cRES}"
+echo -e "$GREEN VLESS REALITY$cRES"
+echo -e "${GREEN}1. Enable${cRES}"
+echo -e "${GREEN}2. Disable${cRES}"
 echo -e "$GREEN============================== $cRES"
 read -r -p "Select: " switch || return
 
@@ -3593,8 +4415,9 @@ extra_printNodes
 extra_socks5(){
 local switch oldDomain oldPort oldUser oldPassword mainDomain addressInput parsed socksDomain socksPort socksUser socksPassword userInput passwordInput candidate base
 echo -e "$GREEN====================== $cRES"
-echo -e "${GREEN}1. Enable SOCKS5 with UDP${cRES}"
-echo -e "${GREEN}2. Disable SOCKS5${cRES}"
+echo -e "$GREEN SOCKS5$cRES"
+echo -e "${GREEN}1. Enable${cRES}"
+echo -e "${GREEN}2. Disable${cRES}"
 echo -e "$GREEN====================== $cRES"
 read -r -p "Select: " switch || return
 
@@ -3679,12 +4502,12 @@ local choice mainDomain listenPort targetInput parsed target targetPort network 
 mainDomain=$(extra_mainDomain 2>/dev/null) || mainDomain=""
 while true; do
   echo -e "$BLUE------------------------------------------------ $cRES"
-  echo -e "$GREEN dokodemo-door multi-rule forwarding$cRES"
+  echo -e "$GREEN Port forwarding$cRES"
   extra_dokodemoList
   echo -e "$GREEN 1. Add rule$cRES"
-  echo -e "$GREEN 2. Delete one rule$cRES"
-  echo -e "$GREEN 3. Delete all rules$cRES"
-  echo -e "$GREEN 4. Disable dokodemo-door$cRES"
+  echo -e "$GREEN 2. Delete rule$cRES"
+  echo -e "$GREEN 3. Delete all$cRES"
+  echo -e "$GREEN 4. Disable$cRES"
   echo -e "$GREEN 0. Back$cRES"
   read -r -p "Select: " choice || return
   case "$choice" in
@@ -3777,19 +4600,19 @@ if [[ ! -x /opt/de_GWD/vtrui/vtrui ]]; then
 fi
 while true; do
   extra_show
-  echo -e "$GREEN 1. VLESS WebSocket TLS$cRES"
-  echo -e "$GREEN 2. VLESS TCP/RAW REALITY$cRES"
-  echo -e "$GREEN 3. SOCKS5 with UDP$cRES"
-  echo -e "$GREEN 4. dokodemo-door multi-rule forwarding$cRES"
-  echo -e "$GREEN 11. Print extra node information$cRES"
-  echo -e "$GREEN 0. Return$cRES"
+  echo -e "$GREEN 1. VLESS WS$cRES"
+  echo -e "$GREEN 2. VLESS REALITY$cRES"
+  echo -e "$GREEN 3. SOCKS5$cRES"
+  echo -e "$GREEN 4. Port forwarding$cRES"
+  echo -e "$GREEN 5. Show nodes$cRES"
+  echo -e "$GREEN 0. Back$cRES"
   read -r -p "Select: " choice || return
   case "$choice" in
     1) extra_vlessWS ;;
     2) extra_reality ;;
     3) extra_socks5 ;;
     4) extra_dokodemo ;;
-    11) extra_printNodes ;;
+    5) extra_printNodes ;;
     0) return 0 ;;
     *) echo -e "$RED Wrong number$cRES" ;;
   esac
@@ -4108,6 +4931,8 @@ fi
 echo -e "${BLUE}$virt${cRES}"
 [[ -f "/opt/de_GWD/version.php" ]] && echo -e "${BLUE}Version: ${YELLOW}$(echo $(awk 'NR==1' /opt/de_GWD/version.php)) ${cRES}"
 [[ $(systemctl is-active 'wg-quick@wgcf') = "active" ]] && echo -e "${PURPLE}[Enabled] Cloudflare wireguard upstream (WARP) ${cRES}"
+[[ $(systemctl is-active 'wg-quick@wgout') = "active" ]] && echo -e "${PURPLE}[Enabled] WireGuard exit ${cRES}"
+[[ $(systemctl is-active 'wg-quick@wgnode') = "active" ]] && echo -e "${PURPLE}[Enabled] WireGuard node ${cRES}"
 [[ $(systemctl is-active 'haproxy') = "active" ]] && echo -e "${PURPLE}[Enabled] HAProxy TCP Port Forward${cRES}"
 [[ $(systemctl is-active 'RproxyS') = "active" ]] && echo -e "${PURPLE}[Enabled] RproxyS reverse proxy${cRES}"
 [[ -s "$extraSettings" ]] && jq -e '([.vless_ws.enabled, .reality.enabled, .socks5.enabled, .dokodemo.enabled] | any)' "$extraSettings" >/dev/null 2>&1 && echo -e "${PURPLE}[Enabled] Extra Xray inbounds${cRES}"
@@ -4138,9 +4963,10 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
    echo -e "${RED}00.AutoUpdate turn on/off${cRES}"
  echo -e "${GREEN}11.Print Xray node information${cRES}"
  echo -e "${GREEN}12.Localhost cloudflare speedtest${cRES}"
-  echo -e "${CYAN}22.RproxyS reverse proxy${cRES}"
-  echo -e "${CYAN}44.Set TCP Port Forward${cRES}"
-  echo -e "${CYAN}55.Extra Xray inbounds${cRES}"
+  echo -e "${CYAN}22.RproxyS${cRES}"
+  echo -e "${CYAN}34.WireGuard${cRES}"
+  echo -e "${CYAN}44.HAProxy TCP${cRES}"
+  echo -e "${CYAN}55.Extra Xray${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
 echo
 read -r -p "Select:" num || exit 0
@@ -4178,6 +5004,10 @@ read -r -p "Select:" num || exit 0
     ;;
     22)
     RproxyS
+    start_menu
+    ;;
+    34)
+    wireguard_menu
     start_menu
     ;;
     44)
@@ -4222,10 +5052,11 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
    echo -e "${RED}00.AutoUpdate turn on/off${cRES}"
  echo -e "${GREEN}11.Print Xray node information${cRES}"
  echo -e "${GREEN}12.Localhost cloudflare speedtest${cRES}"
-  echo -e "${CYAN}22.RproxyS reverse proxy${cRES}"
+  echo -e "${CYAN}22.RproxyS${cRES}"
   echo -e "${CYAN}33.Set Cloudflare wireguard upstream (WARP) ${cRES}"
-  echo -e "${CYAN}44.Set TCP Port Forward${cRES}"
-  echo -e "${CYAN}55.Extra Xray inbounds${cRES}"
+  echo -e "${CYAN}34.WireGuard${cRES}"
+  echo -e "${CYAN}44.HAProxy TCP${cRES}"
+  echo -e "${CYAN}55.Extra Xray${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
 echo
 read -r -p "Select:" num || exit 0
@@ -4268,6 +5099,10 @@ read -r -p "Select:" num || exit 0
     ;;
     33)
     changeWGCF
+    start_menu
+    ;;
+    34)
+    wireguard_menu
     start_menu
     ;;
     44)
