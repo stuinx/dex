@@ -4,12 +4,10 @@ mkdir -p /opt/de_GWD/RproxyS
 cp -f /opt/de_GWD/vtrui/vtrui /opt/de_GWD/RproxyS/RproxyS
 chmod +x /opt/de_GWD/RproxyS/RproxyS
 
-RproxySinStatus=$(jq -r '.FORWARD.Rproxy.server.inStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 RproxySmappingStatus=$(jq -r '.FORWARD.Rproxy.server.mappingStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 
 RproxyStunnelPort=$(jq -r '.FORWARD.Rproxy.server.tunnel.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 RproxyStunnelUUID=$(jq -r '.FORWARD.Rproxy.server.tunnel.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-RproxySinUUID=$(jq -r '.FORWARD.Rproxy.server.inUUID[].RproxyS0uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 RproxySmappingList=$(jq -r '.FORWARD.Rproxy.server.mapping' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 
 cat << EOF >/opt/de_GWD/RproxyS/config.json
@@ -58,17 +56,6 @@ cat << EOF >/opt/de_GWD/RproxyS/config.json
 EOF
 
 
-if [[ $RproxySinStatus = "on" ]]; then
-for uuid in $RproxySinUUID; do
-uuidStr='{"id":"'$uuid'", "alterId":0}'
-jq --argjson uuidStr "$uuidStr" '.inbounds[0].settings.clients+=[$uuidStr]' /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
-done
-
-uniqueClient=$(jq -r '.inbounds[0].settings.clients | unique' /opt/de_GWD/RproxyS/config.json 2>/dev/null | grep -v '^null$')
-jq --argjson uniqueClient "$uniqueClient" '.inbounds[0].settings.clients=$uniqueClient' /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
-fi
-
-
 if [[ $RproxySmappingStatus = "on" ]]; then
 
 len=$(echo $RproxySmappingList | jq length)
@@ -99,9 +86,6 @@ jq --argjson RontingMapping "$RontingMapping" '.routing.rules+=[$RontingMapping]
 jq --argjson IBmapping "$IBmapping" '.inbounds+=[$IBmapping]' | sponge /opt/de_GWD/RproxyS/config.json
 done
 fi
-
-chmod 666 /opt/de_GWD/RproxyS/config.json
-chmod 644 /var/www/ssl/*.key
 
 rm -rf /lib/systemd/system/RproxyS.service
 cat << "EOF" >/etc/systemd/system/RproxyS.service
