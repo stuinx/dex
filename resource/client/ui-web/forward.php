@@ -61,18 +61,6 @@
 
 <?php $FileRunWebConf = file_get_contents ('/etc/nginx/conf.d/filerun.conf'); preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $FileRunPort); $FileRunPort = $FileRunPort[0][0] ?>
 <?php $WebConf = file_get_contents ('/etc/nginx/conf.d/default.conf'); preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $serverName); $serverName = rtrim($serverName[0][0],";") ?>
-<?php
-$RproxyDomain = trim((string)($de_GWDconf->address->serverName ?? ''));
-if ($RproxyDomain === '' || $RproxyDomain === 'de_GWD') $RproxyDomain = $serverName;
-$RproxyStunnelUUID = trim((string)($de_GWDconf->FORWARD->Rproxy->server->tunnel->uuid ?? ''));
-if (!preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/', $RproxyStunnelUUID)) {
-  $RproxyUUIDBytes = random_bytes(16);
-  $RproxyUUIDBytes[6] = chr((ord($RproxyUUIDBytes[6]) & 0x0f) | 0x40);
-  $RproxyUUIDBytes[8] = chr((ord($RproxyUUIDBytes[8]) & 0x3f) | 0x80);
-  $RproxyUUIDHex = bin2hex($RproxyUUIDBytes);
-  $RproxyStunnelUUID = substr($RproxyUUIDHex, 0, 8) . '-' . substr($RproxyUUIDHex, 8, 4) . '-' . substr($RproxyUUIDHex, 12, 4) . '-' . substr($RproxyUUIDHex, 16, 4) . '-' . substr($RproxyUUIDHex, 20, 12);
-}
-?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
 
     <a class="navbar-brand mr-1" href="index.php">寒月</a>
@@ -516,15 +504,81 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text">对接地址</span>
                 </div>
-                <input type="text" class="form-control" value="<?php echo $RproxyDomain ?>:<?php echo $de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?>" READONLY>
+                <input type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?>:<?php echo $de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?>" READONLY>
               </div>
 
               <div class="col-md-7 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text">UUID</span>
                 </div>
-                  <input id="RproxyStunnelUUID" type="text" class="form-control" value="<?php echo $RproxyStunnelUUID ?>" READONLY>
+                  <input id="RproxyStunnelUUID" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->Rproxy->server->tunnel->uuid ?>">
                 </div>
+            </div>
+
+            <div class="card mb-3 mt-2">
+              <div class="card-header">
+                代理型
+<span id="RproxyS0Button" class="float-right mt-n1 mb-n2" style="display:<?php if ($de_GWDconf->FORWARD->Rproxy->server->inStatus === on) echo 'block'; else echo 'none';?>">
+<button id="buttonRproxyS0Add" type="button" class="btn btn-secondary btn-sm mt-1" style="border-Radius: 0px;">添加 UUID</button>
+<button id="buttonRproxyS0Stop" type="button" class="btn btn-outline-secondary btn-sm mt-1" style="border-Radius: 0px;">关闭</button>
+</span>
+<span id="RproxyS0Switch" class="float-right mt-n1 mb-n2" style="display:<?php if ($de_GWDconf->FORWARD->Rproxy->server->inStatus === on) echo 'none'; else echo 'block';?>">
+<button type="button" class="btn btn-secondary btn-sm mt-1" style="border-Radius: 0px;" onclick="RproxyS0Switch()">展开</button>
+</span>
+              </div>
+              <div id="RproxyS0Body" class="card-body" style="display:<?php if ($de_GWDconf->FORWARD->Rproxy->server->inStatus === on) echo 'block'; else echo 'none';?>">
+                <div class="form-row">
+                  <div class="col-md-3">
+                  <div class="input-group my-2">
+                    <div class="input-group-prepend">
+                      <span class="input-group-text">连入地址</span>
+                    </div>
+                    <input type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?>:<?php echo $de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?>" READONLY>
+                  </div>
+                  </div>
+
+                  <div id="RproxyS0List" class="col-md-9">
+<?php 
+for( $i=0; $i<count($de_GWDconf->FORWARD->Rproxy->server->inUUID); $i++){
+  $RproxyS0num = $i + 1;
+  $RproxyS0uuid = $de_GWDconf->FORWARD->Rproxy->server->inUUID[$i]->RproxyS0uuid;
+  $RproxyS0mark = $de_GWDconf->FORWARD->Rproxy->server->inUUID[$i]->RproxyS0mark;
+print <<<EOT
+                  <div>
+                    <div class="input-group my-2">
+                    <div class="input-group-prepend">
+                      <span class="input-group-text">UUID</span>
+                    </div>
+                      <input id="RproxyS0uuid$RproxyS0num" type="text" class="form-control" value="$RproxyS0uuid">
+                    <div class="input-group-prepend input-group-append">
+                      <button type="button" class="btn btn-secondary" onclick="RproxyS0qr(this)">显示二维码</button>
+                    </div>
+                    <div class="input-group-prepend input-group-append">
+                      <span class="input-group-text">备注</span>
+                    </div>
+                      <input id="RproxyS0mark$RproxyS0num" type="text" class="form-control col-md-3" value="$RproxyS0mark">
+                    </div>
+                  </div>
+
+<div id="RproxyS0qrpop$RproxyS0num" class="modal fade" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title mx-auto" >内网穿透 代理型 二维码 - $RproxyS0mark</h5>
+      </div>
+      <div class="modal-body">
+        <div id="RproxyS0qrcode$RproxyS0num" class="text-center"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+EOT;
+}
+?>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="card mb-3">
@@ -606,6 +660,28 @@ EOT;
                 </div>
                   <input id="RproxyCtunnelUUID" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->Rproxy->client->tunnel->uuid ?>">
                 </div>
+            </div>
+
+            <div class="card mb-3 mt-2">
+              <div class="card-header">
+                代理型
+<span id="RproxyC0Button" class="float-right mt-n1 mb-n2" style="display:<?php if (strpos(json_encode($RproxyCconf), 'directOut') !== false) echo 'block'; else echo 'none';?>">
+<button id="buttonRproxyC0Stop" type="button" class="btn btn-outline-secondary btn-sm mt-1" style="border-Radius: 0px;">关闭</button>
+</span>
+<span id="RproxyC0Switch" class="float-right mt-n1 mb-n2" style="display:<?php if (strpos(json_encode($RproxyCconf), 'directOut') !== false) echo 'none'; else echo 'block';?>">
+<button type="button" class="btn btn-secondary btn-sm mt-1" style="border-Radius: 0px;" onclick="RproxyC0Switch()">展开</button>
+</span>
+              </div>
+              <div id="RproxyC0Body" class="card-body" style="display:<?php if (strpos(json_encode($RproxyCconf), 'directOut') !== false) echo 'block'; else echo 'none';?>">
+                <div class="form-row">
+                  <div class="col-md-3 input-group my-2">
+                    <div class="input-group-prepend">
+                      <span class="input-group-text">Out</span>
+                    </div>
+                      <input type="text" class="form-control" value="Freedom" readonly="true">
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="card mb-3">
@@ -743,10 +819,33 @@ $('#RproxySbutton').css('display', 'block');
 $('#RproxySbody').css('display', 'block');
 }
 
+function RproxyS0Switch(){
+$('#RproxyS0Switch').css('display', 'none');
+$('#RproxyS0Button').css('display', 'block');
+$('#RproxyS0Body').css('display', 'block');
+}
+
+function RproxyS0qr(RproxyS0qr){
+var RproxyS0obj = $(RproxyS0qr).parent().parent().parent().parent().find('.input-group')
+var RproxyS0objLine = $(RproxyS0qr).parent().parent().parent().find('div')
+var RproxyS0index = RproxyS0obj.index(RproxyS0objLine)+1
+$.get('./act/RproxyS0qr.php', {RproxyS0index:RproxyS0index}, function(data){
+$('#RproxyS0qrcode'+RproxyS0index).empty()
+$('#RproxyS0qrpop'+RproxyS0index).modal('show')
+$('#RproxyS0qrcode'+RproxyS0index).qrcode({width: 240,height: 240,correctLevel:0,text:data})
+})
+}
+
 function RproxyS1Switch(){
 $('#RproxyS1Switch').css('display', 'none');
 $('#RproxyS1Button').css('display', 'block');
 $('#RproxyS1Body').css('display', 'block');
+}
+
+function RproxyC0Switch(){
+$('#RproxyC0Switch').css('display', 'none');
+$('#RproxyC0Button').css('display', 'block');
+$('#RproxyC0Body').css('display', 'block');
 }
 
 function RproxyC1Switch(){
@@ -965,6 +1064,17 @@ $('#buttonRproxySsave').click(function(){
 $("#buttonRproxySsaveLoading").attr("class", "spinner-border spinner-border-sm")
 RproxyStunnelPort=$('#RproxyStunnelPort').val().trim()
 RproxyStunnelUUID=$('#RproxyStunnelUUID').val().trim()
+RproxySinStatus=$('#RproxyS0Body').css('display')
+var RproxyS0uuidList = []
+var len = $("#RproxyS0List .input-group").length
+var RproxyS0uuid, RproxyS0mark
+for( let i = 1; i<=len; i++){
+    var RproxyS0uuid = $('#RproxyS0uuid'+i).val().trim()
+    var RproxyS0mark = $('#RproxyS0mark'+i).val()
+    if ( RproxyS0uuid !== '' ) {
+    RproxyS0uuidList.push({RproxyS0uuid, RproxyS0mark})
+    }
+}
 RproxySmappingStatus=$('#RproxyS1Body').css('display')
 var RproxyS1List = []
 var len = $("#RproxyS1List .input-group").length
@@ -976,7 +1086,7 @@ for( let i = 0; i<len; i++){
     RproxyS1List.push({port, protocol})
     }
 }
-$.get('./act/RproxySsave.php', {RproxyStunnelPort:RproxyStunnelPort, RproxyStunnelUUID:RproxyStunnelUUID, RproxySmappingStatus:RproxySmappingStatus, RproxyS1List:RproxyS1List}, function(result){
+$.get('./act/RproxySsave.php', {RproxyStunnelPort:RproxyStunnelPort, RproxyStunnelUUID:RproxyStunnelUUID, RproxyS0uuidList:RproxyS0uuidList, RproxySinStatus:RproxySinStatus, RproxySmappingStatus:RproxySmappingStatus, RproxyS1List:RproxyS1List}, function(result){
   $("#buttonRproxySsaveLoading").removeClass()
   window.location.reload()
 })
@@ -991,6 +1101,33 @@ $.get('./act/RproxySstop.php', function(result){
   $('#RproxySbutton').css('display', 'none'); 
   $('#RproxySbody').css('display', 'none'); 
 })
+})
+
+$('#buttonRproxyS0Add').click(function(){
+  var i = $("#RproxyS0List .input-group").length+1
+  $('#RproxyS0List').append(`
+                  <div>
+                    <div class="input-group my-2">
+                    <div class="input-group-prepend">
+                      <span class="input-group-text">UUID</span>
+                    </div>
+                      <input id="RproxyS0uuid${i}" type="text" class="form-control" value="">
+                    <div class="input-group-prepend input-group-append">
+                      <button type="button" class="btn btn-secondary" onclick="RproxyS0qr(this)">显示二维码</button>
+                    </div>
+                    <div class="input-group-prepend input-group-append">
+                      <span class="input-group-text">备注</span>
+                    </div>
+                      <input id="RproxyS0mark${i}" type="text" class="form-control col-md-3" value="">
+                    </div>
+                  </div>
+                          `)
+})
+
+$('#buttonRproxyS0Stop').click(function(){
+$('#RproxyS0Switch').css('display', 'block'); 
+$('#RproxyS0Button').css('display', 'none'); 
+$('#RproxyS0Body').css('display', 'none'); 
 })
 
 $('#buttonRproxyS1Stop').click(function(){
@@ -1057,6 +1194,7 @@ $('#buttonRproxyCsave').click(function(){
 $("#buttonRproxyCsaveLoading").attr("class", "spinner-border spinner-border-sm")
 RproxyCtunnelAddress=$('#RproxyCtunnelAddress').val()
 RproxyCtunnelUUID=$('#RproxyCtunnelUUID').val().trim()
+RproxyCoutStatus=$('#RproxyC0Body').css('display')
 RproxyCmappingStatus=$('#RproxyC1Body').css('display')
 var RproxyC1List = []
 var len = $("#RproxyC1List .input-group").length
@@ -1070,7 +1208,7 @@ for( let i = 0; i<len; i++){
     RproxyC1List.push({extPort, extProtocol, intIP, intPort})
     }
 }
-$.get('./act/RproxyCsave.php', {RproxyCtunnelAddress:RproxyCtunnelAddress, RproxyCtunnelUUID:RproxyCtunnelUUID, RproxyCmappingStatus:RproxyCmappingStatus, RproxyC1List:RproxyC1List}, function(result){
+$.get('./act/RproxyCsave.php', {RproxyCtunnelAddress:RproxyCtunnelAddress, RproxyCtunnelUUID:RproxyCtunnelUUID, RproxyCoutStatus:RproxyCoutStatus, RproxyCmappingStatus:RproxyCmappingStatus, RproxyC1List:RproxyC1List}, function(result){
   $("#buttonRproxyCsaveLoading").removeClass()
   window.location.reload()
 })
@@ -1085,6 +1223,12 @@ $.get('./act/RproxyCstop.php', function(result){
   $('#RproxyCbutton').css('display', 'none'); 
   $('#RproxyCbody').css('display', 'none'); 
 })
+})
+
+$('#buttonRproxyC0Stop').click(function(){
+$('#RproxyC0Switch').css('display', 'block'); 
+$('#RproxyC0Button').css('display', 'none'); 
+$('#RproxyC0Body').css('display', 'none'); 
 })
 
 $('#buttonRproxyC1Stop').click(function(){
