@@ -2742,24 +2742,49 @@ rproxyS_apply
 
 
 
+rproxyS_prepareTunnel(){
+local settings="/opt/de_GWD/RproxyS/settings.json"
+local tunnelPort tunnelUUID defaultPort=2097
+rproxyS_newSettings || return 1
+tunnelPort=$(jq -r '.tunnel.port // empty' "$settings")
+tunnelUUID=$(jq -r '.tunnel.uuid // empty' "$settings")
+if [[ -z $tunnelPort && -z $tunnelUUID ]]; then
+  rproxyS_portAvailable "$defaultPort" "" || {
+    echo -e "${WHITE}RproxyS${RED} Default tunnel port $defaultPort is unavailable; configure the tunnel first${cRES}"
+    return 1
+  }
+  tunnelUUID=$(rproxyS_uuid)
+  rproxyS_updateSettings --argjson port "$defaultPort" --arg uuid "$tunnelUUID" '.tunnel.port=$port | .tunnel.uuid=$uuid' || return 1
+fi
+}
+
+
+
 rproxyS_mappingMenu(){
 local settings="/opt/de_GWD/RproxyS/settings.json"
 local choice mappingPort mappingProtocol mappingInput mappingNum mappingIndex mappingCount
 while true; do
-  rproxyS_requireTunnel || return
   echo -e "${GREEN}================ RproxyS Port Mapping ================ ${cRES}"
-  echo -e "${GREEN}1. View status${cRES}"
-  echo -e "${GREEN}2. Add mapping${cRES}"
+  echo -e "${GREEN}1. Add mapping${cRES}"
+  echo -e "${GREEN}2. View status${cRES}"
   echo -e "${GREEN}3. Delete mapping${cRES}"
   echo -e "${GREEN}4. Enable/disable mappings${cRES}"
   echo -e "${GREEN}0. Return${cRES}"
   read -r -p "Select:" choice || return
   case "$choice" in
-    1)
+    2)
+      if [[ ! -s $settings ]]; then
+        echo -e "${BLUE}Status: ${YELLOW}off${cRES}"
+        echo -e "${WHITE}Mapping${YELLOW} List is empty${cRES}"
+        continue
+      fi
+      jq empty "$settings" >/dev/null 2>&1 || { echo -e "${WHITE}RproxyS${RED} Settings are invalid${cRES}"; continue; }
       echo -e "${BLUE}Status: ${YELLOW}$(jq -r '.mappingStatus // "off"' "$settings")${cRES}"
       jq -r '.mapping[]? | "[" + (.port|tostring) + "] " + .protocol' "$settings"
       ;;
-    2)
+    1)
+      rproxyS_prepareTunnel || continue
+      rproxyS_requireTunnel || continue
       read -r -p "Public port: " mappingInput
       mappingPort="$mappingInput"
       if ! rproxyS_validPort "$mappingPort"; then
@@ -2779,6 +2804,7 @@ while true; do
       rproxyS_updateSettings --argjson port "$mappingPort" --arg protocol "$mappingProtocol" '.mapping += [{port:$port,protocol:$protocol}] | .mappingStatus="on"' && rproxyS_apply
       ;;
     3)
+      rproxyS_requireTunnel || continue
       mappingCount=$(jq -r '.mapping | length' "$settings")
       [[ $mappingCount -gt 0 ]] || { echo -e "${WHITE}Mapping${YELLOW} List is empty${cRES}"; continue; }
       read -r -p "Mapping number: " mappingNum
@@ -2788,6 +2814,7 @@ while true; do
       rproxyS_updateSettings --argjson i "$mappingIndex" 'del(.mapping[$i]) | if (.mapping|length)==0 then .mappingStatus="off" else . end' && rproxyS_apply
       ;;
     4)
+      rproxyS_requireTunnel || continue
       mappingCount=$(jq -r '.mapping | length' "$settings")
       [[ $mappingCount -gt 0 ]] || { echo -e "${WHITE}Mapping${YELLOW} List is empty${cRES}"; continue; }
       rproxyS_updateSettings '.mappingStatus = (if .mappingStatus == "on" then "off" else "on" end)' && rproxyS_apply
@@ -2807,16 +2834,16 @@ if [[ ! -x /opt/de_GWD/vtrui/vtrui ]]; then
 fi
 while true; do
   echo -e "${GREEN}1. View status${cRES}"
-  echo -e "${GREEN}2. Configure tunnel${cRES}"
-  echo -e "${GREEN}3. Manage port mappings${cRES}"
+  echo -e "${GREEN}2. Manage port mappings${cRES}"
+  echo -e "${GREEN}3. Configure tunnel${cRES}"
   echo -e "${GREEN}4. Apply and start${cRES}"
   echo -e "${GREEN}5. Stop service${cRES}"
   echo -e "${GREEN}0. Return${cRES}"
   read -r -p "Select:" num || return
   case "$num" in
     1) rproxyS_show ;;
-    2) rproxyS_configureTunnel ;;
-    3) rproxyS_mappingMenu ;;
+    2) rproxyS_mappingMenu ;;
+    3) rproxyS_configureTunnel ;;
     4) rproxyS_apply ;;
     5) rproxyS_stop ;;
     0) return ;;
