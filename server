@@ -1842,36 +1842,134 @@ fi
 
 
 
-haproxy_validPort(){
+deGWD_featureValidPort(){
 local port=${1:-}
 [[ $port =~ ^[1-9][0-9]{0,4}$ ]] && (( 10#$port <= 65535 ))
 }
 
 
 
-haproxy_parseUpstream(){
-local input=${1:-} host port
+deGWD_featureValidUUID(){
+[[ ${1:-} =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]
+}
+
+
+
+deGWD_featureValidHost(){
+[[ ${1:-} =~ ^[A-Za-z0-9.-]+$ ]]
+}
+
+
+
+deGWD_featureUUID(){
+cat /proc/sys/kernel/random/uuid
+}
+
+
+
+deGWD_featureMainDomain(){
+local serverDomain
+serverDomain=$(awk '$1 == "server_name" && $2 != ";" {gsub(/;/, "", $2); print $2; exit}' /etc/nginx/conf.d/default.conf 2>/dev/null)
+deGWD_featureValidHost "$serverDomain" || return 1
+printf '%s\n' "$serverDomain"
+}
+
+
+
+deGWD_featureMainPort(){
+local serverPort
+serverPort=$(awk '$1 == "listen" && $2 ~ /^[1-9][0-9]{0,4}$/ && $3 == "default" {print $2; exit}' /etc/nginx/conf.d/default.conf 2>/dev/null)
+deGWD_featureValidPort "$serverPort" || return 1
+printf '%s\n' "$serverPort"
+}
+
+
+
+deGWD_featureParseHostPort(){
+local input=${1:-} allowHostOnly=${2:-0} host port
 if [[ $input =~ ^\[([0-9A-Fa-f:.]+)\]:([1-9][0-9]{0,4})$ ]]; then
   host=${BASH_REMATCH[1]}
   port=${BASH_REMATCH[2]}
 elif [[ $input =~ ^([A-Za-z0-9.-]+):([1-9][0-9]{0,4})$ ]]; then
   host=${BASH_REMATCH[1]}
   port=${BASH_REMATCH[2]}
+elif [[ $allowHostOnly = 1 && $input =~ ^[A-Za-z0-9.-]+$ ]]; then
+  printf '%s\n' "$input"
+  return
 else
   return 1
 fi
-haproxy_validPort "$port" || return 1
-printf '%s\t%s\n' "$host" "$port"
+deGWD_featureValidPort "$port" || return 1
+printf '%s %s\n' "$host" "$port"
+}
+
+
+
+deGWD_featureFormatHostPort(){
+if [[ ${1:-} == *:* ]]; then
+  printf '[%s]:%s\n' "$1" "$2"
+else
+  printf '%s:%s\n' "$1" "$2"
+fi
+}
+
+
+
+deGWD_featurePortAvailable(){
+local candidate=${1:-} current=${2:-} used mainPort
+deGWD_featureValidPort "$candidate" || return 1
+[[ $candidate = "$current" ]] && return 0
+[[ $candidate != 9890 && $candidate != 9891 ]] || return 1
+
+mainPort=$(deGWD_featureMainPort 2>/dev/null || true)
+[[ -z $mainPort || $candidate != "$mainPort" ]] || return 1
+
+if [[ -s $haproxyConfig ]] && haproxy_configManaged; then
+  while IFS=$'\t' read -r used _; do
+    [[ -n $used && $used != "$current" && $used = "$candidate" ]] && return 1
+  done < <(haproxy_extractRules)
+fi
+
+if [[ -s $extraSettings ]]; then
+  while IFS= read -r used; do
+    [[ -n $used && $used != "$current" && $used = "$candidate" ]] && return 1
+  done < <(jq -r '
+    [
+      (.vless_ws, .reality, .socks5 | select(type == "object" and .enabled == true) | .port),
+      ((.dokodemo.rules // [])[]?.port)
+    ] | .[] | select(. != null)
+  ' "$extraSettings" 2>/dev/null)
+fi
+
+if [[ -s /opt/de_GWD/RproxyS/settings.json ]]; then
+  while IFS= read -r used; do
+    [[ -n $used && $used != "$current" && $used = "$candidate" ]] && return 1
+  done < <(jq -r '.tunnel.port // empty, (.mapping[]?.port // empty)' /opt/de_GWD/RproxyS/settings.json 2>/dev/null)
+fi
+
+if [[ $candidate != "$current" ]] && command -v ss >/dev/null 2>&1 &&
+   ss -H -lntu 2>/dev/null | awk -v port=":$candidate" '$5 ~ port "$" {found=1} END {exit !found}'; then
+  return 1
+fi
+return 0
+}
+
+
+
+haproxy_validPort(){
+deGWD_featureValidPort "$@"
+}
+
+
+
+haproxy_parseUpstream(){
+deGWD_featureParseHostPort "$1" 0
 }
 
 
 
 haproxy_formatUpstream(){
-if [[ $1 == *:* ]]; then
-  printf '[%s]:%s\n' "$1" "$2"
-else
-  printf '%s:%s\n' "$1" "$2"
-fi
+deGWD_featureFormatHostPort "$@"
 }
 
 
@@ -2070,40 +2168,7 @@ haproxy_extractRules | awk -F '\t' -v port="$listenPort" '$1 == port {found=1} E
 
 
 haproxy_portAvailable(){
-local listenPort=${1:-} used mainPort
-haproxy_validPort "$listenPort" || return 1
-[[ $listenPort != 9890 && $listenPort != 9891 ]] || return 1
-
-if [[ -s $haproxyConfig ]] && haproxy_configManaged; then
-  while IFS=$'\t' read -r used _; do
-    [[ -n $used && $used = "$listenPort" ]] && return 1
-  done < <(haproxy_extractRules)
-fi
-
-mainPort=$(awk '$1 == "listen" && $2 ~ /^[1-9][0-9]{0,4}$/ && $3 == "default" {print $2; exit}' /etc/nginx/conf.d/default.conf 2>/dev/null)
-[[ -z $mainPort || $listenPort != "$mainPort" ]] || return 1
-
-if [[ -s $extraSettings ]]; then
-  while IFS= read -r used; do
-    [[ -n $used && $used = "$listenPort" ]] && return 1
-  done < <(jq -r '
-    [
-      (.vless_ws, .reality, .socks5 | select(type == "object" and .enabled == true) | .port),
-      ((.dokodemo.rules // [])[]?.port)
-    ] | .[] | select(. != null)
-  ' "$extraSettings" 2>/dev/null)
-fi
-
-if [[ -s /opt/de_GWD/RproxyS/settings.json ]]; then
-  while IFS= read -r used; do
-    [[ -n $used && $used = "$listenPort" ]] && return 1
-  done < <(jq -r '.tunnel.port // empty, (.mapping[]?.port // empty)' /opt/de_GWD/RproxyS/settings.json 2>/dev/null)
-fi
-
-if command -v ss >/dev/null 2>&1 && ss -H -lntu 2>/dev/null | awk -v port=":$listenPort" '$5 ~ port "$" {found=1} END {exit !found}'; then
-  return 1
-fi
-return 0
+deGWD_featurePortAvailable "$@"
 }
 
 
@@ -2208,7 +2273,7 @@ if [[ -z $rules ]]; then
   echo -e "${BLUE}------------------------------------------------ ${cRES}"
   return 0
 fi
-domain=$(awk '/server_name/ {print $2; exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
+domain=$(deGWD_featureMainDomain 2>/dev/null || true)
 while IFS=$'\t' read -r port upstream; do
   [[ -n $port ]] || continue
   echo -e "${BLUE}Address: ${YELLOW}$domain:$port${cRES}  ${BLUE}Target: ${YELLOW}$upstream${cRES}"
@@ -2307,7 +2372,7 @@ while true; do
       echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\t${WHITE}All de_GWD TCP Port Forwards ${GREEN}Deleted${cRES}"
       ;;
     4)
-      continue
+      haproxy_listRules
       ;;
     0)
       return 0
@@ -2319,19 +2384,19 @@ while true; do
 done
 }
 rproxyS_uuid(){
-cat /proc/sys/kernel/random/uuid
+deGWD_featureUUID
 }
 
 
 
 rproxyS_validPort(){
-[[ $1 =~ ^[1-9][0-9]{0,4}$ ]] && (( 10#$1 <= 65535 ))
+deGWD_featureValidPort "$@"
 }
 
 
 
 rproxyS_validUUID(){
-[[ $1 =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]
+deGWD_featureValidUUID "$@"
 }
 
 
@@ -2343,7 +2408,7 @@ rproxyS_validProtocol(){
 
 
 rproxyS_serverDomain(){
-awk '$1 == "server_name" && $2 != ";" {gsub(/;/, "", $2); print $2; exit}' /etc/nginx/conf.d/default.conf 2>/dev/null
+deGWD_featureMainDomain
 }
 
 
@@ -2477,43 +2542,7 @@ rm -f "$tempFile"
 
 
 rproxyS_portAvailable(){
-local checkPort="$1"
-local currentPort="$2"
-[[ $checkPort = "$currentPort" ]] && return 0
-local used mainPort
-rproxyS_validPort "$checkPort" || return 1
-[[ $checkPort != 9890 && $checkPort != 9891 ]] || return 1
-
-mainPort=$(awk '$1 == "listen" && $2 ~ /^[1-9][0-9]{0,4}$/ && $3 == "default" {print $2; exit}' /etc/nginx/conf.d/default.conf 2>/dev/null)
-[[ -z $mainPort || $checkPort != "$mainPort" ]] || return 1
-
-if [[ -s $haproxyConfig ]] && haproxy_configManaged; then
-  while IFS=$'\t' read -r used _; do
-    [[ -n $used && $used = "$checkPort" ]] && return 1
-  done < <(haproxy_extractRules)
-fi
-
-if [[ -s $extraSettings ]]; then
-  while IFS= read -r used; do
-    [[ -n $used && $used = "$checkPort" ]] && return 1
-  done < <(jq -r '
-    [
-      (.vless_ws, .reality, .socks5 | select(type == "object" and .enabled == true) | .port),
-      ((.dokodemo.rules // [])[]?.port)
-    ] | .[] | select(. != null)
-  ' "$extraSettings" 2>/dev/null)
-fi
-
-if [[ -s /opt/de_GWD/RproxyS/settings.json ]]; then
-  while IFS= read -r used; do
-    [[ -n $used && $used = "$checkPort" ]] && return 1
-  done < <(jq -r '.tunnel.port // empty, (.mapping[]?.port // empty)' /opt/de_GWD/RproxyS/settings.json 2>/dev/null)
-fi
-
-if command -v ss >/dev/null 2>&1 && ss -H -lntu 2>/dev/null | awk -v port=":$checkPort" '$5 ~ port "$" {found=1} END {exit !found}'; then
-  return 1
-fi
-return 0
+deGWD_featurePortAvailable "$@"
 }
 
 
@@ -2706,6 +2735,20 @@ echo -e "${BLUE}------------------------------------------------ ${cRES}"
 
 
 
+rproxyS_mappingStatus(){
+local settings="/opt/de_GWD/RproxyS/settings.json"
+if [[ ! -s $settings ]]; then
+  echo -e "${BLUE}Status: ${YELLOW}off${cRES}"
+  echo -e "${WHITE}Mapping${YELLOW} List is empty${cRES}"
+  return 0
+fi
+jq empty "$settings" >/dev/null 2>&1 || { echo -e "${WHITE}RproxyS${RED} Settings are invalid${cRES}"; return 1; }
+echo -e "${BLUE}Status: ${YELLOW}$(jq -r '.mappingStatus // "off"' "$settings")${cRES}"
+jq -r '.mapping[]? | "[" + (.port|tostring) + "] " + .protocol' "$settings"
+}
+
+
+
 rproxyS_configureTunnel(){
 local settings="/opt/de_GWD/RproxyS/settings.json"
 local currentPort currentUUID newPort portInput
@@ -2764,23 +2807,18 @@ rproxyS_mappingMenu(){
 local settings="/opt/de_GWD/RproxyS/settings.json"
 local choice mappingPort mappingProtocol mappingInput mappingNum mappingIndex mappingCount
 while true; do
-  echo -e "${GREEN}================ RproxyS Port Mapping ================ ${cRES}"
+  echo -e "${BLUE}------------------------------------------------ ${cRES}"
+  echo -e "${GREEN}RproxyS Port Mapping${cRES}"
+  rproxyS_mappingStatus
   echo -e "${GREEN}1. Add mapping${cRES}"
   echo -e "${GREEN}2. View status${cRES}"
   echo -e "${GREEN}3. Delete mapping${cRES}"
   echo -e "${GREEN}4. Enable/disable mappings${cRES}"
   echo -e "${GREEN}0. Return${cRES}"
-  read -r -p "Select:" choice || return
+  read -r -p "Select: " choice || return
   case "$choice" in
     2)
-      if [[ ! -s $settings ]]; then
-        echo -e "${BLUE}Status: ${YELLOW}off${cRES}"
-        echo -e "${WHITE}Mapping${YELLOW} List is empty${cRES}"
-        continue
-      fi
-      jq empty "$settings" >/dev/null 2>&1 || { echo -e "${WHITE}RproxyS${RED} Settings are invalid${cRES}"; continue; }
-      echo -e "${BLUE}Status: ${YELLOW}$(jq -r '.mappingStatus // "off"' "$settings")${cRES}"
-      jq -r '.mapping[]? | "[" + (.port|tostring) + "] " + .protocol' "$settings"
+      rproxyS_mappingStatus
       ;;
     1)
       rproxyS_prepareTunnel || continue
@@ -2795,7 +2833,7 @@ while true; do
         echo -e "${WHITE}Port${RED} Already in use${cRES}"
         continue
       fi
-      read -r -p "Protocol [tcp/udp/tcp,udp]: " mappingProtocol
+      read -r -p "Protocol [tcp,udp] (tcp/udp/tcp,udp): " mappingProtocol
       [[ -z $mappingProtocol ]] && mappingProtocol="tcp,udp"
       if ! rproxyS_validProtocol "$mappingProtocol"; then
         echo -e "${WHITE}Protocol${RED} Invalid${cRES}"
@@ -2833,13 +2871,14 @@ if [[ ! -x /opt/de_GWD/vtrui/vtrui ]]; then
   return
 fi
 while true; do
+  rproxyS_show
   echo -e "${GREEN}1. View status${cRES}"
   echo -e "${GREEN}2. Manage port mappings${cRES}"
   echo -e "${GREEN}3. Configure tunnel${cRES}"
   echo -e "${GREEN}4. Apply and start${cRES}"
   echo -e "${GREEN}5. Stop service${cRES}"
   echo -e "${GREEN}0. Return${cRES}"
-  read -r -p "Select:" num || return
+  read -r -p "Select: " num || return
   case "$num" in
     1) rproxyS_show ;;
     2) rproxyS_mappingMenu ;;
@@ -2855,19 +2894,19 @@ done
 
 
 extra_validPort(){
-[[ $1 =~ ^[1-9][0-9]{0,4}$ ]] && (( 10#$1 <= 65535 ))
+deGWD_featureValidPort "$@"
 }
 
 
 
 extra_validUUID(){
-[[ $1 =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]
+deGWD_featureValidUUID "$@"
 }
 
 
 
 extra_validHost(){
-[[ $1 =~ ^[A-Za-z0-9.-]+$ ]]
+deGWD_featureValidHost "$@"
 }
 
 
@@ -2883,49 +2922,25 @@ fi
 
 
 extra_parseDomainPort(){
-local input=$1 host port
-if [[ $input =~ ^\[([0-9A-Fa-f:.]+)\]:([1-9][0-9]{0,4})$ ]]; then
-  host=${BASH_REMATCH[1]}
-  port=${BASH_REMATCH[2]}
-elif [[ $input =~ ^([A-Za-z0-9.-]+):([1-9][0-9]{0,4})$ ]]; then
-  host=${BASH_REMATCH[1]}
-  port=${BASH_REMATCH[2]}
-elif [[ $input =~ ^[A-Za-z0-9.-]+$ ]]; then
-  printf '%s\n' "$input"
-  return
-else
-  return 1
-fi
-extra_validPort "$port" || return 1
-printf '%s %s\n' "$host" "$port"
+deGWD_featureParseHostPort "$1" 1
 }
 
 
 
 extra_formatDomainPort(){
-if [[ $1 == *:* ]]; then
-  printf '[%s]:%s\n' "$1" "$2"
-else
-  printf '%s:%s\n' "$1" "$2"
-fi
+deGWD_featureFormatHostPort "$@"
 }
 
 
 
 extra_mainDomain(){
-local serverDomain
-serverDomain=$(awk '$1 == "server_name" && $2 != ";" {gsub(/;/, "", $2); print $2; exit}' /etc/nginx/conf.d/default.conf 2>/dev/null)
-extra_validHost "$serverDomain" || return 1
-printf '%s\n' "$serverDomain"
+deGWD_featureMainDomain
 }
 
 
 
 extra_mainPort(){
-local serverPort
-serverPort=$(awk '$1 == "listen" && $2 ~ /^[1-9][0-9]{0,4}$/ && $3 == "default" {print $2; exit}' /etc/nginx/conf.d/default.conf 2>/dev/null)
-extra_validPort "$serverPort" || return 1
-printf '%s\n' "$serverPort"
+deGWD_featureMainPort
 }
 
 
@@ -3030,40 +3045,7 @@ return 0
 
 
 extra_portAvailable(){
-local candidate=$1 current=$2 used
-extra_validPort "$candidate" || return 1
-local mainPort
-mainPort=$(extra_mainPort 2>/dev/null || true)
-[[ $candidate != "$mainPort" && $candidate != "9890" && $candidate != "9891" ]] || return 1
-
-if [[ -s $extraSettings ]]; then
-  while IFS= read -r used; do
-    [[ -n $used && $used != "$current" && $used = "$candidate" ]] && return 1
-  done < <(jq -r '
-    [
-      (.vless_ws, .reality, .socks5 | select(type == "object" and .enabled == true) | .port),
-      ((.dokodemo.rules // [])[]?.port)
-    ] | .[] | select(. != null)
-  ' "$extraSettings" 2>/dev/null)
-fi
-
-if [[ -s /opt/de_GWD/RproxyS/settings.json ]]; then
-  while IFS= read -r used; do
-    [[ -n $used && $used = "$candidate" && $used != "$current" ]] && return 1
-  done < <(jq -r '.tunnel.port // empty, (.mapping // [])[]?.port // empty' /opt/de_GWD/RproxyS/settings.json 2>/dev/null)
-fi
-
-if [[ -s $haproxyConfig ]] && haproxy_configManaged; then
-  while IFS=$'\t' read -r used _; do
-    [[ -n $used && $used = "$candidate" ]] && return 1
-  done < <(haproxy_extractRules)
-fi
-
-if [[ $candidate != "$current" ]] && command -v ss >/dev/null 2>&1 &&
-   ss -H -lntu 2>/dev/null | awk -v p=":$candidate" '$5 ~ p "$" {found=1} END {exit !found}'; then
-  return 1
-fi
-return 0
+deGWD_featurePortAvailable "$@"
 }
 
 
@@ -3426,11 +3408,10 @@ fi
 extra_vlessWS(){
 local switch oldDomain oldPort oldUUID oldPath mainDomain input parsed domainPort vlessDomain vlessPort vlessUUID vlessPath candidate base
 echo -e "$GREEN============================== $cRES"
-echo -e "$GREEN[1]: Enable VLESS WebSocket TLS$cRES"
-echo -e "$GREEN[2]: Disable VLESS WebSocket TLS$cRES"
+echo -e "${GREEN}1. Enable VLESS WebSocket TLS${cRES}"
+echo -e "${GREEN}2. Disable VLESS WebSocket TLS${cRES}"
 echo -e "$GREEN============================== $cRES"
-read -r -n 1 switch
-echo
+read -r -p "Select: " switch || return
 
 if [[ $switch = "2" ]]; then
   candidate=$(mktemp /tmp/de_GWD-extra-settings.XXXXXX) || return 1
@@ -3473,9 +3454,9 @@ if [[ ! -s /var/www/ssl/de_GWD.cer ]] || ! openssl x509 -in /var/www/ssl/de_GWD.
 fi
 
 vlessUUID=$oldUUID
-[[ -n $vlessUUID ]] || vlessUUID=$(cat /proc/sys/kernel/random/uuid)
+[[ -n $vlessUUID ]] || vlessUUID=$(deGWD_featureUUID)
 vlessPath=$oldPath
-[[ -n $vlessPath ]] || vlessPath=/$(cat /proc/sys/kernel/random/uuid | tr -d '-' | cut -c1-8)
+[[ -n $vlessPath ]] || vlessPath=/$(deGWD_featureUUID | tr -d '-' | cut -c1-8)
 extra_validUUID "$vlessUUID" && [[ $vlessPath == /* && $vlessPath != *[[:space:]]* ]] || {
   echo -e "$RED Invalid VLESS credentials$cRES"
   return 1
@@ -3502,11 +3483,10 @@ extra_printNodes
 extra_reality(){
 local switch oldDomain oldPort oldUUID oldFlow oldDest oldServerName oldPrivateKey oldPublicKey oldShortId mainDomain addressDefault addressInput parsed realityDomain realityPort realityUUID realityFlow realityDestInput parsedDest realityDestHost realityDestPort realityDest realityServerName realityPrivateKey realityPublicKey realityShortId keyPair visionChoice candidate base
 echo -e "$GREEN============================== $cRES"
-echo -e "$GREEN[1]: Enable VLESS TCP/RAW REALITY$cRES"
-echo -e "$GREEN[2]: Disable VLESS TCP/RAW REALITY$cRES"
+echo -e "${GREEN}1. Enable VLESS TCP/RAW REALITY${cRES}"
+echo -e "${GREEN}2. Disable VLESS TCP/RAW REALITY${cRES}"
 echo -e "$GREEN============================== $cRES"
-read -r -n 1 switch
-echo
+read -r -p "Select: " switch || return
 
 if [[ $switch = "2" ]]; then
   candidate=$(mktemp /tmp/de_GWD-extra-settings.XXXXXX) || return 1
@@ -3551,7 +3531,7 @@ extra_validHost "$realityDomain" && extra_validPort "$realityPort" || { echo -e 
 extra_portAvailable "$realityPort" "$oldPort" || { echo -e "$RED REALITY port conflicts with an existing service$cRES"; return 1; }
 
 realityUUID=$oldUUID
-[[ -n $realityUUID ]] || realityUUID=$(cat /proc/sys/kernel/random/uuid)
+[[ -n $realityUUID ]] || realityUUID=$(deGWD_featureUUID)
 extra_validUUID "$realityUUID" || { echo -e "$RED Invalid REALITY UUID$cRES"; return 1; }
 
 realityDestInput=$oldDest
@@ -3613,11 +3593,10 @@ extra_printNodes
 extra_socks5(){
 local switch oldDomain oldPort oldUser oldPassword mainDomain addressInput parsed socksDomain socksPort socksUser socksPassword userInput passwordInput candidate base
 echo -e "$GREEN====================== $cRES"
-echo -e "$GREEN[1]: Enable SOCKS5 with UDP$cRES"
-echo -e "$GREEN[2]: Disable SOCKS5$cRES"
+echo -e "${GREEN}1. Enable SOCKS5 with UDP${cRES}"
+echo -e "${GREEN}2. Disable SOCKS5${cRES}"
 echo -e "$GREEN====================== $cRES"
-read -r -n 1 switch
-echo
+read -r -p "Select: " switch || return
 
 if [[ $switch = "2" ]]; then
   candidate=$(mktemp /tmp/de_GWD-extra-settings.XXXXXX) || return 1
@@ -3658,12 +3637,12 @@ extra_portAvailable "$socksPort" "$oldPort" || { echo -e "$RED SOCKS5 port confl
 read -r -p "SOCKS5 username [$oldUser]: " userInput
 socksUser=$userInput
 [[ -n $socksUser ]] || socksUser=$oldUser
-[[ -n $socksUser ]] || socksUser=xray$(cat /proc/sys/kernel/random/uuid | tr -d '-' | cut -c1-8)
+[[ -n $socksUser ]] || socksUser=xray$(deGWD_featureUUID | tr -d '-' | cut -c1-8)
 read -r -s -p "SOCKS5 password (empty keeps current): " passwordInput
 echo
 socksPassword=$passwordInput
 [[ -n $socksPassword ]] || socksPassword=$oldPassword
-[[ -n $socksPassword ]] || socksPassword=$(cat /proc/sys/kernel/random/uuid | tr -d '-' | cut -c1-20)
+[[ -n $socksPassword ]] || socksPassword=$(deGWD_featureUUID | tr -d '-' | cut -c1-20)
 [[ $socksUser =~ ^[A-Za-z0-9._~-]+$ && $socksPassword =~ ^[A-Za-z0-9._~-]+$ ]] || { echo -e "$RED Invalid SOCKS5 credentials$cRES"; return 1; }
 
 candidate=$(mktemp /tmp/de_GWD-extra-settings.XXXXXX) || return 1
