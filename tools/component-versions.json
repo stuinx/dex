@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "generated_at": "2026-09-21",
+  "components": {
+    "xray": {
+      "repo": "XTLS/Xray-core",
+      "tag": "v26.3.27",
+      "archive_type": "zip",
+      "amd64": {
+        "asset": "Xray-linux-64.zip",
+        "member": "xray",
+        "sha256": "23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae"
+      },
+      "arm64": {
+        "asset": "Xray-linux-arm64-v8a.zip",
+        "member": "xray",
+        "sha256": "4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c"
+      }
+    },
+    "coredns": {
+      "repo": "coredns/coredns",
+      "tag": "v1.14.7",
+      "archive_type": "tar.gz",
+      "amd64": {
+        "asset": "coredns_1.14.7_linux_amd64.tgz",
+        "member": "coredns",
+        "sha256": "9a09356438c6d9591cb80011a2a7a52f87fc3a113f6690e41f243f98b98faac9"
+      },
+      "arm64": {
+        "asset": "coredns_1.14.7_linux_arm64.tgz",
+        "member": "coredns",
+        "sha256": "bf26782d19b5340e3e6cb50f1ed6df72f58e4a30932c79d167f0f0a8b1e92e16"
+      }
+    },
+    "smartdns": {
+      "repo": "pymumu/smartdns",
+      "tag": "Release48.4",
+      "archive_type": "raw",
+      "amd64": {
+        "asset": "smartdns-x86_64",
+        "member": "",
+        "sha256": "8adb80ce14d3a90a852d1dcc14d6a485ff0b65622d7ef294c4b8f1d0f51eb645"
+      },
+      "arm64": {
+        "asset": "smartdns-aarch64",
+        "member": "",
+        "sha256": "1208c5562046c71913c3df88ad4e3ed0a3410161ff77ce4a60cdd63936bf1b27"
+      }
+    },
+    "mosdns": {
+      "repo": "IrineSistiana/mosdns",
+      "tag": "v5.3.4",
+      "archive_type": "zip",
+      "amd64": {
+        "asset": "mosdns-linux-amd64.zip",
+        "member": "mosdns",
+        "sha256": "3abcc73080789eb1ccca78dab5049b85ac1e9b8f865ab60158a527b77cd72e85"
+      },
+      "arm64": {
+        "asset": "mosdns-linux-arm64.zip",
+        "member": "mosdns",
+        "sha256": "82d80a1a21606fca0bc6b65ac6f90d30cff6bb4a19a6ab6a246cf247dbb78bc0"
+      }
+    },
+    "yq": {
+      "repo": "mikefarah/yq",
+      "tag": "v4.53.6",
+      "archive_type": "raw",
+      "amd64": {
+        "asset": "yq_linux_amd64",
+        "member": "",
+        "sha256": "c5f056448f973ae7d39b5401949648a78f2dc1947d6a8eb65be60d5c504b9385"
+      },
+      "arm64": {
+        "asset": "yq_linux_arm64",
+        "member": "",
+        "sha256": "88a1016bc1d657375a35864e4f44b6f333df8ff97b559f51bba0adcb2169df09"
+      }
+    }
+  }
+}

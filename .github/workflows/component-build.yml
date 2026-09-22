@@ -1,0 +1,62 @@
+name: Build component upgrade candidates
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "tools/build-de-gwd-components.sh"
+      - "tools/check-self-owned-release-chain.sh"
+      - "tools/component-versions.json"
+      - ".github/workflows/component-build.yml"
+      - ".github/workflows/release-assets.yml"
+      - "client"
+      - "server"
+      - "resource/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq unzip zip
+
+      - name: Run source checks
+        run: |
+          bash tools/check-self-owned-release-chain.sh
+          bash -n client server resource/kernel/installkernel resource/kernel/zabbly
+          find resource/client/ui-script -type f -print0 | xargs -0 -n1 bash -n
+          unzip -tq resource/client/Archive.zip
+          test "$(sha256sum resource/client/Archive.zip | awk '{print $1}')" = "$(tr -d '\r\n' < resource/client/Archive.zip.sha256sum)"
+          cmp <(unzip -p resource/client/Archive.zip resource/client/ui-script/ui-installDocker) resource/client/ui-script/ui-installDocker
+
+      - name: Build and verify candidate archives
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bash tools/build-de-gwd-components.sh "$RUNNER_TEMP/de_GWD-components"
+          sha256sum -c "$RUNNER_TEMP/de_GWD-components/de_GWD_components.sha256sum"
+          unzip -tq "$RUNNER_TEMP/de_GWD-components/de_GWD_amd64.zip"
+          unzip -tq "$RUNNER_TEMP/de_GWD-components/de_GWD_arm64.zip"
+
+      - name: Run amd64 component smoke tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/de_GWD-components/amd64"
+          unzip -q "$RUNNER_TEMP/de_GWD-components/de_GWD_amd64.zip" -d "$RUNNER_TEMP/de_GWD-components/amd64"
+          "$RUNNER_TEMP/de_GWD-components/amd64/xray" version
+          "$RUNNER_TEMP/de_GWD-components/amd64/coredns" -version
+          "$RUNNER_TEMP/de_GWD-components/amd64/smartdns" -v
+          "$RUNNER_TEMP/de_GWD-components/amd64/mosdns" version
+          "$RUNNER_TEMP/de_GWD-components/amd64/yq" --version
+
+      - name: Upload candidate archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: de_GWD-component-upgrade-candidates
+          path: ${{ runner.temp }}/de_GWD-components
+          if-no-files-found: error

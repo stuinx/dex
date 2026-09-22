@@ -27,6 +27,37 @@ chmod +x client
 ./client
 ```
 
+## Release source
+
+dex 的安装入口和运行资源由本仓库维护。jacyl4/de_GWD 仅作为历史参考，不参与安装、更新或资源下载。
+
+开发版使用 dev；正式部署使用固定 tag，并将同一个 tag 传给安装脚本，避免 main 或 dev 变化导致后续资源漂移：
+
+    https://raw.githubusercontent.com/stuinx/dex/<tag>/server
+    https://raw.githubusercontent.com/stuinx/dex/<tag>/client
+
+安装时将 DE_GWD_BRANCH 和 DE_GWD_RAW_BASE 同时指向这个 tag：
+
+    DE_GWD_TAG=vX.Y.Z
+    DE_GWD_BRANCH="$DE_GWD_TAG" DE_GWD_RAW_BASE="https://raw.githubusercontent.com/stuinx/dex/$DE_GWD_TAG" bash <(wget --no-check-certificate -qO- "https://raw.githubusercontent.com/stuinx/dex/$DE_GWD_TAG/server")
+    DE_GWD_BRANCH="$DE_GWD_TAG" DE_GWD_RAW_BASE="https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/$DE_GWD_TAG" bash <(wget --no-check-certificate -qO- "https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/$DE_GWD_TAG/client")
+
+推送 v* tag 后，GitHub Actions 会构建 amd64/arm64 组件归档，校验仓库资源，并将归档、SHA256、组件版本清单和构建来源上传到 dex Release。
+
+## Component upgrade branch (test only)
+
+将 `codex/stable-component-upgrade` 推送到远端后，使用下面的命令才能让安装脚本和后续资源下载统一指向测试分支；不要在未确认前用于生产 VPS：
+
+```bash
+DE_GWD_RAW_BASE=https://raw.githubusercontent.com/stuinx/dex/codex/stable-component-upgrade \
+bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx/dex/codex/stable-component-upgrade/server)
+```
+
+```bash
+DE_GWD_RAW_BASE=https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/codex/stable-component-upgrade \
+bash <(wget --no-check-certificate -qO- https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/codex/stable-component-upgrade/client)
+```
+
 ![de_GWD 1](https://raw.githubusercontent.com/stuinx/dex/main/resource/screenshot/1.png)
 ![de_GWD 2](https://raw.githubusercontent.com/stuinx/dex/main/resource/screenshot/2.png)
 ![de_GWD 3](https://raw.githubusercontent.com/stuinx/dex/main/resource/screenshot/3.png)

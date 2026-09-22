@@ -4804,7 +4804,9 @@ checkKernel
 enableAutoUpdate(){
 cat << "EOF" >/opt/de_GWD/autoUpdate
 #!/bin/bash
-repoBase="https://raw.githubusercontent.com/stuinx/dex/dev"
+EOF
+printf 'repoBase=%q\n' "$repoBase" >> /opt/de_GWD/autoUpdate
+cat << "EOF" >>/opt/de_GWD/autoUpdate
 localVer=$(awk 'NR==1' /opt/de_GWD/version.php)
 remoteVer=$(curl -fsSLo- "$repoBase/version.php" | head -n 1)
 
