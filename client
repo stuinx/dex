@@ -164,7 +164,16 @@ if [[ $currentEpoch -lt 1700000000 ]]; then
   echo -e "${WHITE}System time${RED} Clock is not plausible${cRES}"
   exit 1
 fi
-if command -v timedatectl >/dev/null 2>&1 && [[ $(timedatectl show -p NTPSynchronized --value 2>/dev/null) = "no" ]]; then
+local chronySynchronized="false"
+if command -v chronyc >/dev/null 2>&1 && systemctl is-active --quiet chrony 2>/dev/null; then
+  if chronyc tracking 2>/dev/null | grep -qE '^[[:space:]]*Leap status[[:space:]]*:[[:space:]]*Normal$' \
+    && chronyc -n sources 2>/dev/null | grep -qE '^[[:space:]]*\^\*'; then
+    chronySynchronized="true"
+  fi
+fi
+if command -v timedatectl >/dev/null 2>&1 \
+  && [[ $(timedatectl show -p NTPSynchronized --value 2>/dev/null) = "no" ]] \
+  && [[ $chronySynchronized != "true" ]]; then
   echo -e "${WHITE}System time${YELLOW} NTP is not synchronized; TLS results require follow-up${cRES}"
 fi
 }
