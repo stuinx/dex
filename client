@@ -2328,7 +2328,7 @@ After=network.target
 User=root
 Type=oneshot
 ExecStartPre=/usr/bin/chmod +x /opt/de_GWD/update
-ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -o /opt/de_GWD/update
+ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -W -o /opt/de_GWD/update
 KillMode=process
 
 [Install]
@@ -2625,7 +2625,7 @@ serverName=$(jq -r '.address.serverName' /opt/de_GWD/0conf 2>/dev/null | grep -v
 nginxSet
 systemctl force-reload nginx >/dev/null
 
-sed -i "/ExecStart=/c\ExecStart=/usr/bin/ttyd -p $updatePort -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
+sed -i "/ExecStart=/c\ExecStart=/usr/bin/ttyd -p $updatePort -W -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
 systemctl daemon-reload >/dev/null
 
 jq --arg updatePort $updatePort '.update.updatePort=$updatePort' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
