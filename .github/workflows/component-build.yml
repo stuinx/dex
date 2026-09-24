@@ -33,7 +33,13 @@ jobs:
           find resource/client/ui-script -type f -print0 | xargs -0 -n1 bash -n
           unzip -tq resource/client/Archive.zip
           test "$(sha256sum resource/client/Archive.zip | awk '{print $1}')" = "$(tr -d '\r\n' < resource/client/Archive.zip.sha256sum)"
-          cmp <(unzip -p resource/client/Archive.zip resource/client/ui-script/ui-installDocker) resource/client/ui-script/ui-installDocker
+          unzip -Z1 resource/client/Archive.zip | grep -Fx 'ui-script/ui_4am' >/dev/null
+          unzip -Z1 resource/client/Archive.zip | grep -Fx 'ui-web/index.php' >/dev/null
+          if unzip -Z1 resource/client/Archive.zip | grep -E '^resource/client/' >/dev/null; then
+            echo 'Archive.zip contains an unexpected resource/client/ prefix' >&2
+            exit 1
+          fi
+          cmp <(unzip -p resource/client/Archive.zip ui-script/ui-installDocker) resource/client/ui-script/ui-installDocker
 
       - name: Build and verify candidate archives
         env:

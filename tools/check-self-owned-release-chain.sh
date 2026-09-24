@@ -46,7 +46,7 @@ for archive in de_GWD_amd64.zip de_GWD_arm64.zip resource/client/Archive.zip res
   unzip -tq "$archive" >/dev/null || fail "invalid ZIP: $archive"
 done
 
-cmp <(unzip -p resource/client/Archive.zip resource/client/ui-script/ui-installDocker) \
+cmp <(unzip -p resource/client/Archive.zip ui-script/ui-installDocker) \
   resource/client/ui-script/ui-installDocker || fail 'Archive.zip is not synchronized with ui-installDocker'
 
 [[ -s version.php ]] || fail 'missing version.php'
