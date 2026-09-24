@@ -1906,7 +1906,10 @@ EOF
 
 echo "deb [signed-by=/etc/apt/keyrings/deb.sury.org.gpg] https://packages.sury.org/php/ $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) main" >/etc/apt/sources.list.d/php.list
 apt-key del 95BD4743 >/dev/null 2>&1
-curl -sSLo /etc/apt/keyrings/deb.sury.org.gpg https://packages.sury.org/php/apt.gpg
+curl -4 -fsSLo /etc/apt/keyrings/deb.sury.org.gpg \
+  --connect-timeout 10 --max-time 60 \
+  --retry 5 --retry-delay 2 --retry-all-errors \
+  https://packages.sury.org/php/apt.gpg
 [[ $? -ne 0 ]] && echo -e "${WHITE}PHP apt key${RED} Download Failed${cRES}" && exit 1
 
 apt-get "${aptGetOpts[@]}" update -o APT::Update::Error-Mode=any && apt-get "${aptGetOpts[@]}" upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
