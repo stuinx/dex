@@ -31,6 +31,18 @@ jobs:
           bash tools/check-self-owned-release-chain.sh
           bash -n client server resource/kernel/installkernel resource/kernel/zabbly
           find resource/client/ui-script -type f -print0 | xargs -0 -n1 bash -n
+          mode_function=$(sed -n '/^wireguard_upstream_ipMode(){/,/^}/p' server)
+          bash -c "$mode_function
+          wg(){ printf '%s\\n' 'peer-v4 0.0.0.0/0'; }
+          test \"\$(wireguard_upstream_ipMode)\" = 'IPv4 only'
+          wg(){ printf '%s\\n' 'peer-dual 0.0.0.0/0 ::/0'; }
+          test \"\$(wireguard_upstream_ipMode)\" = 'IPv4 + IPv6'
+          "
+          grep -Fq 'if $wgBin show wgout allowed-ips | grep -Fq "::/0"; then' server
+          if grep -Fq 'IPv6 default route is required for a global WireGuard exit' server; then
+            echo 'WireGuard route service still requires IPv6' >&2
+            exit 1
+          fi
           if grep -RInE 'ttyd -p [^[:space:]]+ -o' client resource/client/ui-web/act; then
             echo 'interactive ttyd command is missing --writable' >&2
             exit 1

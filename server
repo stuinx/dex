@@ -1979,8 +1979,10 @@ if systemctl is-active --quiet wg-quick@wgout 2>/dev/null; then
   echo -e "${WHITE}WireGuard${YELLOW} Stop wgout before replacing the config${cRES}"
   return 1
 fi
-umask 077
-mkdir -p /etc/wireguard
+(
+  umask 077
+  mkdir -p /etc/wireguard
+) || { rm -f "$tempFile"; return 1; }
 mv -f "$tempFile" "$wireguardUpstreamConfig" || {
   rm -f "$tempFile"
   return 1
@@ -2005,6 +2007,21 @@ ipBin=$(command -v ip 2>/dev/null || true)
 "$ipBin" rule del pref 32764 table main suppress_prefixlength 0 >/dev/null 2>&1 || true
 "$ipBin" rule del pref 51820 not fwmark 51820 table 51820 >/dev/null 2>&1 || true
 "$ipBin" route del default dev wgout table 51820 >/dev/null 2>&1 || true
+"$ipBin" -6 rule del pref 32764 table main suppress_prefixlength 0 >/dev/null 2>&1 || true
+"$ipBin" -6 rule del pref 51820 not fwmark 51820 table 51820 >/dev/null 2>&1 || true
+"$ipBin" -6 route del default dev wgout table 51820 >/dev/null 2>&1 || true
+}
+
+
+wireguard_upstream_ipMode(){
+local allowedIPs
+allowedIPs=$(wg show wgout allowed-ips 2>/dev/null) || return 1
+grep -Fq '0.0.0.0/0' <<< "$allowedIPs" || return 1
+if grep -Fq '::/0' <<< "$allowedIPs"; then
+  printf 'IPv4 + IPv6'
+else
+  printf 'IPv4 only'
+fi
 }
 
 
@@ -2023,8 +2040,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/bash -c '$wgBin set wgout fwmark 51820 && $ipBin route replace default dev wgout table 51820 && $ipBin rule add pref 51820 not fwmark 51820 table 51820 && $ipBin rule add pref 32764 table main suppress_prefixlength 0'
-ExecStop=/bin/bash -c '$ipBin rule del pref 32764 table main suppress_prefixlength 0 2>/dev/null || true; $ipBin rule del pref 51820 not fwmark 51820 table 51820 2>/dev/null || true; $ipBin route del default dev wgout table 51820 2>/dev/null || true'
+ExecStartPre=/bin/bash -c '$wgBin show wgout allowed-ips | grep -Fq "0.0.0.0/0" || { echo "IPv4 default route is required for a global WireGuard exit" >&2; exit 1; }'
+ExecStart=/bin/bash -c '$wgBin set wgout fwmark 51820 && $ipBin route replace default dev wgout table 51820 && $ipBin rule add pref 51820 not fwmark 51820 table 51820 && $ipBin rule add pref 32764 table main suppress_prefixlength 0 && if $wgBin show wgout allowed-ips | grep -Fq "::/0"; then $ipBin -6 route replace default dev wgout table 51820 && $ipBin -6 rule add pref 51820 not fwmark 51820 table 51820 && $ipBin -6 rule add pref 32764 table main suppress_prefixlength 0; fi || { $ipBin -6 rule del pref 32764 table main suppress_prefixlength 0 >/dev/null 2>&1 || true; $ipBin -6 rule del pref 51820 not fwmark 51820 table 51820 >/dev/null 2>&1 || true; $ipBin -6 route del default dev wgout table 51820 >/dev/null 2>&1 || true; $ipBin rule del pref 32764 table main suppress_prefixlength 0 >/dev/null 2>&1 || true; $ipBin rule del pref 51820 not fwmark 51820 table 51820 >/dev/null 2>&1 || true; $ipBin route del default dev wgout table 51820 >/dev/null 2>&1 || true; exit 1; }'
+ExecStop=/bin/bash -c '$ipBin -6 rule del pref 32764 table main suppress_prefixlength 0 2>/dev/null || true; $ipBin -6 rule del pref 51820 not fwmark 51820 table 51820 2>/dev/null || true; $ipBin -6 route del default dev wgout table 51820 2>/dev/null || true; $ipBin rule del pref 32764 table main suppress_prefixlength 0 2>/dev/null || true; $ipBin rule del pref 51820 not fwmark 51820 table 51820 2>/dev/null || true; $ipBin route del default dev wgout table 51820 2>/dev/null || true'
 
 [Install]
 WantedBy=multi-user.target
@@ -2034,7 +2052,7 @@ systemctl daemon-reload >/dev/null
 
 
 wireguard_upstream_status(){
-local serviceStatus routeStatus handshake
+local serviceStatus routeStatus handshake ipMode
 echo -e "${BLUE}------------------------------------------------ ${cRES}"
 echo -e "${GREEN}WireGuard exit${cRES}"
 if [[ -s $wireguardUpstreamConfig ]]; then
@@ -2047,6 +2065,8 @@ routeStatus=$(systemctl is-active de-gwd-wgout-route 2>/dev/null || true)
 echo -e "${BLUE}Tunnel:        ${YELLOW}${serviceStatus:-inactive}${cRES}"
 echo -e "${BLUE}Local egress:  ${YELLOW}${routeStatus:-inactive}${cRES}"
 if [[ $serviceStatus = "active" ]]; then
+  ipMode=$(wireguard_upstream_ipMode 2>/dev/null || printf 'unknown')
+  echo -e "${BLUE}Address family:${YELLOW} $ipMode${cRES}"
   handshake=$(wg show wgout latest-handshakes 2>/dev/null | awk 'NR==1 {print $2}')
   [[ -n $handshake && $handshake != 0 ]] && echo -e "${BLUE}Handshake:     ${YELLOW}$(date -d "@$handshake" '+%F %T' 2>/dev/null || printf '%s' "$handshake")${cRES}" || echo -e "${BLUE}Handshake:     ${YELLOW}not received${cRES}"
 fi
@@ -2063,8 +2083,9 @@ if [[ $(systemctl is-active wg-quick@wgcf 2>/dev/null) = "active" ]]; then
   echo -e "${WHITE}WireGuard${YELLOW} WARP is active; disable menu 33 first${cRES}"
   return 1
 fi
-systemctl stop de-gwd-wgout-route >/dev/null 2>&1 || true
-wireguard_upstream_routesDown
+if ! systemctl is-active --quiet de-gwd-wgout-route; then
+  wireguard_upstream_routesDown
+fi
 systemctl start wg-quick@wgout || {
   echo -e "${WHITE}WireGuard${RED} Tunnel start failed${cRES}"
   return 1
@@ -2087,10 +2108,19 @@ if [[ $(systemctl is-active wg-quick@wgnode 2>/dev/null) = "active" ]]; then
   echo -e "${WHITE}WireGuard${YELLOW} Disable the local WireGuard node before enabling a global upstream${cRES}"
   return 1
 fi
+local wgoutWasActive
+wgoutWasActive=$(systemctl is-active wg-quick@wgout 2>/dev/null || true)
 systemctl start wg-quick@wgout || {
   echo -e "${WHITE}WireGuard${RED} Tunnel start failed${cRES}"
   return 1
 }
+local wgoutIpMode
+wgoutIpMode=$(wireguard_upstream_ipMode 2>/dev/null || true)
+if [[ -z $wgoutIpMode ]]; then
+  [[ $wgoutWasActive = "active" ]] || systemctl stop wg-quick@wgout >/dev/null 2>&1 || true
+  echo -e "${WHITE}WireGuard${RED} Upstream config must include IPv4 AllowedIPs 0.0.0.0/0 to enable a global exit${cRES}"
+  return 1
+fi
 systemctl disable --now de-gwd-wgout-route >/dev/null 2>&1 || true
 wireguard_upstream_routeService || return 1
 wireguard_upstream_routesDown
@@ -2101,7 +2131,8 @@ systemctl enable --now de-gwd-wgout-route >/dev/null 2>&1 || {
   return 1
 }
 systemctl enable wg-quick@wgout >/dev/null 2>&1
-echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] Custom WireGuard local egress ${GREEN}Enabled${cRES}"
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] Custom WireGuard local egress ${GREEN}Enabled ($wgoutIpMode)${cRES}"
+[[ $wgoutIpMode = "IPv4 only" ]] && echo -e "${YELLOW}IPv6 traffic is not routed through this WireGuard exit.${cRES}"
 echo -e "${YELLOW}This is an opt-in default-route change; validate SSH and public services before production use.${cRES}"
 }
 
@@ -2172,8 +2203,7 @@ if [[ -s $wireguardNodeState ]]; then
 fi
 local endpointDefault
 endpointDefault=$(deGWD_featureMainDomain 2>/dev/null || true)
-umask 077
-jq -n --arg endpoint "$endpointDefault" '{endpoint:$endpoint,listenPort:51820,network:"10.79.0.0/24",address:"10.79.0.1/24",peers:[]}' > "$wireguardNodeState"
+(umask 077; jq -n --arg endpoint "$endpointDefault" '{endpoint:$endpoint,listenPort:51820,network:"10.79.0.0/24",address:"10.79.0.1/24",peers:[]}' > "$wireguardNodeState") || return 1
 wireguard_node_stateValid
 }
 
@@ -2182,12 +2212,10 @@ wireguard_node_ensureKeys(){
 wireguard_requireTools || return 1
 mkdir -p /etc/wireguard
 if [[ ! -s $wireguardNodePrivateKey ]]; then
-  umask 077
-  wg genkey > "$wireguardNodePrivateKey" || return 1
+  (umask 077; wg genkey > "$wireguardNodePrivateKey") || return 1
 fi
 if [[ ! -s $wireguardNodePublicKey ]]; then
-  umask 077
-  wg pubkey < "$wireguardNodePrivateKey" > "$wireguardNodePublicKey" || return 1
+  (umask 077; wg pubkey < "$wireguardNodePrivateKey" > "$wireguardNodePublicKey") || return 1
 fi
 }
 
@@ -2393,8 +2421,10 @@ done
 }
 peerPrivate=$(wg genkey) || return 1
 peerPublic=$(printf '%s\n' "$peerPrivate" | wg pubkey) || return 1
-umask 077
-mkdir -p "$wireguardNodePeerDir"
+(
+  umask 077
+  mkdir -p "$wireguardNodePeerDir"
+) || return 1
 peerFile="$wireguardNodePeerDir/$peerName.conf"
 tempFile=$(mktemp /tmp/de_GWD-wgnode-peer.XXXXXX) || return 1
 cat << EOF > "$tempFile"
