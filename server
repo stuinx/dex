@@ -18,6 +18,7 @@ repoName="${DE_GWD_REPO_NAME:-dex}"
 branch="${DE_GWD_BRANCH:-vless}"
 repoBase="${DE_GWD_RAW_BASE:-https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}}"
 extraSettings="/opt/de_GWD/extra-inbounds.json"
+socks5OutboundSettings="/opt/de_GWD/socks5-outbound.json"
 extraVlessWSConf="/etc/nginx/conf.d/vless-ws.conf"
 haproxyConfig="/etc/haproxy/haproxy.cfg"
 haproxyMarker="# de_GWD managed HAProxy configuration"
@@ -1522,6 +1523,11 @@ extraXrayInbounds || return 1
 
 
 XrayOutboundDirect(){
+if [[ -s $socks5OutboundSettings ]] && ! socks5OutboundValidate "$socks5OutboundSettings"; then
+  echo -e "${WHITE}SOCKS5 outbound${RED} settings are invalid${cRES}"
+  return 1
+fi
+
 OBdir=`cat << EOF
     {
       "tag":"direct",
@@ -1542,7 +1548,255 @@ EOF
 
 jq '.outbounds=[]' /opt/de_GWD/vtrui/config.json |\
 jq --argjson OBdir "$OBdir" '.outbounds+=[$OBdir]' |\
-jq --argjson OBblo "$OBblo" '.outbounds+=[$OBblo]' | sponge /opt/de_GWD/vtrui/config.json
+jq --argjson OBblo "$OBblo" '.outbounds+=[$OBblo]' | sponge /opt/de_GWD/vtrui/config.json || return 1
+socks5OutboundSync
+}
+
+
+socks5OutboundSettingsOrDefault(){
+if [[ -s $socks5OutboundSettings ]]; then
+  cat "$socks5OutboundSettings"
+else
+  cat << 'EOF'
+{
+  "enabled": false,
+  "server": {
+    "address": "",
+    "port": 1080,
+    "username": "",
+    "password": ""
+  },
+  "domains": []
+}
+EOF
+fi
+}
+
+
+socks5OutboundValidate(){
+local settings=$1 enabled address port username password
+[[ -s $settings ]] || return 1
+jq -e 'type == "object" and ((.enabled // false) | type == "boolean") and ((.server // {}) | type == "object") and ((.domains // []) | type == "array")' "$settings" >/dev/null 2>&1 || return 1
+enabled=$(jq -r '.enabled // false' "$settings")
+[[ $enabled = true || $enabled = false ]] || return 1
+[[ $enabled = true ]] || return 0
+
+address=$(jq -r '.server.address // empty' "$settings")
+port=$(jq -r '.server.port // empty' "$settings")
+username=$(jq -r '.server.username // empty' "$settings")
+password=$(jq -r '.server.password // empty' "$settings")
+[[ $address =~ ^[A-Za-z0-9.-]+$ || $address =~ ^[0-9A-Fa-f:]+$ ]] || return 1
+[[ $port =~ ^[1-9][0-9]{0,4}$ ]] && (( 10#$port <= 65535 )) || return 1
+[[ -z $username && -z $password ]] || {
+  [[ -n $username && -n $password ]] || return 1
+  [[ $username != *[[:space:]]* && $password != *[[:space:]]* ]] || return 1
+}
+jq -e '.domains | length > 0 and all(.[]; type == "string" and length > 0 and (test("[[:space:]]") | not))' "$settings" >/dev/null 2>&1 || return 1
+return 0
+}
+
+
+socks5OutboundConfig(){
+local settings=$1
+socks5OutboundValidate "$settings" || return 1
+[[ $(jq -r '.enabled' "$settings") = true ]] || return 0
+jq -c '
+  {
+    "tag": "socks5-exit",
+    "protocol": "socks",
+    "settings": {
+      "servers": [{
+        "address": .server.address,
+        "port": (.server.port | tonumber)
+      } + (if (.server.username // "") != "" then {
+        "users": [{"user": .server.username, "pass": .server.password}]
+      } else {} end)]
+    }
+  }
+' "$settings"
+}
+
+
+socks5OutboundSync(){
+local config=/opt/de_GWD/vtrui/config.json enabled=false outbound domains candidate
+[[ -s $config ]] || return 1
+if [[ -s $socks5OutboundSettings ]]; then
+  socks5OutboundValidate "$socks5OutboundSettings" || return 1
+  enabled=$(jq -r '.enabled // false' "$socks5OutboundSettings")
+fi
+
+candidate=$(mktemp /tmp/de_GWD-socks5-outbound.XXXXXX) || return 1
+if [[ $enabled = true ]]; then
+  outbound=$(socks5OutboundConfig "$socks5OutboundSettings") || { rm -f "$candidate"; return 1; }
+  domains=$(jq -c '.domains' "$socks5OutboundSettings") || { rm -f "$candidate"; return 1; }
+  jq --argjson outbound "$outbound" --argjson domains "$domains" '
+    .outbounds = (((.outbounds // []) | map(select(.tag != "socks5-exit"))) + [$outbound])
+    | .routing = (.routing // {})
+    | .routing.rules = ([{"type":"field","domain":$domains,"outboundTag":"socks5-exit"}] + ((.routing.rules // []) | map(select(.outboundTag != "socks5-exit"))))
+  ' "$config" > "$candidate" || { rm -f "$candidate"; return 1; }
+else
+  jq '
+    .outbounds = ((.outbounds // []) | map(select(.tag != "socks5-exit")))
+    | .routing = (.routing // {})
+    | .routing.rules = ((.routing.rules // []) | map(select(.outboundTag != "socks5-exit")))
+  ' "$config" > "$candidate" || { rm -f "$candidate"; return 1; }
+fi
+cat "$candidate" | sponge "$config" || { rm -f "$candidate"; return 1; }
+rm -f "$candidate"
+return 0
+}
+
+
+socks5OutboundApply(){
+local candidate=$1 backupDir settingsExisted=0 configExisted=0 wasVtrui status=0
+[[ -s $candidate ]] || return 1
+socks5OutboundValidate "$candidate" || return 1
+backupDir=$(mktemp -d /tmp/de_GWD-socks5-outbound.XXXXXX) || return 1
+if [[ -e $socks5OutboundSettings || -L $socks5OutboundSettings ]]; then
+  cp -a "$socks5OutboundSettings" "$backupDir/settings" || { rm -rf "$backupDir"; return 1; }
+  settingsExisted=1
+fi
+if [[ -e /opt/de_GWD/vtrui/config.json || -L /opt/de_GWD/vtrui/config.json ]]; then
+  cp -a /opt/de_GWD/vtrui/config.json "$backupDir/config" || { rm -rf "$backupDir"; return 1; }
+  configExisted=1
+else
+  rm -rf "$backupDir"
+  return 1
+fi
+
+wasVtrui=$(systemctl is-active vtrui 2>/dev/null || true)
+if [[ -e $socks5OutboundSettings || -L $socks5OutboundSettings ]]; then
+  cat "$candidate" | sponge "$socks5OutboundSettings" || status=1
+else
+  mv -f "$candidate" "$socks5OutboundSettings" || status=1
+fi
+if (( status == 0 )) && ! socks5OutboundSync; then status=1; fi
+if (( status == 0 )) && [[ -x /opt/de_GWD/vtrui/vtrui ]] && ! /opt/de_GWD/vtrui/vtrui run -test -confdir /opt/de_GWD/vtrui >/dev/null 2>&1; then status=1; fi
+if (( status == 0 )) && [[ $wasVtrui = active ]]; then
+  systemctl restart vtrui >/dev/null 2>&1 || status=1
+  systemctl is-active --quiet vtrui || status=1
+fi
+
+if (( status != 0 )); then
+  if (( settingsExisted )); then
+    rm -f "$socks5OutboundSettings"
+    cp -a "$backupDir/settings" "$socks5OutboundSettings"
+  else
+    rm -f "$socks5OutboundSettings"
+  fi
+  if (( configExisted )); then
+    rm -f /opt/de_GWD/vtrui/config.json
+    cp -a "$backupDir/config" /opt/de_GWD/vtrui/config.json
+  fi
+  [[ $wasVtrui = active ]] && systemctl restart vtrui >/dev/null 2>&1 || true
+  rm -rf "$backupDir"
+  rm -f "$candidate"
+  return 1
+fi
+
+rm -rf "$backupDir"
+rm -f "$candidate"
+return 0
+}
+
+
+socks5OutboundStatus(){
+local enabled address port username domains
+echo -e "${BLUE}------------------------------------------------ ${cRES}"
+echo -e "${GREEN}SOCKS5 outbound${cRES}"
+if [[ ! -s $socks5OutboundSettings ]]; then
+  echo -e "${BLUE}Status:       ${YELLOW}disabled${cRES}"
+  echo -e "${BLUE}------------------------------------------------ ${cRES}"
+  return 0
+fi
+if ! socks5OutboundValidate "$socks5OutboundSettings"; then
+  echo -e "${BLUE}Status:       ${RED}invalid configuration${cRES}"
+  echo -e "${BLUE}------------------------------------------------ ${cRES}"
+  return 1
+fi
+enabled=$(jq -r '.enabled // false' "$socks5OutboundSettings")
+[[ $enabled = true ]] || {
+  echo -e "${BLUE}Status:       ${YELLOW}disabled${cRES}"
+  echo -e "${BLUE}------------------------------------------------ ${cRES}"
+  return 0
+}
+address=$(jq -r '.server.address' "$socks5OutboundSettings")
+port=$(jq -r '.server.port' "$socks5OutboundSettings")
+username=$(jq -r '.server.username // empty' "$socks5OutboundSettings")
+domains=$(jq -r '.domains | length' "$socks5OutboundSettings")
+echo -e "${BLUE}Status:       ${GREEN}enabled${cRES}"
+echo -e "${BLUE}Server:       ${YELLOW}$address:$port${cRES}"
+echo -e "${BLUE}Auth:         ${YELLOW}$([[ -n $username ]] && echo enabled || echo disabled)${cRES}"
+echo -e "${BLUE}Domain rules: ${YELLOW}$domains${cRES}"
+echo -e "${BLUE}------------------------------------------------ ${cRES}"
+}
+
+
+socks5OutboundConfigure(){
+local base oldAddress oldPort oldUsername oldPassword oldDomains address port username password domainInput domainsJson candidate
+base=$(socks5OutboundSettingsOrDefault) || return 1
+oldAddress=$(jq -r '.server.address // empty' <<< "$base")
+oldPort=$(jq -r '.server.port // empty' <<< "$base")
+oldUsername=$(jq -r '.server.username // empty' <<< "$base")
+oldPassword=$(jq -r '.server.password // empty' <<< "$base")
+oldDomains=$(jq -r '.domains // [] | join(",")' <<< "$base")
+read -r -p "SOCKS5 server address [$oldAddress]: " address
+address=${address:-$oldAddress}
+read -r -p "SOCKS5 server port [$oldPort]: " port
+port=${port:-$oldPort}
+read -r -p "SOCKS5 username [$oldUsername]: " username
+username=${username:-$oldUsername}
+read -r -s -p "SOCKS5 password (empty keeps current): " password
+echo
+password=${password:-$oldPassword}
+read -r -p "Domain rules (comma-separated) [$oldDomains]: " domainInput
+domainInput=${domainInput:-$oldDomains}
+domainsJson=$(printf '%s' "$domainInput" | jq -R 'split(",") | map(gsub("^[[:space:]]+|[[:space:]]+$"; "")) | map(select(length > 0))') || return 1
+candidate=$(mktemp /tmp/de_GWD-socks5-outbound.XXXXXX) || return 1
+if ! jq --arg address "$address" --arg port "$port" --arg username "$username" --arg password "$password" --argjson domains "$domainsJson" '{enabled:true,server:{address:$address,port:$port,username:$username,password:$password},domains:$domains}' <<< '{}' > "$candidate"; then
+  rm -f "$candidate"
+  return 1
+fi
+if ! socks5OutboundApply "$candidate"; then
+  echo -e "${WHITE}SOCKS5 outbound${RED} configuration failed; previous configuration kept${cRES}"
+  return 1
+fi
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] SOCKS5 outbound ${GREEN}enabled${cRES}"
+}
+
+
+socks5OutboundDisable(){
+local candidate base
+base=$(socks5OutboundSettingsOrDefault) || return 1
+candidate=$(mktemp /tmp/de_GWD-socks5-outbound.XXXXXX) || return 1
+if ! jq '.enabled=false' <<< "$base" > "$candidate"; then
+  rm -f "$candidate"
+  return 1
+fi
+if ! socks5OutboundApply "$candidate"; then
+  echo -e "${WHITE}SOCKS5 outbound${RED} disable failed; previous configuration kept${cRES}"
+  return 1
+fi
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] SOCKS5 outbound ${RED}disabled${cRES}"
+}
+
+
+socks5OutboundMenu(){
+while true; do
+  socks5OutboundStatus
+  echo -e "${GREEN}1. Configure and enable${cRES}"
+  echo -e "${GREEN}2. Disable${cRES}"
+  echo -e "${GREEN}3. Validate configuration${cRES}"
+  echo -e "${GREEN}0. Back${cRES}"
+  read -r -p "Select: " choice || return
+  case "$choice" in
+    1) socks5OutboundConfigure ;;
+    2) socks5OutboundDisable ;;
+    3) socks5OutboundValidate "$socks5OutboundSettings" && echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] Configuration valid${cRES}" || echo -e "${WHITE}[ ${RED}✕ ${WHITE}] Configuration invalid${cRES}" ;;
+    0) return ;;
+    *) echo -e "${RED}Wrong number${cRES}" ;;
+  esac
+done
 }
 
 
@@ -5209,6 +5463,7 @@ echo -e "${BLUE}$virt${cRES}"
 [[ $(systemctl is-active 'haproxy') = "active" ]] && echo -e "${PURPLE}[Enabled] HAProxy TCP Port Forward${cRES}"
 [[ $(systemctl is-active 'RproxyS') = "active" ]] && echo -e "${PURPLE}[Enabled] RproxyS reverse proxy${cRES}"
 [[ -s "$extraSettings" ]] && jq -e '([.vless_ws.enabled, .reality.enabled, .socks5.enabled, .dokodemo.enabled] | any)' "$extraSettings" >/dev/null 2>&1 && echo -e "${PURPLE}[Enabled] Extra Xray inbounds${cRES}"
+[[ -s "$socks5OutboundSettings" ]] && jq -e '.enabled == true' "$socks5OutboundSettings" >/dev/null 2>&1 && echo -e "${PURPLE}[Enabled] SOCKS5 outbound${cRES}"
 
 if [[ $virt_type = "container" ]]; then
  echo -e "${BLUE}---------------------------------------------------------------- ${cRES}"
@@ -5238,6 +5493,7 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
  echo -e "${GREEN}12.Localhost cloudflare speedtest${cRES}"
   echo -e "${CYAN}22.RproxyS${cRES}"
   echo -e "${CYAN}34.WireGuard${cRES}"
+  echo -e "${CYAN}35.SOCKS5 outbound${cRES}"
   echo -e "${CYAN}44.HAProxy TCP${cRES}"
   echo -e "${CYAN}55.Extra Xray${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
@@ -5281,6 +5537,10 @@ read -r -p "Select:" num || exit 0
     ;;
     34)
     wireguard_menu
+    start_menu
+    ;;
+    35)
+    socks5OutboundMenu
     start_menu
     ;;
     44)
@@ -5328,6 +5588,7 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
   echo -e "${CYAN}22.RproxyS${cRES}"
   echo -e "${CYAN}33.Set Cloudflare wireguard upstream (WARP) ${cRES}"
   echo -e "${CYAN}34.WireGuard${cRES}"
+  echo -e "${CYAN}35.SOCKS5 outbound${cRES}"
   echo -e "${CYAN}44.HAProxy TCP${cRES}"
   echo -e "${CYAN}55.Extra Xray${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
@@ -5376,6 +5637,10 @@ read -r -p "Select:" num || exit 0
     ;;
     34)
     wireguard_menu
+    start_menu
+    ;;
+    35)
+    socks5OutboundMenu
     start_menu
     ;;
     44)
