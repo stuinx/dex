@@ -8,8 +8,8 @@ else
 nodecheck="$domain:$port"
 fi
 
-checkNum=$(jq -r --arg nodecheck $nodecheck '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf)
-checkName=$(jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf)
+checkNum=$(jq -r --arg nodecheck "$nodecheck" --arg tag "nodeSMyoutube" --slurpfile config /opt/de_GWD/vtrui/config.json '($config[0].outbounds[] | select(.tag == $tag)) as $out | .v2node | to_entries[] | select((.value.domain == $nodecheck or .value.domain == ($nodecheck+":443")) and .value.uuid == $out.settings.vnext[0].users[0].id and (.value.path // "") == ($out.streamSettings.wsSettings.path // "") and (.value.protocol // "vmess") == $out.protocol) | .key' /opt/de_GWD/0conf)
+checkName=$(jq -r --arg nodecheck "$nodecheck" --arg tag "nodeSMyoutube" --slurpfile config /opt/de_GWD/vtrui/config.json '($config[0].outbounds[] | select(.tag == $tag)) as $out | .v2node[] | select((.domain == $nodecheck or .domain == ($nodecheck+":443")) and .uuid == $out.settings.vnext[0].users[0].id and (.path // "") == ($out.streamSettings.wsSettings.path // "") and (.protocol // "vmess") == $out.protocol) | .name' /opt/de_GWD/0conf)
 
 if [[ -z $checkNum ]]; then
 echo "0"
@@ -35,8 +35,8 @@ else
 nodecheck="$domain:$port"
 fi
 
-checkNum=$(jq -r --arg nodecheck $nodecheck '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf)
-checkName=$(jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf)
+checkNum=$(jq -r --arg nodecheck "$nodecheck" --arg tag "nodeSMnetflix" --slurpfile config /opt/de_GWD/vtrui/config.json '($config[0].outbounds[] | select(.tag == $tag)) as $out | .v2node | to_entries[] | select((.value.domain == $nodecheck or .value.domain == ($nodecheck+":443")) and .value.uuid == $out.settings.vnext[0].users[0].id and (.value.path // "") == ($out.streamSettings.wsSettings.path // "") and (.value.protocol // "vmess") == $out.protocol) | .key' /opt/de_GWD/0conf)
+checkName=$(jq -r --arg nodecheck "$nodecheck" --arg tag "nodeSMnetflix" --slurpfile config /opt/de_GWD/vtrui/config.json '($config[0].outbounds[] | select(.tag == $tag)) as $out | .v2node[] | select((.domain == $nodecheck or .domain == ($nodecheck+":443")) and .uuid == $out.settings.vnext[0].users[0].id and (.path // "") == ($out.streamSettings.wsSettings.path // "") and (.protocol // "vmess") == $out.protocol) | .name' /opt/de_GWD/0conf)
 
 if [[ -z $checkNum ]]; then
 echo "0"
@@ -61,8 +61,8 @@ else
 nodecheck="$domain:$port"
 fi
 
-checkNum=$(jq -r --arg nodecheck $nodecheck '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf)
-checkName=$(jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf)
+checkNum=$(jq -r --arg nodecheck "$nodecheck" --arg tag "nodeSMhdh" --slurpfile config /opt/de_GWD/vtrui/config.json '($config[0].outbounds[] | select(.tag == $tag)) as $out | .v2node | to_entries[] | select((.value.domain == $nodecheck or .value.domain == ($nodecheck+":443")) and .value.uuid == $out.settings.vnext[0].users[0].id and (.value.path // "") == ($out.streamSettings.wsSettings.path // "") and (.value.protocol // "vmess") == $out.protocol) | .key' /opt/de_GWD/0conf)
+checkName=$(jq -r --arg nodecheck "$nodecheck" --arg tag "nodeSMhdh" --slurpfile config /opt/de_GWD/vtrui/config.json '($config[0].outbounds[] | select(.tag == $tag)) as $out | .v2node[] | select((.domain == $nodecheck or .domain == ($nodecheck+":443")) and .uuid == $out.settings.vnext[0].users[0].id and (.path // "") == ($out.streamSettings.wsSettings.path // "") and (.protocol // "vmess") == $out.protocol) | .name' /opt/de_GWD/0conf)
 
 if [[ -z $checkNum ]]; then
 echo "0"
@@ -87,8 +87,8 @@ else
 nodecheck="$domain:$port"
 fi
 
-checkNum=$(jq -r --arg nodecheck $nodecheck '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf)
-checkName=$(jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf)
+checkNum=$(jq -r --arg nodecheck "$nodecheck" --arg tag "nodeSMtvb" --slurpfile config /opt/de_GWD/vtrui/config.json '($config[0].outbounds[] | select(.tag == $tag)) as $out | .v2node | to_entries[] | select((.value.domain == $nodecheck or .value.domain == ($nodecheck+":443")) and .value.uuid == $out.settings.vnext[0].users[0].id and (.value.path // "") == ($out.streamSettings.wsSettings.path // "") and (.value.protocol // "vmess") == $out.protocol) | .key' /opt/de_GWD/0conf)
+checkName=$(jq -r --arg nodecheck "$nodecheck" --arg tag "nodeSMtvb" --slurpfile config /opt/de_GWD/vtrui/config.json '($config[0].outbounds[] | select(.tag == $tag)) as $out | .v2node[] | select((.domain == $nodecheck or .domain == ($nodecheck+":443")) and .uuid == $out.settings.vnext[0].users[0].id and (.path // "") == ($out.streamSettings.wsSettings.path // "") and (.protocol // "vmess") == $out.protocol) | .name' /opt/de_GWD/0conf)
 
 if [[ -z $checkNum ]]; then
 echo "0"
@@ -113,8 +113,8 @@ else
 nodecheck="$domain:$port"
 fi
 
-checkNum=$(jq -r --arg nodecheck $nodecheck '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf)
-checkName=$(jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf)
+checkNum=$(jq -r --arg nodecheck "$nodecheck" --arg tag "nodeSMbahamut" --slurpfile config /opt/de_GWD/vtrui/config.json '($config[0].outbounds[] | select(.tag == $tag)) as $out | .v2node | to_entries[] | select((.value.domain == $nodecheck or .value.domain == ($nodecheck+":443")) and .value.uuid == $out.settings.vnext[0].users[0].id and (.value.path // "") == ($out.streamSettings.wsSettings.path // "") and (.value.protocol // "vmess") == $out.protocol) | .key' /opt/de_GWD/0conf)
+checkName=$(jq -r --arg nodecheck "$nodecheck" --arg tag "nodeSMbahamut" --slurpfile config /opt/de_GWD/vtrui/config.json '($config[0].outbounds[] | select(.tag == $tag)) as $out | .v2node[] | select((.domain == $nodecheck or .domain == ($nodecheck+":443")) and .uuid == $out.settings.vnext[0].users[0].id and (.path // "") == ($out.streamSettings.wsSettings.path // "") and (.protocol // "vmess") == $out.protocol) | .name' /opt/de_GWD/0conf)
 
 if [[ -z $checkNum ]]; then
 echo "0"
@@ -139,8 +139,8 @@ else
 nodecheck="$domain:$port"
 fi
 
-checkNum=$(jq -r --arg nodecheck $nodecheck '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf)
-checkName=$(jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf)
+checkNum=$(jq -r --arg nodecheck "$nodecheck" --arg tag "nodeSMopenai" --slurpfile config /opt/de_GWD/vtrui/config.json '($config[0].outbounds[] | select(.tag == $tag)) as $out | .v2node | to_entries[] | select((.value.domain == $nodecheck or .value.domain == ($nodecheck+":443")) and .value.uuid == $out.settings.vnext[0].users[0].id and (.value.path // "") == ($out.streamSettings.wsSettings.path // "") and (.value.protocol // "vmess") == $out.protocol) | .key' /opt/de_GWD/0conf)
+checkName=$(jq -r --arg nodecheck "$nodecheck" --arg tag "nodeSMopenai" --slurpfile config /opt/de_GWD/vtrui/config.json '($config[0].outbounds[] | select(.tag == $tag)) as $out | .v2node[] | select((.domain == $nodecheck or .domain == ($nodecheck+":443")) and .uuid == $out.settings.vnext[0].users[0].id and (.path // "") == ($out.streamSettings.wsSettings.path // "") and (.protocol // "vmess") == $out.protocol) | .name' /opt/de_GWD/0conf)
 
 if [[ -z $checkNum ]]; then
 echo "0"
@@ -165,8 +165,8 @@ else
 nodecheck="$domain:$port"
 fi
 
-checkNum=$(jq -r --arg nodecheck $nodecheck '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf)
-checkName=$(jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf)
+checkNum=$(jq -r --arg nodecheck "$nodecheck" --arg tag "nodeSMapple" --slurpfile config /opt/de_GWD/vtrui/config.json '($config[0].outbounds[] | select(.tag == $tag)) as $out | .v2node | to_entries[] | select((.value.domain == $nodecheck or .value.domain == ($nodecheck+":443")) and .value.uuid == $out.settings.vnext[0].users[0].id and (.value.path // "") == ($out.streamSettings.wsSettings.path // "") and (.value.protocol // "vmess") == $out.protocol) | .key' /opt/de_GWD/0conf)
+checkName=$(jq -r --arg nodecheck "$nodecheck" --arg tag "nodeSMapple" --slurpfile config /opt/de_GWD/vtrui/config.json '($config[0].outbounds[] | select(.tag == $tag)) as $out | .v2node[] | select((.domain == $nodecheck or .domain == ($nodecheck+":443")) and .uuid == $out.settings.vnext[0].users[0].id and (.path // "") == ($out.streamSettings.wsSettings.path // "") and (.protocol // "vmess") == $out.protocol) | .name' /opt/de_GWD/0conf)
 
 if [[ -z $checkNum ]]; then
 echo "0"

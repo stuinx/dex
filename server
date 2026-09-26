@@ -15,7 +15,7 @@ architecture=$(dpkg --print-architecture)
 export DEBIAN_FRONTEND=noninteractive
 repoOwner="${DE_GWD_REPO_OWNER:-stuinx}"
 repoName="${DE_GWD_REPO_NAME:-dex}"
-branch="${DE_GWD_BRANCH:-dev}"
+branch="${DE_GWD_BRANCH:-vless}"
 repoBase="${DE_GWD_RAW_BASE:-https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}}"
 extraSettings="/opt/de_GWD/extra-inbounds.json"
 extraVlessWSConf="/etc/nginx/conf.d/vless-ws.conf"
@@ -23,6 +23,7 @@ haproxyConfig="/etc/haproxy/haproxy.cfg"
 haproxyMarker="# de_GWD managed HAProxy configuration"
 haproxyService="/etc/systemd/system/haproxy.service"
 wireguardUpstreamConfig="/etc/wireguard/wgout.conf"
+wireguardUpstreamRouteHelper="/usr/local/sbin/de-gwd-wgout-route"
 wireguardNodeConfig="/etc/wireguard/wgnode.conf"
 wireguardNodePrivateKey="/etc/wireguard/wgnode.key"
 wireguardNodePublicKey="/etc/wireguard/wgnode.pub"
@@ -289,8 +290,8 @@ domain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf | sed
 port=$(awk '/ssl .* reuseport/ {print$2}' /etc/nginx/conf.d/default.conf | grep '^[[:digit:]]*$' | head -n1)
 [[ -z $port ]] && port="443"
 
-path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-uuids=$(jq -r '.inbounds[0].settings.clients[].id' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+path=$(jq -r '(([.inbounds[] | select(.tag == "main")] | first) // .inbounds[0]).streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+uuids=$(jq -r '(([.inbounds[] | select(.tag == "main")] | first) // .inbounds[0]).settings.clients[].id' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 }
 
 
@@ -1211,7 +1212,12 @@ curl -fsSL https://get.acme.sh | sh || exit 1
 "/root/.acme.sh"/acme.sh --installcert -d "$topDomain" \
                --key-file       /var/www/ssl/de_GWD.key  \
                --fullchain-file /var/www/ssl/de_GWD.cer \
+               --reloadcmd     "systemctl force-reload nginx" \
                --ecc || exit 1
+legacyCertificateConfig="/root/.acme.sh/${domain}_ecc/${domain}.conf"
+if [[ $domain != "$topDomain" ]] && [[ -f $legacyCertificateConfig ]] && grep -Fq '/var/www/ssl/de_GWD.cer' "$legacyCertificateConfig"; then
+  "/root/.acme.sh"/acme.sh --remove -d "$domain" --ecc || exit 1
+fi
 validateCertificate "$domain" "$topDomain" "probe.$topDomain" "probe.$domain"
 }
 
@@ -1258,13 +1264,47 @@ curl -fsSL https://get.acme.sh | sh || exit 1
 "/root/.acme.sh"/acme.sh --installcert -d "$domain" \
                --key-file       /var/www/ssl/de_GWD.key  \
                --fullchain-file /var/www/ssl/de_GWD.cer \
+               --reloadcmd     "systemctl force-reload nginx" \
                --ecc || exit 1
 validateCertificate
 }
 
 
 
+mainInbound(){
+jq -c '([.inbounds[]? | select(.tag == "main")] | first) // .inbounds[0] // empty' /opt/de_GWD/vtrui/config.json
+}
+
+
+mainVmessLocation(){
+[[ -s $extraSettings ]] || return 0
+[[ $(jq -r '.vmess.enabled // false' "$extraSettings") = true ]] || return 0
+local legacyPath legacyPort
+legacyPath=$(jq -r '.vmess.inbound.streamSettings.wsSettings.path' "$extraSettings")
+legacyPort=$(jq -r '.vmess.inbound.port' "$extraSettings")
+cat << EOF
+# VMESS_COMPAT_START
+location = $legacyPath {
+  if (\$http_upgrade != "websocket") { return 404; }
+  proxy_pass http://127.0.0.1:$legacyPort;
+  proxy_http_version 1.1;
+  proxy_set_header Host \$host;
+  proxy_set_header Upgrade "websocket";
+  proxy_set_header Connection "upgrade";
+  proxy_read_timeout 600;
+  proxy_send_timeout 600;
+  proxy_buffering off;
+}
+# VMESS_COMPAT_END
+EOF
+}
+
+
 nginxWebConf(){
+local mainListen=9890
+if [[ -s $extraSettings ]] && jq -e '.vmess.inbound != null' "$extraSettings" >/dev/null; then
+  mainListen=9892
+fi
 if [[ $port = "443" ]]; then
 cat << EOF >/etc/nginx/conf.d/80.conf
 server {
@@ -1281,6 +1321,7 @@ touch /etc/nginx/conf.d/default.conf
 sed -i '/SERVER_BASE_START/,/SERVER_BASE_END/d' /etc/nginx/conf.d/default.conf
 sed -i '/DOH_START/,/DOH_END/d' /etc/nginx/conf.d/default.conf
 sed -i '/V2_START/,/V2_END/d' /etc/nginx/conf.d/default.conf
+sed -i '/VMESS_COMPAT_START/,/VMESS_COMPAT_END/d' /etc/nginx/conf.d/default.conf
 sed -i '$s/}$//' /etc/nginx/conf.d/default.conf
 
 until [[ $(head -1 /etc/nginx/conf.d/default.conf | cat -e) != "$" ]]; do
@@ -1326,7 +1367,7 @@ EOF
 cat << EOF >/etc/nginx/conf.d/default.conf
 # SERVER_BASE_START
 upstream xray {
-    server 127.0.0.1:9890;
+    server 127.0.0.1:$mainListen;
     keepalive 32;
 }
 
@@ -1397,6 +1438,8 @@ location $path {
 }
 # V2_END
 
+$(mainVmessLocation)
+
 $(cat /etc/nginx/conf.d/default.conf 2>/dev/null)
 }
 EOF
@@ -1407,9 +1450,14 @@ extraNginxWebConf || return 1
 
 XrayInbound(){
 local mainPath=${path:-} mainUUIDs=${uuids:-}
+local mainProtocol mainListen=9890
+mainProtocol=$(mainInbound 2>/dev/null | jq -r '.protocol // empty') || mainProtocol=vless
+mainProtocol=${mainProtocol:-vless}
+if [[ ${mainMigration:-0} = 1 ]]; then mainProtocol=vless; fi
+if [[ -s $extraSettings ]] && jq -e '.vmess.inbound != null' "$extraSettings" >/dev/null; then mainListen=9892; fi
 if [[ -z $mainPath || -z $mainUUIDs ]]; then
-mainPath=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // empty' /opt/de_GWD/vtrui/config.json 2>/dev/null)
-mainUUIDs=$(jq -r '.inbounds[0].settings.clients[].id // empty' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+mainPath=$(jq -r '(([.inbounds[] | select(.tag == "main")] | first) // .inbounds[0]).streamSettings.wsSettings.path // empty' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+mainUUIDs=$(jq -r '(([.inbounds[] | select(.tag == "main")] | first) // .inbounds[0]).settings.clients[].id // empty' /opt/de_GWD/vtrui/config.json 2>/dev/null)
 fi
 [[ -n $mainPath && -n $mainUUIDs ]] || return 1
 cat << EOF >/opt/de_GWD/vtrui/config.json
@@ -1431,8 +1479,9 @@ cat << EOF >/opt/de_GWD/vtrui/config.json
   "inbounds":[
     {
       "listen":"127.0.0.1",
-      "port": 9890,
-      "protocol":"vmess",
+      "tag":"main",
+      "port": $mainListen,
+      "protocol":"$mainProtocol",
       "settings":{
         "clients":[]
       },
@@ -1464,6 +1513,9 @@ for uuid in $mainUUIDs; do
 uuidStr='{"id": "'$uuid'", "alterId":0}'
 jq --argjson uuidStr "$uuidStr" '.inbounds[0].settings.clients+=[$uuidStr]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
 done
+if [[ $mainProtocol = vless ]]; then
+  jq '(.inbounds[] | select(.tag == "main") | .settings) |= (.decryption="none" | .clients |= map(del(.alterId, .security, .flow)))' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+fi
 extraXrayInbounds || return 1
 }
 
@@ -1536,12 +1588,7 @@ cat << "EOF" >/opt/de_GWD/Qday
 #!/bin/bash
 if [[ -n $(openssl x509 -enddate -noout -in /var/www/ssl/de_GWD.cer -checkend 259200 | grep "Certificate will expire") ]] && [[ -d "/root/.acme.sh" ]]; then
 "/root/.acme.sh"/acme.sh --set-default-ca  --server letsencrypt
-"/root/.acme.sh"/acme.sh --cron --force --home "/root/.acme.sh"
-
-sslFolder=$(ls "/root/.acme.sh" | grep '_ecc')
-cp -f "/root/.acme.sh"/$sslFolder/fullchain.cer /var/www/ssl/de_GWD.cer
-cp -f "/root/.acme.sh"/$sslFolder/*.key /var/www/ssl/de_GWD.key
-
+"/root/.acme.sh"/acme.sh --cron --force --home "/root/.acme.sh" || exit 1
 fi
 EOF
 chmod +x /opt/de_GWD/Qday
@@ -1596,7 +1643,7 @@ cat << "EOF" >/tmp/comRestart
 virt=$(systemd-detect-virt)
 [[ -n $(echo "openvz lxc lxc-libvirt systemd-nspawn docker podman rkt wsl proot pouch" | grep $virt) ]] && virt_type="container"
 
-if [[ $virt_type = "container" ]]; then
+if [[ $virt_type = "container" ]] && ! jq -e '.inbounds[] | select(.tag == "main")' /opt/de_GWD/vtrui/config.json >/dev/null; then
 sed -i '/de_GWD.socket/c\proxy_pass http://127.0.0.1:9896;' /etc/nginx/conf.d/default.conf
 jq 'del(.inbounds[0].listen)' /opt/de_GWD/vtrui/config.json |\
 jq '.inbounds[0].port=9896' | sponge /opt/de_GWD/vtrui/config.json
@@ -1661,7 +1708,7 @@ domain=$(echo $vpsdomainP | cut -d: -f1)
 port=$(echo $vpsdomainP | cut -d: -f2| grep '^[[:digit:]]*$')
 [[ -z $port ]] && port="443"
 
-path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+path=$(jq -r '(([.inbounds[] | select(.tag == "main")] | first) // .inbounds[0]).streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 
 if [[ $port = "443" ]]; then
 makeSSL_W
@@ -2001,15 +2048,10 @@ wireguard_upstream_enable
 
 
 wireguard_upstream_routesDown(){
-local ipBin
-ipBin=$(command -v ip 2>/dev/null || true)
-[[ -x $ipBin ]] || return 0
-"$ipBin" rule del pref 32764 table main suppress_prefixlength 0 >/dev/null 2>&1 || true
-"$ipBin" rule del pref 51820 not fwmark 51820 table 51820 >/dev/null 2>&1 || true
-"$ipBin" route del default dev wgout table 51820 >/dev/null 2>&1 || true
-"$ipBin" -6 rule del pref 32764 table main suppress_prefixlength 0 >/dev/null 2>&1 || true
-"$ipBin" -6 rule del pref 51820 not fwmark 51820 table 51820 >/dev/null 2>&1 || true
-"$ipBin" -6 route del default dev wgout table 51820 >/dev/null 2>&1 || true
+if [[ -x $wireguardUpstreamRouteHelper ]]; then
+  "$wireguardUpstreamRouteHelper" stop >/dev/null 2>&1 || true
+fi
+return 0
 }
 
 
@@ -2030,6 +2072,96 @@ local ipBin wgBin
 ipBin=$(command -v ip 2>/dev/null || true)
 wgBin=$(command -v wg 2>/dev/null || true)
 [[ -x $ipBin && -x $wgBin ]] || return 1
+cat << 'EOF' > "$wireguardUpstreamRouteHelper"
+#!/bin/bash
+stateFile="/etc/wireguard/de-gwd-wgout-route.state"
+configFile="/etc/wireguard/wgout.conf"
+table=51820
+suppressPref=32764
+routePref=32765
+umask 077
+ipBin=$(command -v ip 2>/dev/null || true)
+wgBin=$(command -v wg 2>/dev/null || true)
+
+rule4Suppress(){ "$ipBin" rule show pref "$suppressPref" | grep -Fq "lookup main suppress_prefixlength 0"; }
+rule4Policy(){ "$ipBin" rule show pref "$routePref" | grep -Eq "not .*fwmark (0xca6|51820).*lookup $table"; }
+route4(){ "$ipBin" route show table "$table" | grep -Eq '^default .* dev wgout([[:space:]]|$)'; }
+rule6Suppress(){ "$ipBin" -6 rule show pref "$suppressPref" | grep -Fq "lookup main suppress_prefixlength 0"; }
+rule6Policy(){ "$ipBin" -6 rule show pref "$routePref" | grep -Eq "not .*fwmark (0xca6|51820).*lookup $table"; }
+route6(){ "$ipBin" -6 route show table "$table" | grep -Eq '^default .* dev wgout([[:space:]]|$)'; }
+hasIPv6(){ grep -Eq '^[[:space:]]*AllowedIPs[[:space:]]*=.*::/0' "$configFile" 2>/dev/null; }
+
+start(){
+local v4Route=0 v4Suppress=0 v4Policy=0 v6Route=0 v6Suppress=0 v6Policy=0
+cleanup(){
+  (( v6Policy )) && "$ipBin" -6 rule del pref "$routePref" not fwmark 51820 table "$table" >/dev/null 2>&1 || true
+  (( v6Suppress )) && "$ipBin" -6 rule del pref "$suppressPref" table main suppress_prefixlength 0 >/dev/null 2>&1 || true
+  (( v6Route )) && "$ipBin" -6 route del default dev wgout table "$table" >/dev/null 2>&1 || true
+  (( v4Policy )) && "$ipBin" rule del pref "$routePref" not fwmark 51820 table "$table" >/dev/null 2>&1 || true
+  (( v4Suppress )) && "$ipBin" rule del pref "$suppressPref" table main suppress_prefixlength 0 >/dev/null 2>&1 || true
+  (( v4Route )) && "$ipBin" route del default dev wgout table "$table" >/dev/null 2>&1 || true
+  rm -f "$stateFile"
+}
+[[ -x $ipBin && -x $wgBin && -s $configFile ]] || return 1
+"$wgBin" set wgout fwmark 51820 || return 1
+if ! route4; then
+  "$ipBin" route show table "$table" | grep -Eq '^default ' && return 1
+  "$ipBin" route replace default dev wgout table "$table" || return 1
+  v4Route=1
+fi
+if ! rule4Suppress; then
+  "$ipBin" rule add pref "$suppressPref" table main suppress_prefixlength 0 || { cleanup; return 1; }
+  v4Suppress=1
+fi
+if ! rule4Policy; then
+  "$ipBin" rule add pref "$routePref" not fwmark 51820 table "$table" || { cleanup; return 1; }
+  v4Policy=1
+fi
+if hasIPv6; then
+  if ! route6; then
+    "$ipBin" -6 route show table "$table" | grep -Eq '^default ' && { cleanup; return 1; }
+    "$ipBin" -6 route replace default dev wgout table "$table" || { cleanup; return 1; }
+    v6Route=1
+  fi
+  if ! rule6Suppress; then
+    "$ipBin" -6 rule add pref "$suppressPref" table main suppress_prefixlength 0 || { cleanup; return 1; }
+    v6Suppress=1
+  fi
+  if ! rule6Policy; then
+    "$ipBin" -6 rule add pref "$routePref" not fwmark 51820 table "$table" || { cleanup; return 1; }
+    v6Policy=1
+  fi
+fi
+{
+  printf 'v4Route=%s\n' "$v4Route"
+  printf 'v4Suppress=%s\n' "$v4Suppress"
+  printf 'v4Policy=%s\n' "$v4Policy"
+  printf 'v6Route=%s\n' "$v6Route"
+  printf 'v6Suppress=%s\n' "$v6Suppress"
+  printf 'v6Policy=%s\n' "$v6Policy"
+} > "$stateFile.$$" && mv -f "$stateFile.$$" "$stateFile" || { cleanup; return 1; }
+}
+
+stop(){
+local v4Route=0 v4Suppress=0 v4Policy=0 v6Route=0 v6Suppress=0 v6Policy=0
+[[ -s $stateFile ]] || return 0
+. "$stateFile"
+(( v6Policy )) && "$ipBin" -6 rule del pref "$routePref" not fwmark 51820 table "$table" >/dev/null 2>&1 || true
+(( v6Suppress )) && "$ipBin" -6 rule del pref "$suppressPref" table main suppress_prefixlength 0 >/dev/null 2>&1 || true
+(( v6Route )) && "$ipBin" -6 route del default dev wgout table "$table" >/dev/null 2>&1 || true
+(( v4Policy )) && "$ipBin" rule del pref "$routePref" not fwmark 51820 table "$table" >/dev/null 2>&1 || true
+(( v4Suppress )) && "$ipBin" rule del pref "$suppressPref" table main suppress_prefixlength 0 >/dev/null 2>&1 || true
+(( v4Route )) && "$ipBin" route del default dev wgout table "$table" >/dev/null 2>&1 || true
+rm -f "$stateFile"
+}
+
+case "$1" in
+  start) start ;;
+  stop) stop ;;
+  *) exit 2 ;;
+esac
+EOF
+chmod 700 "$wireguardUpstreamRouteHelper" || return 1
 cat << EOF >/etc/systemd/system/de-gwd-wgout-route.service
 [Unit]
 Description=de_GWD WireGuard upstream routes
@@ -2041,8 +2173,8 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 ExecStartPre=/bin/bash -c '$wgBin show wgout allowed-ips | grep -Fq "0.0.0.0/0" || { echo "IPv4 default route is required for a global WireGuard exit" >&2; exit 1; }'
-ExecStart=/bin/bash -c '$wgBin set wgout fwmark 51820 && $ipBin route replace default dev wgout table 51820 && $ipBin rule add pref 51820 not fwmark 51820 table 51820 && $ipBin rule add pref 32764 table main suppress_prefixlength 0 && if $wgBin show wgout allowed-ips | grep -Fq "::/0"; then $ipBin -6 route replace default dev wgout table 51820 && $ipBin -6 rule add pref 51820 not fwmark 51820 table 51820 && $ipBin -6 rule add pref 32764 table main suppress_prefixlength 0; fi || { $ipBin -6 rule del pref 32764 table main suppress_prefixlength 0 >/dev/null 2>&1 || true; $ipBin -6 rule del pref 51820 not fwmark 51820 table 51820 >/dev/null 2>&1 || true; $ipBin -6 route del default dev wgout table 51820 >/dev/null 2>&1 || true; $ipBin rule del pref 32764 table main suppress_prefixlength 0 >/dev/null 2>&1 || true; $ipBin rule del pref 51820 not fwmark 51820 table 51820 >/dev/null 2>&1 || true; $ipBin route del default dev wgout table 51820 >/dev/null 2>&1 || true; exit 1; }'
-ExecStop=/bin/bash -c '$ipBin -6 rule del pref 32764 table main suppress_prefixlength 0 2>/dev/null || true; $ipBin -6 rule del pref 51820 not fwmark 51820 table 51820 2>/dev/null || true; $ipBin -6 route del default dev wgout table 51820 2>/dev/null || true; $ipBin rule del pref 32764 table main suppress_prefixlength 0 2>/dev/null || true; $ipBin rule del pref 51820 not fwmark 51820 table 51820 2>/dev/null || true; $ipBin route del default dev wgout table 51820 2>/dev/null || true'
+ExecStart=$wireguardUpstreamRouteHelper start
+ExecStop=$wireguardUpstreamRouteHelper stop
 
 [Install]
 WantedBy=multi-user.target
@@ -3829,6 +3961,11 @@ local enabled domain port uuid path flow dest serverName privateKey publicKey sh
 local ruleCount i target targetPort network p usedPorts=""
 [[ -s $settings ]] || return 0
 jq -e 'type == "object"' "$settings" >/dev/null 2>&1 || return 1
+if jq -e '.vmess.inbound != null' "$settings" >/dev/null; then
+  jq -e '.vmess.inbound | .protocol == "vmess" and .listen == "127.0.0.1" and .port == 9890 and .streamSettings.network == "ws" and (.settings.clients | length > 0)' "$settings" >/dev/null || return 1
+  path=$(jq -r '.vmess.inbound.streamSettings.wsSettings.path // empty' "$settings")
+  [[ $path =~ ^/[a-zA-Z0-9/_.~-]+$ ]] || return 1
+fi
 
 enabled=$(jq -r '.vless_ws.enabled // false' "$settings")
 if [[ $enabled = "true" ]]; then
@@ -3896,7 +4033,7 @@ local mainPort
 mainPort=$(extra_mainPort 2>/dev/null || true)
 for p in $(printf '%s' "$usedPorts" | tr ',' ' '); do
   [[ -n $p ]] || continue
-  [[ $p != "$mainPort" && $p != "9890" && $p != "9891" ]] || return 1
+  [[ $p != "$mainPort" && $p != "9890" && $p != "9891" && $p != "9892" ]] || return 1
 done
 
 return 0
@@ -3957,6 +4094,9 @@ extraXrayInbounds(){
 extra_validateSettings "$extraSettings" || return 1
 
 local config=/opt/de_GWD/vtrui/config.json
+if [[ $(jq -r '.vmess.enabled // false' "$extraSettings") = true ]]; then
+  jq --slurpfile settings "$extraSettings" '.inbounds += [($settings[0].vmess.inbound | .tag="extra-vmess")]' "$config" | sponge "$config"
+fi
 local enabled vlessPort vlessUUID vlessPath realityPort realityUUID realityFlow realityDest realityServerName realityPrivateKey realityShortId socksPort socksUser socksPassword rulesJson
 
 enabled=$(jq -r '.vless_ws.enabled // false' "$extraSettings")
@@ -4087,9 +4227,30 @@ else
   mv -f "$candidate" "$extraSettings" || status=1
 fi
 
-if (( status == 0 )) && ! extraNginxWebConf; then status=1; fi
 if (( status == 0 )) && ! XrayInbound; then status=1; fi
-if (( status == 0 )) && ! XrayOutboundDirect; then status=1; fi
+if (( status == 0 )); then
+  if (( configExisted )); then
+    jq --slurpfile old "$backupDir/config" '.outbounds=$old[0].outbounds | .routing=$old[0].routing' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json || status=1
+  elif ! XrayOutboundDirect; then status=1; fi
+fi
+local port path legacyLocation
+port=$(mainInbound | jq -r '.port')
+path=$(mainInbound | jq -r '.streamSettings.wsSettings.path')
+if (( status == 0 )); then
+  if [[ ${mainMigration:-0} = 1 ]] || ! cmp -s <(jq -c '.vmess // null' "$extraSettings") <(jq -c '.vmess // null' "$backupDir/settings" 2>/dev/null); then
+    if [[ $path =~ ^/[a-zA-Z0-9/_.~-]+$ ]] && grep -q '^upstream xray {' /etc/nginx/conf.d/default.conf && grep -q '^# V2_END' /etc/nginx/conf.d/default.conf; then
+      sed -i "/^upstream xray {/,/^}/s/127.0.0.1:[0-9]*/127.0.0.1:$port/" /etc/nginx/conf.d/default.conf || status=1
+      sed -i "/# V2_START/,/# V2_END/s|^location .* {|location $path {|" /etc/nginx/conf.d/default.conf || status=1
+      sed -i '/VMESS_COMPAT_START/,/VMESS_COMPAT_END/d' /etc/nginx/conf.d/default.conf || status=1
+      legacyLocation=$(mainVmessLocation)
+      LEGACY_LOCATION="$legacyLocation" awk '{print} /^# V2_END/ {if (ENVIRON["LEGACY_LOCATION"] != "") print ENVIRON["LEGACY_LOCATION"]}' /etc/nginx/conf.d/default.conf | sponge /etc/nginx/conf.d/default.conf || status=1
+    else
+      echo 'Unsupported Nginx layout; keep the existing configuration.'
+      status=1
+    fi
+  fi
+  if (( status == 0 )); then extraNginxWebConf || status=1; fi
+fi
 if (( status == 0 )) && ! /opt/de_GWD/vtrui/vtrui run -test -confdir /opt/de_GWD/vtrui >/dev/null 2>&1; then status=1; fi
 if (( status == 0 )) && ! nginx -t; then status=1; fi
 
@@ -4173,6 +4334,8 @@ enabled=$(jq -r '.reality.enabled // false' "$extraSettings")
 [[ $enabled = "true" ]] && echo -e "$BLUE VLESS REALITY: $GREEN enabled$cRES" || echo -e "$BLUE VLESS REALITY: $YELLOW disabled$cRES"
 enabled=$(jq -r '.socks5.enabled // false' "$extraSettings")
 [[ $enabled = "true" ]] && echo -e "$BLUE SOCKS5 UDP:    $GREEN enabled$cRES" || echo -e "$BLUE SOCKS5 UDP:    $YELLOW disabled$cRES"
+enabled=$(jq -r '.vmess.enabled // false' "$extraSettings")
+echo " VMess compatibility: $enabled"
 rules=$(jq -r '.dokodemo.rules // [] | length' "$extraSettings")
 enabled=$(jq -r '.dokodemo.enabled // false' "$extraSettings")
 if [[ $enabled = "true" ]]; then
@@ -4189,6 +4352,17 @@ extra_printNodes(){
 [[ -s $extraSettings ]] || return 0
 extra_validateSettings "$extraSettings" || return 1
 local enabled domain port uuid path url flow flowDisplay dest serverName publicKey shortId user password dokodemoDomain i target targetPort network
+if [[ $(jq -r '.vmess.enabled // false' "$extraSettings") = true ]]; then
+  domain=$(extra_mainDomain)
+  port=$(extra_mainPort)
+  path=$(jq -r '.vmess.inbound.streamSettings.wsSettings.path' "$extraSettings")
+  echo 'VMess compatibility'
+  while read -r uuid; do
+    url="vmess://$(jq -nc --arg host "$domain" --arg port "$port" --arg uuid "$uuid" --arg path "$path" '{v:"2",ps:($host+":"+$port),add:$host,port:$port,id:$uuid,aid:"0",scy:"auto",net:"ws",type:"none",host:$host,path:$path,tls:"tls",sni:$host}' | base64 | tr -d '\n')"
+    qrencode -t UTF8 -s 1 -m 3 "$url"
+    printf 'Link: %s\n' "$url"
+  done < <(jq -r '.vmess.inbound.settings.clients[].id' "$extraSettings")
+fi
 
 if [[ $(jq -r '.vless_ws.enabled // false' "$extraSettings") = "true" ]]; then
   domain=$(jq -r '.vless_ws.domain' "$extraSettings")
@@ -4633,6 +4807,56 @@ done
 
 
 
+mainMigrate(){
+local original candidate backup mainMigration=1 path uuids
+original=$(mainInbound) || return 1
+[[ $(jq -r '.protocol' <<< "$original") = vmess ]] || return 0
+candidate=$(mktemp /tmp/de_GWD-migrate.XXXXXX) || return 1
+extra_settingsOrDefault | jq --argjson original "$original" '.vmess={enabled:true,inbound:$original}' > "$candidate" || return 1
+extra_validateSettings "$candidate" || { rm -f "$candidate"; echo 'Unsupported legacy inbound; migration stopped.'; return 1; }
+backup=$(mktemp -d /opt/de_GWD/vless-backup.XXXXXX) || { rm -f "$candidate"; return 1; }
+cp -a /opt/de_GWD/vtrui/config.json /etc/nginx/conf.d/default.conf "$backup/" || return 1
+if [[ -e $extraSettings ]]; then cp -a "$extraSettings" "$backup/" || return 1; fi
+path="$(jq -r '.streamSettings.wsSettings.path' <<< "$original")-vless"
+uuids=$(jq -r '.settings.clients[].id' <<< "$original")
+if ! extra_applyCandidate "$candidate"; then
+  rm -f "$candidate"
+  echo 'VLESS migration failed; previous configuration restored.'
+  return 1
+fi
+echo 'Main node: VLESS. Original VMess preserved in menu 55.'
+printf 'Previous configuration: %s\n' "$backup"
+}
+
+
+extra_vmess(){
+local choice candidate main path uuids
+while true; do
+  echo "VMess compatibility: $(jq -r '.vmess.enabled // false' "$extraSettings" 2>/dev/null)"
+  echo '1. Enable'
+  echo '2. Disable'
+  echo '3. Show nodes'
+  echo '0. Back'
+  read -r -p 'Select: ' choice || return
+  case "$choice" in
+    0) return ;;
+    3) extra_printNodes; continue ;;
+    1|2) ;;
+    *) continue ;;
+  esac
+  [[ $(mainInbound | jq -r '.protocol') = vless ]] || { echo 'Update the server to migrate the main node first.'; return 1; }
+  candidate=$(mktemp /tmp/de_GWD-vmess.XXXXXX) || return 1
+  main=$(mainInbound)
+  extra_settingsOrDefault | jq --argjson main "$main" --arg choice "$choice" '
+    .vmess //= {enabled:false,inbound:($main | .tag="extra-vmess" | .port=9890 | .protocol="vmess" | del(.settings.decryption) | .streamSettings.wsSettings.path += "-vmess")}
+    | .vmess.enabled=($choice == "1")' > "$candidate"
+  path=$(jq -r '.streamSettings.wsSettings.path' <<< "$main")
+  uuids=$(jq -r '.settings.clients[].id' <<< "$main")
+  extra_applyCandidate "$candidate" || { rm -f "$candidate"; return 1; }
+done
+}
+
+
 extraInbounds(){
 if [[ ! -x /opt/de_GWD/vtrui/vtrui ]]; then
   echo -e "$WHITE Extra inbounds$RED Install de_GWD first$cRES"
@@ -4645,6 +4869,7 @@ while true; do
   echo -e "$GREEN 3. SOCKS5$cRES"
   echo -e "$GREEN 4. Port forwarding$cRES"
   echo -e "$GREEN 5. Show nodes$cRES"
+  echo -e "$GREEN 6. VMess compatibility$cRES"
   echo -e "$GREEN 0. Back$cRES"
   read -r -p "Select: " choice || return
   case "$choice" in
@@ -4653,6 +4878,7 @@ while true; do
     3) extra_socks5 ;;
     4) extra_dokodemo ;;
     5) extra_printNodes ;;
+    6) extra_vmess ;;
     0) return 0 ;;
     *) echo -e "$RED Wrong number$cRES" ;;
   esac
@@ -4671,8 +4897,8 @@ else
 vpsdomainP=$vpsdomain:$port
 fi
 
-path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-uuids=$(jq -r '.inbounds[0].settings.clients[].id' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+path=$(jq -r '(([.inbounds[] | select(.tag == "main")] | first) // .inbounds[0]).streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+uuids=$(jq -r '(([.inbounds[] | select(.tag == "main")] | first) // .inbounds[0]).settings.clients[].id' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 
 if [[ $(systemctl is-active 'haproxy') == "active" ]]; then
 haproxy_printRules "$vpsdomain"
@@ -4687,8 +4913,12 @@ echo -e "${BLUE}UUID:      ${YELLOW}$uuids${cRES}"
 echo -e "${BLUE}Path:      ${YELLOW}$path${cRES}"
 echo
 echo -e "${BLUE}QR code: ${cRES}"
-subAddr=$(echo -n "$(jq -r '.inbounds[0].settings.clients[0].id' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')@$vpsdomain:$port")
+subAddr=$(echo -n "$(jq -r '(([.inbounds[] | select(.tag == "main")] | first) // .inbounds[0]).settings.clients[0].id' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')@$vpsdomain:$port")
 subUrl="vmess://${subAddr}?encryption=auto&type=ws&security=tls&tlsAllowInsecure=false&path=${path}&host=${vpsdomain}&sni=${vpsdomain}&tfo=1#${vpsdomain}:${port}"
+if [[ $(mainInbound | jq -r '.protocol') = vless ]]; then
+  subUrl=$(extra_vlessWSUrl "$vpsdomain" "$port" "${subAddr%%@*}" "$path" "$vpsdomain:$port")
+fi
+echo "Protocol: $(mainInbound | jq -r '.protocol')"
 qrencode -t UTF8 -s 1 -m 3 $subUrl
 echo
 echo -e "${BLUE}Link:      ${YELLOW}${subUrl}${cRES}"
@@ -4804,6 +5034,7 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}de_GWD ${GREEN
 
 updateGWD(){
 [[ ! -f "/opt/de_GWD/version.php" ]] && echo -e "${RED}This is not server${cRES}" && exit
+mainMigrate || return 1
 
 rproxyS_was_active=$(systemctl is-active RproxyS 2>/dev/null)
 [[ $rproxyS_was_active = "active" ]] && systemctl stop RproxyS >/dev/null 2>&1

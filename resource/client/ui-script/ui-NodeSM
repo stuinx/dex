@@ -28,7 +28,7 @@ jq --arg address $address '.v2nodeDIV.nodeSM.youtube=$address' /opt/de_GWD/0conf
 tag="nodeSMyoutube"
 routingDomain='["geosite:youtube"]'
 /opt/de_GWD/ui-V2routingDomain $tag $routingDomain
-/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
 elif [[ $2 = "0" ]]; then
 	jq 'del(.v2nodeDIV.nodeSM.youtube)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 else
@@ -40,7 +40,7 @@ address=$(jq -r '.v2nodeDIV.nodeSM.youtube' /opt/de_GWD/0conf 2>/dev/null | grep
 		tag="nodeSMyoutube"
 		routingDomain='["geosite:youtube"]'
 		/opt/de_GWD/ui-V2routingDomain $tag $routingDomain
-		/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+		/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
 	fi
 fi
 
@@ -54,7 +54,7 @@ jq --arg address $address '.v2nodeDIV.nodeSM.netflix=$address' /opt/de_GWD/0conf
 tag="nodeSMnetflix"
 routingDomain='["geosite:netflix"]'
 /opt/de_GWD/ui-V2routingDomain $tag $routingDomain
-/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
 elif [[ $3 = "0" ]]; then
 	jq 'del(.v2nodeDIV.nodeSM.netflix)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 else
@@ -66,7 +66,7 @@ address=$(jq -r '.v2nodeDIV.nodeSM.netflix' /opt/de_GWD/0conf 2>/dev/null | grep
 		tag="nodeSMnetflix"
 		routingDomain='["geosite:netflix"]'
 		/opt/de_GWD/ui-V2routingDomain $tag $routingDomain
-		/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+		/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
 	fi
 fi
 
@@ -80,7 +80,7 @@ jq --arg address $address '.v2nodeDIV.nodeSM.hdh=$address' /opt/de_GWD/0conf | s
 tag="nodeSMhdh"
 routingDomain='["geosite:hbo","geosite:disney","geosite:hulu"]'
 /opt/de_GWD/ui-V2routingDomain $tag $routingDomain
-/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
 elif [[ $4 = "0" ]]; then
 	jq 'del(.v2nodeDIV.nodeSM.hdh)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 else
@@ -92,7 +92,7 @@ address=$(jq -r '.v2nodeDIV.nodeSM.hdh' /opt/de_GWD/0conf 2>/dev/null | grep -v 
 		tag="nodeSMhdh"
 		routingDomain='["geosite:hbo","geosite:disney","geosite:hulu"]'
 		/opt/de_GWD/ui-V2routingDomain $tag $routingDomain
-		/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+		/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
 	fi
 fi
 
@@ -106,7 +106,7 @@ jq --arg address $address '.v2nodeDIV.nodeSM.tvb=$address' /opt/de_GWD/0conf | s
 tag="nodeSMtvb"
 routingDomain='["geosite:tvb"]'
 /opt/de_GWD/ui-V2routingDomain $tag $routingDomain
-/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
 elif [[ $5 = "0" ]]; then
 	jq 'del(.v2nodeDIV.nodeSM.tvb)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 else
@@ -118,7 +118,7 @@ address=$(jq -r '.v2nodeDIV.nodeSM.tvb' /opt/de_GWD/0conf 2>/dev/null | grep -v 
 		tag="nodeSMtvb"
 		routingDomain='["geosite:tvb"]'
 		/opt/de_GWD/ui-V2routingDomain $tag $routingDomain
-		/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+		/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
 	fi
 fi
 
@@ -132,7 +132,7 @@ jq --arg address $address '.v2nodeDIV.nodeSM.bahamut=$address' /opt/de_GWD/0conf
 tag="nodeSMbahamut"
 routingDomain='["geosite:bahamut"]'
 /opt/de_GWD/ui-V2routingDomain $tag $routingDomain
-/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
 elif [[ $6 = "0" ]]; then
 	jq 'del(.v2nodeDIV.nodeSM.bahamut)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 else
@@ -144,7 +144,7 @@ address=$(jq -r '.v2nodeDIV.nodeSM.bahamut' /opt/de_GWD/0conf 2>/dev/null | grep
 		tag="nodeSMbahamut"
 		routingDomain='["geosite:bahamut"]'
 		/opt/de_GWD/ui-V2routingDomain $tag $routingDomain
-		/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+		/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
 	fi
 fi
 
@@ -158,7 +158,7 @@ jq --arg address $address '.v2nodeDIV.nodeSM.openai=$address' /opt/de_GWD/0conf 
 tag="nodeSMopenai"
 routingDomain='["geosite:openai"]'
 /opt/de_GWD/ui-V2routingDomain $tag $routingDomain
-/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
 elif [[ $7 = "0" ]]; then
 	jq 'del(.v2nodeDIV.nodeSM.openai)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 else
@@ -170,7 +170,7 @@ address=$(jq -r '.v2nodeDIV.nodeSM.openai' /opt/de_GWD/0conf 2>/dev/null | grep 
 		tag="nodeSMopenai"
 		routingDomain='["geosite:openai"]'
 		/opt/de_GWD/ui-V2routingDomain $tag $routingDomain
-		/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+		/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
 	fi
 fi
 
@@ -185,7 +185,7 @@ jq --arg address $address '.v2nodeDIV.nodeSM.apple=$address' /opt/de_GWD/0conf |
 tag="nodeSMapple"
 routingDomain='["geosite:apple","geosite:apple-ads","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
 /opt/de_GWD/ui-V2routingDomain $tag $routingDomain
-/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
 elif [[ $8 = "0" ]]; then
 	jq 'del(.v2nodeDIV.nodeSM.apple)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 	/opt/de_GWD/ui-V2routingDomain 'direct' '["geosite:apple","geosite:apple-ads","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
@@ -199,7 +199,7 @@ address=$(jq -r '.v2nodeDIV.nodeSM.apple' /opt/de_GWD/0conf 2>/dev/null | grep -
 		tag="nodeSMapple"
 		routingDomain='["geosite:apple","geosite:apple-ads","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
 		/opt/de_GWD/ui-V2routingDomain $tag $routingDomain
-		/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+		/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
 	fi
 fi
 

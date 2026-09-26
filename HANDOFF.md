@@ -1,4 +1,19 @@
-# de_GWD dev 安装与透明 TProxy 修复交接（2026-09-19）
+# 当前交接：VLESS 主协议分支（2026-09-26）
+
+- 当前仓库 `/Users/stuinx/Documents/ChatGPT/dex`，已由 dev 创建并切换到 `vless`。未提交、未推送。
+- 本轮授权：实施 VLESS 主节点迁移，原 VMess 移至 55 保持兼容。实现及恢复边界见 `docs/vless-migration.md`。
+- 开始时已有未提交修改：`server` 的 WireGuard/证书修复，以及 `ui-installCER`、`ui-updateSave`、`ui_4am`、Archive 及其校验值。已保留，提交时注意区分；不能把这些当成本轮新写的修复。
+- 本轮改动：Server 主节点/兼容管理，Client 协议读写，既有 Client 节点页面协议选择、共享出站及分流身份处理，vless 资源默认来源，README、迁移文档、测试脚本。没有新增 Server PHP 页面。
+- 已验证：脚本语法、Client PHP 语法；迁移/回滚/幂等/旧 UUID 保留/兼容启停/同地址节点区分的临时目录回归；真实 Xray 26.3.27 配置校验和 VMess、VLESS WebSocket TCP+UDP 本地回环。
+- 最后核验通过：Archive 已重打包，1756 个资源文件与源码逐字节一致；SHA256 为 `b106c778b558c5c62b62990040a3b049c1f9144e93b041d94657490a9326a6b6`；release-chain 检查及 `git diff --check` 通过，Git 未报告文件模式变化。
+- 测试脚本：`node tools/test-vless-migration.cjs`；`XRAY_BIN=/path/to/xray node tools/test-vless-loopback.cjs`。临时服务测试有模拟边界，回环测试不包含 Nginx/TLS 或 Linux TProxy。
+- 未完成：Debian 双端现场验收、重启/完整更新数据面验收；未部署线上主机。远程安装命令须在分支推送后才能使用。
+- 提交前核验：Archive 源码一致性、校验值、`bash tools/check-self-owned-release-chain.sh`、`git diff --check`、当前分支及变更范围。
+- 坑：同域名同端口的 VMess/VLESS 不能仅按地址识别；保留 path/protocol/UUID。旧自定义非标准入站或 Nginx 布局停止自动迁移，不能强行覆盖。测试不要 source 整个安装脚本，脚本顶层会执行系统操作。
+
+---
+
+# 历史交接：de_GWD dev 安装与透明 TProxy 修复（2026-09-19，状态需重新核验）
 
 ## 范围与约束
 

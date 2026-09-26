@@ -9,7 +9,7 @@ address=$(jq -r --argjson nodecheck $2 '.v2node | to_entries[] | select(.key == 
 tls=$(jq -r --argjson nodecheck $2 '.v2node | to_entries[] | select(.key == $nodecheck) | .value.tls' /opt/de_GWD/0conf)
 uuid=$(jq -r --argjson nodecheck $2 '.v2node | to_entries[] | select(.key == $nodecheck) | .value.uuid' /opt/de_GWD/0conf)
 path=$(jq -r --argjson nodecheck $2 '.v2node | to_entries[] | select(.key == $nodecheck) | .value.path' /opt/de_GWD/0conf)
-/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
 
 jq --arg address $address '.v2nodeDIV.nodeDT.address=$address' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 else
@@ -18,14 +18,15 @@ address=$(jq -r '.v2nodeDIV.nodeDT.address' /opt/de_GWD/0conf 2>/dev/null | grep
 		tls=$(jq -r --arg nodecheck $address '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .value.tls' /opt/de_GWD/0conf)
 		uuid=$(jq -r --arg nodecheck $address '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .value.uuid' /opt/de_GWD/0conf)
 		path=$(jq -r --arg nodecheck $address '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .value.path' /opt/de_GWD/0conf)
-		/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+		/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
         else
                 address=$(jq -r '.update.v2node.domain' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
                 tls=$(jq -r '.update.v2node.tls' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
                 port=$(jq -r '.update.v2node.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
                 uuid=$(jq -r '.update.v2node.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
                 path=$(jq -r '.update.v2node.path' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-                /opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+                protocol=$(jq -r '.update.v2node.protocol // "vmess"' /opt/de_GWD/0conf)
+                /opt/de_GWD/ui-V2outbound "$tag" "$address:$port" "$tls" "$uuid" "$path" "$protocol" || exit 1
 	fi
 fi
 

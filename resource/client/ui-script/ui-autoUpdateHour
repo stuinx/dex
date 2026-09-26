@@ -8,7 +8,7 @@ rm -rf /opt/de_GWD/autoUpdate
 else
 cat << "EOF" >/opt/de_GWD/autoUpdate
 #!/bin/bash
-repoBase="https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/dev"
+repoBase="https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/vless"
 localVer=$(awk 'NR==1' /var/www/html/act/version.php)
 remoteVer=$(curl -fsSLo- "$repoBase/version.php" | head -n 1)
 

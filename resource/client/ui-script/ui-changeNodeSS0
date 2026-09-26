@@ -1,4 +1,6 @@
 #!/bin/bash
+protocol=$(jq -r '.update.v2node.protocol // "vmess"' /opt/de_GWD/0conf)
+[[ $protocol = vmess || $protocol = vless ]] || exit 1
 domain=$(jq -r '.update.v2node.domain' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 tls=$(jq -r '.update.v2node.tls' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 port=$(jq -r '.update.v2node.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
@@ -80,6 +82,9 @@ EOF
 `
 fi
 
+if [[ $protocol = vless ]]; then
+  OBdefault=$(jq '.protocol="vless" | .settings.vnext[].users |= map(del(.alterId,.security) | .encryption="none")' <<< "$OBdefault") || exit 1
+fi
 jq --argjson OBdefault "$OBdefault" '.outbounds[0]=$OBdefault' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
 
 systemctl restart vtrui

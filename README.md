@@ -10,14 +10,14 @@
 
 ## Server (amd64 & arm64) support kvm xen openvz lxc and so on:
 ```
-bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx/dex/dev/server)
+bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx/dex/vless/server)
 ```
 
 ![de_GWD 0](https://raw.githubusercontent.com/stuinx/dex/main/resource/screenshot/0.png)
 
 ## Client (amd64 & arm64):
 ```
-bash <(wget --no-check-certificate -qO- https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/dev/client)
+bash <(wget --no-check-certificate -qO- https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/vless/client)
 ```
 或
 
@@ -31,7 +31,7 @@ chmod +x client
 
 dex 的安装入口和运行资源由本仓库维护。jacyl4/de_GWD 仅作为历史参考，不参与安装、更新或资源下载。
 
-开发版使用 dev；正式部署使用固定 tag，并将同一个 tag 传给安装脚本，避免 main 或 dev 变化导致后续资源漂移：
+此分支使用 vless；正式部署使用固定 tag，并将同一个 tag 传给安装脚本，避免分支变化导致后续资源漂移：
 
     https://raw.githubusercontent.com/stuinx/dex/<tag>/server
     https://raw.githubusercontent.com/stuinx/dex/<tag>/client

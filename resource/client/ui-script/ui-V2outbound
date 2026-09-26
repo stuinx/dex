@@ -4,6 +4,26 @@ address=$2
 tls=$3
 uuid=$4
 path=$5
+protocol=${6:-}
+[[ $tls != null ]] || tls=""
+[[ $path != null ]] || path=""
+if [[ $uuid == *$'\n'* || $path == *$'\n'* || $tls == *$'\n'* ]]; then
+  node=$(jq -ce --arg tag "$tag" --arg address "$address" '
+    .v2nodeDIV.outboundNodes[$tag] as $saved |
+    [.v2node[]? | select(.domain == $address and .uuid == $saved.uuid
+      and (.path // "") == $saved.path and (.protocol // "vmess") == $saved.protocol)] |
+    if length == 1 then .[0] else empty end' /opt/de_GWD/0conf) || { echo 'Ambiguous node; select the routing node again.' >&2; exit 1; }
+  tls=$(jq -r '.tls // empty' <<< "$node")
+  uuid=$(jq -r '.uuid' <<< "$node")
+  path=$(jq -r '.path // empty' <<< "$node")
+  protocol=$(jq -r '.protocol // "vmess"' <<< "$node")
+fi
+if [[ -z $protocol ]]; then
+  protocol=$(jq -r --arg address "$address" --arg uuid "$uuid" --arg path "${path:-}" '
+    [.v2node[]? | select((.domain == $address or (.domain + ":443") == $address) and .uuid == $uuid and (.path // "") == $path) | (.protocol // "vmess")] | unique |
+    if length == 0 then "vmess" elif length == 1 then .[0] else "ambiguous" end' /opt/de_GWD/0conf) || exit 1
+fi
+[[ $protocol = vmess || $protocol = vless ]] || exit 1
 
 if [[ -z $tag ]] || [[ -z $address ]] || [[ -z $uuid ]]; then
 exit
@@ -101,4 +121,9 @@ EOF
 `
 fi
 
+if [[ $protocol = vless ]]; then
+  OBadd=$(jq '.protocol="vless" | .settings.vnext[].users |= map(del(.alterId,.security) | .encryption="none")' <<< "$OBadd") || exit 1
+fi
 jq --argjson OBadd "$OBadd" '.outbounds+=[$OBadd]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+jq --arg tag "$tag" --arg uuid "$uuid" --arg path "${path:-}" --arg protocol "$protocol" \
+  '.v2nodeDIV.outboundNodes[$tag]={uuid:$uuid,path:$path,protocol:$protocol}' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf

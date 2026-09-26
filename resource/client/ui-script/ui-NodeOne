@@ -48,7 +48,8 @@ cat << EOF >/opt/de_GWD/vtrui/config.json
 }
 EOF
 
-/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
+protocol=$(jq -r '.update.v2node.protocol // "vmess"' /opt/de_GWD/0conf)
+/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" "$protocol" || exit 1
 
 OBdirect=`cat << EOF
     {

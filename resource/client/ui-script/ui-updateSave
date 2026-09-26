@@ -19,6 +19,5 @@ updatePort=$(jq -r '.update.updatePort' /opt/de_GWD/0conf)
 
 kill $(ps -e | grep 'ttyd' | awk '{print$1}') >/dev/null 2>&1
 tmux kill-session -t updateGWD >/dev/null 2>&1
-sed -i "/ExecStart=/c\ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
+sed -i "/ExecStart=/c\ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -W -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
 systemctl daemon-reload >/dev/null
-

@@ -37,7 +37,12 @@ curl -fsSL https://get.acme.sh | sh || exit 1
 "/root/.acme.sh"/acme.sh --force --installcert -d "$topDomain" \
                --key-file       /var/www/ssl/de_GWD.key  \
                --fullchain-file /var/www/ssl/de_GWD.cer \
+               --reloadcmd     "systemctl force-reload nginx" \
                --ecc || exit 1
+legacyCertificateConfig="/root/.acme.sh/${domain}_ecc/${domain}.conf"
+if [[ $domain != "$topDomain" ]] && [[ -f $legacyCertificateConfig ]] && grep -Fq '/var/www/ssl/de_GWD.cer' "$legacyCertificateConfig"; then
+  "/root/.acme.sh"/acme.sh --remove -d "$domain" --ecc || exit 1
+fi
 
 [[ -s /var/www/ssl/de_GWD.cer ]] && [[ -s /var/www/ssl/de_GWD.key ]] || { echo -e "${WHITE}TLS certificate${RED} Certificate or key is missing${cRES}"; exit 1; }
 for certificateHost in "$domain" "probe.$topDomain" "probe.$domain"; do

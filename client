@@ -18,7 +18,7 @@ TTYD_SHA256_aarch64="b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219d
 aptGetOpts=(-o Acquire::Retries=2 -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::http::Pipeline-Depth=0 -o Acquire::https::Pipeline-Depth=0)
 repoOwner="${DE_GWD_REPO_OWNER:-stuinx}"
 repoName="${DE_GWD_REPO_NAME:-dex}"
-branch="${DE_GWD_BRANCH:-dev}"
+branch="${DE_GWD_BRANCH:-vless}"
 repoBase="${DE_GWD_RAW_BASE:-https://gh.stuinx.eu.org/https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}}"
 repoFallbackBase="${DE_GWD_RAW_FALLBACK_BASE:-https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}}"
 chnrouteBase="${DE_GWD_CHNROUTE_BASE:-https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/chnroute/main}"
@@ -530,6 +530,8 @@ domain=$(jq -r '.update.v2node.domain' /opt/de_GWD/0conf 2>/dev/null | grep -v '
 tls=$(jq -r '.update.v2node.tls' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 port=$(jq -r '.update.v2node.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 uuid=$(jq -r '.update.v2node.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+protocol=$(jq -r '.update.v2node.protocol // "vmess"' /opt/de_GWD/0conf)
+[[ $protocol = vmess || $protocol = vless ]] || { echo 'Unsupported node protocol'; exit 1; }
 path=$(jq -r '.update.v2node.path' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 
 if [[ -z $domain ]] || [[ -z $uuid ]]; then
@@ -1480,6 +1482,9 @@ EOF
 `
 fi
 
+if [[ ${protocol:-vmess} = vless ]]; then
+  OBdefault=$(jq '.protocol="vless" | .settings.vnext[].users |= map(del(.alterId,.security) | .encryption="none")' <<< "$OBdefault") || return 1
+fi
 jq --argjson OBdefault "$OBdefault" '.outbounds[0]=$OBdefault' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
 
 rm -rf /lib/systemd/system/vtrui.service
@@ -2672,6 +2677,9 @@ installGWD(){
     echo -e "${GREEN} V2 Address${cRES}"
     echo -e "${GREEN}=========================== ${cRES}"
     read v2addr
+    read -r -p 'Protocol [vless/vmess, default vless]: ' protocol
+    protocol=${protocol:-vless}
+    [[ $protocol = vless || $protocol = vmess ]] || { echo 'Unsupported node protocol'; return 1; }
     
     echo -e "${GREEN}=========================== ${cRES}"
     echo -e "${GREEN} V2 UUID${cRES}"
@@ -2752,6 +2760,8 @@ jq --arg localIP "$localAddrCIDR" '.address.localIP=$localIP' |\
 jq --arg upstreamIP "$gatewayAddr" '.address.upstreamIP=$upstreamIP' |\
 jq --arg domain "$v2addr" '.v2node[0].domain=$domain' |\
 jq --arg name "$v2addr" '.v2node[0].name=$name' |\
+jq --arg tls "$tls" '.v2node[0].tls=$tls' |\
+jq --arg protocol "$protocol" '.v2node[0].protocol=$protocol | .update.v2node.protocol=$protocol' |\
 jq --arg uuid "$uuid" '.v2node[0].uuid=$uuid' |\
 jq --arg path "$path" '.v2node[0].path=$path' |\
 jq --arg updateAddr "$localAddr" '.update.updateAddr=$updateAddr' |\

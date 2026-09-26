@@ -8,4 +8,4 @@ else
 nodecheck=$domain:$port
 fi
 
-jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf
+jq -r --arg nodecheck "$nodecheck" --arg tag "divert" --slurpfile config /opt/de_GWD/vtrui/config.json '($config[0].outbounds[] | select(.tag == $tag)) as $out | .v2node[] | select((.domain == $nodecheck or .domain == ($nodecheck+":443")) and .uuid == $out.settings.vnext[0].users[0].id and (.path // "") == ($out.streamSettings.wsSettings.path // "") and (.protocol // "vmess") == $out.protocol) | .name' /opt/de_GWD/0conf

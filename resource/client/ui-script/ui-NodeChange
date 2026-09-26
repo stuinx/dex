@@ -1,4 +1,6 @@
 #!/bin/bash
+protocol=$(jq -r --argjson index "$1" '.v2node[$index].protocol // "vmess"' /opt/de_GWD/0conf)
+[[ $protocol = vmess || $protocol = vless ]] || exit 1
 address=$(jq -r --argjson domainNUM "$1" '.v2node | to_entries[] | select(.key == $domainNUM) | .value.domain' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 tls=$(jq -r --argjson domainNUM "$1" '.v2node | to_entries[] | select(.key == $domainNUM) | .value.tls' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 uuid=$(jq -r --argjson domainNUM "$1" '.v2node | to_entries[] | select(.key == $domainNUM) | .value.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
@@ -10,6 +12,7 @@ port=$(echo -e $address | cut -d: -f2 | grep '^[[:digit:]]*$')
 [[ -z $tls ]] && tls=$domain
 
 jq '.update.v2node={}' /opt/de_GWD/0conf |\
+jq --arg protocol "$protocol" '.update.v2node.protocol=$protocol' |\
 jq --arg domain "$domain" '.update.v2node.domain=$domain' |\
 jq --arg tls "$tls" '.update.v2node.tls=$tls' |\
 jq --arg port "$port" '.update.v2node.port=$port' |\
@@ -94,6 +97,9 @@ EOF
 `
 fi
 
+if [[ $protocol = vless ]]; then
+  OBdefault=$(jq '.protocol="vless" | .settings.vnext[].users |= map(del(.alterId,.security) | .encryption="none")' <<< "$OBdefault") || exit 1
+fi
 jq --argjson OBdefault "$OBdefault" '.outbounds[0]=$OBdefault' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
 
 systemctl restart vtrui

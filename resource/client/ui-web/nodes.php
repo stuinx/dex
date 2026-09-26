@@ -184,6 +184,7 @@
                     <th class="text-nowrap text-center"><———— 节点名 ————></th>
                     <th class="text-nowrap text-center"><———————— UUID ————————></th>
                     <th class="text-nowrap text-center"><—— PATH ——></th>
+                    <th class="text-nowrap text-center">Protocol</th>
                     <th class="text-nowrap text-center"><i class="fas fa-caret-square-up fa-lg"></i></th>
                     <th class="text-nowrap text-center"><i class="fas fa-caret-square-down fa-lg"></i></th>
                   </tr>
@@ -197,6 +198,9 @@ for( $i=0; $i<count($de_GWDconf->v2node); $i++){
   $name = $de_GWDconf->v2node[$i]->name;
   $path = $de_GWDconf->v2node[$i]->path;
   $uuid = $de_GWDconf->v2node[$i]->uuid;
+  $protocol = $de_GWDconf->v2node[$i]->protocol ?? 'vmess';
+  $vmessSelected = $protocol === 'vless' ? '' : 'selected';
+  $vlessSelected = $protocol === 'vless' ? 'selected' : '';
 print <<<EOT
 <tr>
 <td class="align-middle">$num</td>
@@ -211,6 +215,7 @@ print <<<EOT
 <td class="align-middle"><input type="text" class="form-control" value="$name"></td>
 <td class="align-middle"><input type="text" class="form-control" value="$uuid"></td>
 <td class="align-middle"><input type="text" class="form-control" value="$path"></td>
+<td class="align-middle"><select class="form-control"><option value="vmess" $vmessSelected>VMess</option><option value="vless" $vlessSelected>VLESS</option></select></td>
 <td class="align-middle"><button type="button" class="form-control btn btn-outline-secondary btn-sm" style="border-Radius: 0px;" onclick="moveUp(this)"><i class="fas fa-caret-up"></i></button></td>
 <td class="align-middle"><button type="button" class="form-control btn btn-outline-secondary btn-sm" style="border-Radius: 0px;" onclick="moveDown(this)"><i class="fas fa-caret-down"></i></button></td>
 </tr>
@@ -314,6 +319,7 @@ $('#buttonAddLine').click(function(){
                           <td class="align-middle"><input type="text" class="form-control" value=""></td>
                           <td class="align-middle"><input type="text" class="form-control" value=""></td>
                           <td class="align-middle"><input type="text" class="form-control" value=""></td>
+                          <td class="align-middle"><select class="form-control"><option value="vless">VLESS</option><option value="vmess">VMess</option></select></td>
                           <td class="align-middle"><button type="button" class="form-control btn btn-outline-secondary btn-sm" style="border-Radius: 0px;" onclick="moveUp(this)"><i class="fas fa-caret-up"></i></button></td>
                           <td class="align-middle"><button type="button" class="form-control btn btn-outline-secondary btn-sm" style="border-Radius: 0px;" onclick="moveDown(this)"><i class="fas fa-caret-down"></i></button></td>
                           </tr>
@@ -333,11 +339,12 @@ for( let i = 0; i<len; i++){
     var name = tdArr.eq(2).find('input').val()
     var uuid = tdArr.eq(3).find('input').val()
     var path = tdArr.eq(4).find('input').val()
+    var protocol = tdArr.eq(5).find('select').val()
     if (tls == '' ) {
     var tls = domain.split(':')[0]
     }
     if (domain !== '' && name !== '' && uuid !== '' ) {
-    nodeList.push({domain, tls, name, uuid, path})
+    nodeList.push({domain, tls, name, uuid, path, protocol})
     }
 }
 $.get("./act/NodeSave.php", {nodeList:nodeList}, function(result){
