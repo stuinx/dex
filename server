@@ -1749,9 +1749,17 @@ username=${username:-$oldUsername}
 read -r -s -p "SOCKS5 password (empty keeps current): " password
 echo
 password=${password:-$oldPassword}
+if [[ -n $username && -z $password ]]; then
+  echo -e "${WHITE}SOCKS5 outbound${RED} username and password must be provided together${cRES}"
+  return 1
+fi
 read -r -p "Domain rules (comma-separated) [$oldDomains]: " domainInput
 domainInput=${domainInput:-$oldDomains}
-domainsJson=$(printf '%s' "$domainInput" | jq -R 'split(",") | map(gsub("^[[:space:]]+|[[:space:]]+$"; "")) | map(select(length > 0))') || return 1
+domainsJson=$(printf '%s' "$domainInput" | jq -R -s 'split(",") | map(gsub("^[[:space:]]+|[[:space:]]+$"; "")) | map(select(length > 0))') || return 1
+if [[ $(jq -r 'length' <<< "$domainsJson") = 0 ]]; then
+  echo -e "${WHITE}SOCKS5 outbound${RED} at least one domain rule is required${cRES}"
+  return 1
+fi
 candidate=$(mktemp /tmp/de_GWD-socks5-outbound.XXXXXX) || return 1
 if ! jq --arg address "$address" --arg port "$port" --arg username "$username" --arg password "$password" --argjson domains "$domainsJson" '{enabled:true,server:{address:$address,port:$port,username:$username,password:$password},domains:$domains}' <<< '{}' > "$candidate"; then
   rm -f "$candidate"

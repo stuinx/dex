@@ -37,7 +37,8 @@ const functions = rewrite([
   'socks5OutboundConfig',
   'socks5OutboundSync',
   'socks5OutboundApply',
-  'socks5OutboundStatus'
+  'socks5OutboundStatus',
+  'socks5OutboundConfigure'
 ].map(extractFunction).join('\n'));
 
 const prelude = `
@@ -151,6 +152,16 @@ try {
     console.log('PASS: native Xray validation for enabled SOCKS5 outbound');
   }
 
+  reset(baseConfig);
+  const emptyDomain = run("socks5OutboundConfigure <<< $'proxy.example.test\\n1080\\nuser\\npassword\\n'", true);
+  assert.notEqual(emptyDomain.status, 0);
+  assert(emptyDomain.stdout.includes('at least one domain rule is required'));
+  assert(!emptyDomain.stderr.includes('invalid JSON text'));
+  assert(!fs.existsSync(settingsPath));
+  console.log('PASS: empty domain input is rejected with a clear message');
+
+  reset(baseConfig, enabledSettings);
+  run('socks5OutboundSync');
   const oldSettings = readJson(settingsPath);
   const oldConfig = readJson(configPath);
   const badCandidate = path.join(root, 'bad-candidate.json');
