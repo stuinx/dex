@@ -1573,36 +1573,78 @@ fi
 }
 
 
-socks5OutboundValidate(){
-local settings=$1 enabled address port username password
-[[ -s $settings ]] || return 1
-jq -e 'type == "object" and ((.enabled // false) | type == "boolean") and ((.server // {}) | type == "object") and ((.domains // []) | type == "array")' "$settings" >/dev/null 2>&1 || return 1
-enabled=$(jq -r '.enabled // false' "$settings")
+socks5OutboundValidateProfile(){
+local profile=$1 name enabled address port username password
+jq -e 'type == "object" and ((.enabled // false) | type == "boolean") and ((.server // {}) | type == "object") and ((.domains // []) | type == "array")' <<< "$profile" >/dev/null 2>&1 || return 1
+name=$(jq -r '.name // empty' <<< "$profile")
+[[ -z $name || $name =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$ ]] || return 1
+enabled=$(jq -r '.enabled // false' <<< "$profile")
 [[ $enabled = true || $enabled = false ]] || return 1
 [[ $enabled = true ]] || return 0
 
-address=$(jq -r '.server.address // empty' "$settings")
-port=$(jq -r '.server.port // empty' "$settings")
-username=$(jq -r '.server.username // empty' "$settings")
-password=$(jq -r '.server.password // empty' "$settings")
+address=$(jq -r '.server.address // empty' <<< "$profile")
+port=$(jq -r '.server.port // empty' <<< "$profile")
+username=$(jq -r '.server.username // empty' <<< "$profile")
+password=$(jq -r '.server.password // empty' <<< "$profile")
 [[ $address =~ ^[A-Za-z0-9.-]+$ || $address =~ ^[0-9A-Fa-f:]+$ ]] || return 1
 [[ $port =~ ^[1-9][0-9]{0,4}$ ]] && (( 10#$port <= 65535 )) || return 1
 [[ -z $username && -z $password ]] || {
   [[ -n $username && -n $password ]] || return 1
   [[ $username != *[[:space:]]* && $password != *[[:space:]]* ]] || return 1
 }
-jq -e '.domains | length > 0 and all(.[]; type == "string" and length > 0 and (test("[[:space:]]") | not))' "$settings" >/dev/null 2>&1 || return 1
+jq -e '.domains | length > 0 and all(.[]; type == "string" and length > 0 and (test("[[:space:]]") | not))' <<< "$profile" >/dev/null 2>&1 || return 1
 return 0
 }
 
 
-socks5OutboundConfig(){
+socks5OutboundProfiles(){
 local settings=$1
-socks5OutboundValidate "$settings" || return 1
-[[ $(jq -r '.enabled' "$settings") = true ]] || return 0
+jq -c '
+  if (.profiles | type) == "array" then
+    [.profiles[] | {tag:(if .name == "default" then "socks5-exit" else "socks5-exit-" + .name end), profile:.}]
+  elif ((.enabled // false) == true or (.server.address // "") != "" or ((.domains // []) | length) > 0) then
+    [{tag:"socks5-exit", profile:(. + {name:"default"})}]
+  else
+    []
+  end
+' "$settings"
+}
+
+
+socks5OutboundProfile(){
+local name=$1 profiles
+[[ -s $socks5OutboundSettings ]] || return 1
+profiles=$(socks5OutboundProfiles "$socks5OutboundSettings") || return 1
+jq -c --arg name "$name" '.[] | select(.profile.name == $name) | .profile' <<< "$profiles"
+}
+
+
+socks5OutboundValidate(){
+local settings=$1 profile names domains
+[[ -s $settings ]] || return 1
+if jq -e 'type == "object" and (.profiles | type) == "array"' "$settings" >/dev/null 2>&1; then
+  names=$(jq -c '[.profiles[].name] | length == (unique | length)' "$settings") || return 1
+  [[ $names = true ]] || return 1
+  domains=$(jq -c '[.profiles[] | select(.enabled == true) | .domains[]] | length == (unique | length)' "$settings") || return 1
+  [[ $domains = true ]] || return 1
+  while IFS= read -r profile; do
+    socks5OutboundValidateProfile "$profile" || return 1
+  done < <(jq -c '.profiles[]' "$settings")
+  return 0
+fi
+
+profile=$(jq -c '. + {name:"default"}' "$settings" 2>/dev/null) || return 1
+socks5OutboundValidateProfile "$profile"
+}
+
+
+socks5OutboundConfig(){
+local profile=$1
+socks5OutboundValidateProfile "$profile" || return 1
+[[ $(jq -r '.enabled // false' <<< "$profile") = true ]] || return 0
 jq -c '
   {
-    "tag": "socks5-exit",
+    "tag": (if .name == "default" then "socks5-exit" else "socks5-exit-" + .name end),
     "protocol": "socks",
     "settings": {
       "servers": [{
@@ -1613,34 +1655,41 @@ jq -c '
       } else {} end)]
     }
   }
-' "$settings"
+' <<< "$profile"
 }
 
 
 socks5OutboundSync(){
-local config=/opt/de_GWD/vtrui/config.json enabled=false outbound domains candidate
+local config=/opt/de_GWD/vtrui/config.json profiles outbounds rules candidate
 [[ -s $config ]] || return 1
 if [[ -s $socks5OutboundSettings ]]; then
   socks5OutboundValidate "$socks5OutboundSettings" || return 1
-  enabled=$(jq -r '.enabled // false' "$socks5OutboundSettings")
+  profiles=$(socks5OutboundProfiles "$socks5OutboundSettings") || return 1
+else
+  profiles='[]'
 fi
+outbounds=$(jq -c '[.[] | select(.profile.enabled == true) | {
+  tag:.tag,
+  protocol:"socks",
+  settings:{servers:[{
+    address:.profile.server.address,
+    port:(.profile.server.port | tonumber)
+  } + (if (.profile.server.username // "") != "" then {
+    users:[{user:.profile.server.username,pass:.profile.server.password}]
+  } else {} end)]}
+}]' <<< "$profiles") || return 1
+rules=$(jq -c '[.[] | select(.profile.enabled == true) | {
+  type:"field",
+  domain:.profile.domains,
+  outboundTag:.tag
+}]' <<< "$profiles") || return 1
 
 candidate=$(mktemp /tmp/de_GWD-socks5-outbound.XXXXXX) || return 1
-if [[ $enabled = true ]]; then
-  outbound=$(socks5OutboundConfig "$socks5OutboundSettings") || { rm -f "$candidate"; return 1; }
-  domains=$(jq -c '.domains' "$socks5OutboundSettings") || { rm -f "$candidate"; return 1; }
-  jq --argjson outbound "$outbound" --argjson domains "$domains" '
-    .outbounds = (((.outbounds // []) | map(select(.tag != "socks5-exit"))) + [$outbound])
-    | .routing = (.routing // {})
-    | .routing.rules = ([{"type":"field","domain":$domains,"outboundTag":"socks5-exit"}] + ((.routing.rules // []) | map(select(.outboundTag != "socks5-exit"))))
-  ' "$config" > "$candidate" || { rm -f "$candidate"; return 1; }
-else
-  jq '
-    .outbounds = ((.outbounds // []) | map(select(.tag != "socks5-exit")))
-    | .routing = (.routing // {})
-    | .routing.rules = ((.routing.rules // []) | map(select(.outboundTag != "socks5-exit")))
-  ' "$config" > "$candidate" || { rm -f "$candidate"; return 1; }
-fi
+jq --argjson outbounds "$outbounds" --argjson rules "$rules" '
+  .outbounds = (((.outbounds // []) | map(select(((.tag // "") | startswith("socks5-exit")) | not))) + $outbounds)
+  | .routing = (.routing // {})
+  | .routing.rules = ($rules + ((.routing.rules // []) | map(select(((.outboundTag // "") | startswith("socks5-exit")) | not))))
+' "$config" > "$candidate" || { rm -f "$candidate"; return 1; }
 cat "$candidate" | sponge "$config" || { rm -f "$candidate"; return 1; }
 rm -f "$candidate"
 return 0
@@ -1701,7 +1750,7 @@ return 0
 
 
 socks5OutboundStatus(){
-local enabled address port username domains
+local profiles name enabled address port username domains statusText index=1 hasEnabled=0
 echo -e "${BLUE}------------------------------------------------ ${cRES}"
 echo -e "${GREEN}SOCKS5 outbound${cRES}"
 if [[ ! -s $socks5OutboundSettings ]]; then
@@ -1714,32 +1763,44 @@ if ! socks5OutboundValidate "$socks5OutboundSettings"; then
   echo -e "${BLUE}------------------------------------------------ ${cRES}"
   return 1
 fi
-enabled=$(jq -r '.enabled // false' "$socks5OutboundSettings")
-[[ $enabled = true ]] || {
+profiles=$(socks5OutboundProfiles "$socks5OutboundSettings") || return 1
+[[ $(jq -r 'length' <<< "$profiles") -gt 0 ]] || {
   echo -e "${BLUE}Status:       ${YELLOW}disabled${cRES}"
   echo -e "${BLUE}------------------------------------------------ ${cRES}"
   return 0
 }
-address=$(jq -r '.server.address' "$socks5OutboundSettings")
-port=$(jq -r '.server.port' "$socks5OutboundSettings")
-username=$(jq -r '.server.username // empty' "$socks5OutboundSettings")
-domains=$(jq -r '.domains | length' "$socks5OutboundSettings")
-echo -e "${BLUE}Status:       ${GREEN}enabled${cRES}"
-echo -e "${BLUE}Server:       ${YELLOW}$address:$port${cRES}"
-echo -e "${BLUE}Auth:         ${YELLOW}$([[ -n $username ]] && echo enabled || echo disabled)${cRES}"
-echo -e "${BLUE}Domain rules: ${YELLOW}$domains${cRES}"
+while IFS=$'\t' read -r name enabled address port username domains; do
+  [[ $enabled = true ]] && hasEnabled=1
+  [[ $enabled = true ]] && statusText="${GREEN}enabled" || statusText="${YELLOW}disabled"
+  echo -e "${BLUE}$index. ${WHITE}$name${cRES}  Status: ${statusText}${cRES}"
+  echo -e "${BLUE}   Server:       ${YELLOW}${address:-not configured}${address:+:$port}${cRES}"
+  echo -e "${BLUE}   Auth:         ${YELLOW}$([[ -n $username ]] && echo enabled || echo disabled)${cRES}"
+  echo -e "${BLUE}   Domain rules: ${YELLOW}$domains${cRES}"
+  index=$((index + 1))
+done < <(jq -r '.[] | [.profile.name, (.profile.enabled // false), (.profile.server.address // ""), (.profile.server.port // ""), (.profile.server.username // ""), ((.profile.domains // []) | length)] | @tsv' <<< "$profiles")
+[[ $hasEnabled = 1 ]] || echo -e "${BLUE}Status:       ${YELLOW}all profiles disabled${cRES}"
 echo -e "${BLUE}------------------------------------------------ ${cRES}"
 }
 
 
 socks5OutboundConfigure(){
-local base oldAddress oldPort oldUsername oldPassword oldDomains address port username password domainInput domainsJson candidate
+local base name current oldAddress oldPort oldUsername oldPassword oldDomains address port username password domainInput domainsJson profileJson baseProfiles candidate
 base=$(socks5OutboundSettingsOrDefault) || return 1
-oldAddress=$(jq -r '.server.address // empty' <<< "$base")
-oldPort=$(jq -r '.server.port // empty' <<< "$base")
-oldUsername=$(jq -r '.server.username // empty' <<< "$base")
-oldPassword=$(jq -r '.server.password // empty' <<< "$base")
-oldDomains=$(jq -r '.domains // [] | join(",")' <<< "$base")
+read -r -p "Exit name [default]: " name
+name=${name:-default}
+[[ $name =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$ ]] || {
+  echo -e "${WHITE}SOCKS5 outbound${RED} invalid exit name${cRES}"
+  return 1
+}
+current=$(socks5OutboundProfile "$name" 2>/dev/null || true)
+if [[ -z $current ]]; then
+  current='{"name":"","enabled":false,"server":{"address":"","port":1080,"username":"","password":""},"domains":[]}'
+fi
+oldAddress=$(jq -r '.server.address // empty' <<< "$current")
+oldPort=$(jq -r '.server.port // empty' <<< "$current")
+oldUsername=$(jq -r '.server.username // empty' <<< "$current")
+oldPassword=$(jq -r '.server.password // empty' <<< "$current")
+oldDomains=$(jq -r '.domains // [] | join(",")' <<< "$current")
 read -r -p "SOCKS5 server address [$oldAddress]: " address
 address=${address:-$oldAddress}
 read -r -p "SOCKS5 server port [$oldPort]: " port
@@ -1760,10 +1821,25 @@ if [[ $(jq -r 'length' <<< "$domainsJson") = 0 ]]; then
   echo -e "${WHITE}SOCKS5 outbound${RED} at least one domain rule is required${cRES}"
   return 1
 fi
+profileJson=$(jq -n --arg name "$name" --arg address "$address" --arg port "$port" --arg username "$username" --arg password "$password" --argjson domains "$domainsJson" '{name:$name,enabled:true,server:{address:$address,port:$port,username:$username,password:$password},domains:$domains}') || return 1
 candidate=$(mktemp /tmp/de_GWD-socks5-outbound.XXXXXX) || return 1
-if ! jq --arg address "$address" --arg port "$port" --arg username "$username" --arg password "$password" --argjson domains "$domainsJson" '{enabled:true,server:{address:$address,port:$port,username:$username,password:$password},domains:$domains}' <<< '{}' > "$candidate"; then
-  rm -f "$candidate"
-  return 1
+if [[ -s $socks5OutboundSettings ]] && jq -e '(.profiles | type) == "array"' "$socks5OutboundSettings" >/dev/null 2>&1; then
+  if ! jq --argjson profile "$profileJson" '.profiles = ([.profiles[] | select(.name != $profile.name)] + [$profile])' "$socks5OutboundSettings" > "$candidate"; then
+    rm -f "$candidate"
+    return 1
+  fi
+else
+  baseProfiles=$(jq -c '
+    if (.profiles | type) == "array" then .profiles
+    elif ((.enabled // false) == true or (.server.address // "") != "" or ((.domains // []) | length) > 0) then
+      [{name:"default",enabled:(.enabled // false),server:(.server // {}),domains:(.domains // [])}]
+    else []
+    end
+  ' <<< "$base") || { rm -f "$candidate"; return 1; }
+  if ! jq -n --argjson profiles "$baseProfiles" --argjson profile "$profileJson" '{profiles:([$profiles[] | select(.name != $profile.name)] + [$profile])}' > "$candidate"; then
+    rm -f "$candidate"
+    return 1
+  fi
 fi
 if ! socks5OutboundApply "$candidate"; then
   echo -e "${WHITE}SOCKS5 outbound${RED} configuration failed; previous configuration kept${cRES}"
@@ -1777,7 +1853,12 @@ socks5OutboundDisable(){
 local candidate base
 base=$(socks5OutboundSettingsOrDefault) || return 1
 candidate=$(mktemp /tmp/de_GWD-socks5-outbound.XXXXXX) || return 1
-if ! jq '.enabled=false' <<< "$base" > "$candidate"; then
+if [[ -s $socks5OutboundSettings ]] && jq -e '(.profiles | type) == "array"' "$socks5OutboundSettings" >/dev/null 2>&1; then
+  if ! jq '.profiles |= map(.enabled=false)' "$socks5OutboundSettings" > "$candidate"; then
+    rm -f "$candidate"
+    return 1
+  fi
+elif ! jq '.enabled=false' <<< "$base" > "$candidate"; then
   rm -f "$candidate"
   return 1
 fi
@@ -1789,18 +1870,64 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] SOCKS5 outbound ${RED}disabled${cRES}"
 }
 
 
+socks5OutboundDelete(){
+local profiles count number index name candidate base
+[[ -s $socks5OutboundSettings ]] || {
+  echo -e "${WHITE}SOCKS5 outbound${YELLOW} No profiles configured${cRES}"
+  return 0
+}
+socks5OutboundValidate "$socks5OutboundSettings" || return 1
+profiles=$(socks5OutboundProfiles "$socks5OutboundSettings") || return 1
+count=$(jq -r 'length' <<< "$profiles")
+(( count > 0 )) || {
+  echo -e "${WHITE}SOCKS5 outbound${YELLOW} No profiles configured${cRES}"
+  return 0
+}
+while IFS=$'\t' read -r index name; do
+  echo -e "${GREEN}$((index + 1)). $name${cRES}"
+done < <(jq -r 'to_entries[] | [.key,.value.profile.name] | @tsv' <<< "$profiles")
+read -r -p "Profile number: " number
+[[ $number =~ ^[1-9][0-9]*$ ]] || return 1
+index=$((10#$number - 1))
+(( index >= 0 && index < count )) || return 1
+name=$(jq -r --argjson index "$index" '.[$index].profile.name' <<< "$profiles")
+candidate=$(mktemp /tmp/de_GWD-socks5-outbound.XXXXXX) || return 1
+if jq -e '(.profiles | type) == "array"' "$socks5OutboundSettings" >/dev/null 2>&1; then
+  jq --arg name "$name" '.profiles |= map(select(.name != $name))' "$socks5OutboundSettings" > "$candidate" || { rm -f "$candidate"; return 1; }
+else
+  base=$(socks5OutboundSettingsOrDefault) || { rm -f "$candidate"; return 1; }
+  jq '.enabled=false' <<< "$base" > "$candidate" || { rm -f "$candidate"; return 1; }
+fi
+socks5OutboundApply "$candidate" || {
+  echo -e "${WHITE}SOCKS5 outbound${RED} delete failed; previous configuration kept${cRES}"
+  return 1
+}
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] SOCKS5 profile ${YELLOW}$name${WHITE} deleted${cRES}"
+}
+
+
 socks5OutboundMenu(){
 while true; do
   socks5OutboundStatus
-  echo -e "${GREEN}1. Configure and enable${cRES}"
-  echo -e "${GREEN}2. Disable${cRES}"
-  echo -e "${GREEN}3. Validate configuration${cRES}"
+  echo -e "${GREEN}1. Add or edit exit${cRES}"
+  echo -e "${GREEN}2. Delete exit${cRES}"
+  echo -e "${GREEN}3. Disable all exits${cRES}"
+  echo -e "${GREEN}4. Validate configuration${cRES}"
   echo -e "${GREEN}0. Back${cRES}"
   read -r -p "Select: " choice || return
   case "$choice" in
     1) socks5OutboundConfigure ;;
-    2) socks5OutboundDisable ;;
-    3) socks5OutboundValidate "$socks5OutboundSettings" && echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] Configuration valid${cRES}" || echo -e "${WHITE}[ ${RED}✕ ${WHITE}] Configuration invalid${cRES}" ;;
+    2) socks5OutboundDelete ;;
+    3) socks5OutboundDisable ;;
+    4)
+      if [[ ! -s $socks5OutboundSettings ]]; then
+        echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] No profiles configured${cRES}"
+      elif socks5OutboundValidate "$socks5OutboundSettings"; then
+        echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] Configuration valid${cRES}"
+      else
+        echo -e "${WHITE}[ ${RED}✕ ${WHITE}] Configuration invalid${cRES}"
+      fi
+      ;;
     0) return ;;
     *) echo -e "${RED}Wrong number${cRES}" ;;
   esac

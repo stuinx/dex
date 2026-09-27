@@ -33,12 +33,17 @@ function rewrite(value) {
 const functions = rewrite([
   'XrayOutboundDirect',
   'socks5OutboundSettingsOrDefault',
+  'socks5OutboundValidateProfile',
+  'socks5OutboundProfiles',
+  'socks5OutboundProfile',
   'socks5OutboundValidate',
   'socks5OutboundConfig',
   'socks5OutboundSync',
   'socks5OutboundApply',
   'socks5OutboundStatus',
-  'socks5OutboundConfigure'
+  'socks5OutboundConfigure',
+  'socks5OutboundDisable',
+  'socks5OutboundDelete'
 ].map(extractFunction).join('\n'));
 
 const prelude = `
@@ -115,6 +120,23 @@ const enabledSettings = {
   domains: ['domain:example.com', 'full:api.example.com']
 };
 
+const multiSettings = {
+  profiles: [
+    {
+      name: 'sg',
+      enabled: true,
+      server: {address: 'sg.example.test', port: 1080, username: 'sg-user', password: 'sg-password'},
+      domains: ['geosite:netflix', 'geosite:disney']
+    },
+    {
+      name: 'us',
+      enabled: true,
+      server: {address: 'us.example.test', port: 1081, username: '', password: ''},
+      domains: ['domain:claude.ai', 'domain:anthropic.com']
+    }
+  ]
+};
+
 try {
   reset(baseConfig);
   run('XrayOutboundDirect');
@@ -152,8 +174,49 @@ try {
     console.log('PASS: native Xray validation for enabled SOCKS5 outbound');
   }
 
+  reset(baseConfig, multiSettings);
+  run('socks5OutboundSync');
+  config = readJson(configPath);
+  assert.deepEqual(config.outbounds.map(item => item.tag), ['direct', 'custom', 'socks5-exit-sg', 'socks5-exit-us']);
+  assert.deepEqual(config.routing.rules.slice(0, 2).map(rule => [rule.domain, rule.outboundTag]), [
+    [multiSettings.profiles[0].domains, 'socks5-exit-sg'],
+    [multiSettings.profiles[1].domains, 'socks5-exit-us']
+  ]);
+  assert.deepEqual(config.routing.rules.slice(2), baseConfig.routing.rules);
+  const multiStatus = run('socks5OutboundStatus');
+  assert(multiStatus.stdout.includes('sg'));
+  assert(multiStatus.stdout.includes('us'));
+  assert(!multiStatus.stdout.includes('sg-password'));
+  console.log('PASS: multiple profiles generate independent outbounds and domain routes');
+
+  run("socks5OutboundDelete <<< $'2\\n'");
+  assert.deepEqual(readJson(settingsPath).profiles.map(profile => profile.name), ['sg']);
+  config = readJson(configPath);
+  assert(config.outbounds.some(item => item.tag === 'socks5-exit-sg'));
+  assert(!config.outbounds.some(item => item.tag === 'socks5-exit-us'));
+  console.log('PASS: deleting a profile removes only its outbound and routes');
+
+  reset(baseConfig, multiSettings);
+  run('socks5OutboundSync');
+  run('socks5OutboundDisable');
+  assert(readJson(settingsPath).profiles.every(profile => profile.enabled === false));
+  config = readJson(configPath);
+  assert(!config.outbounds.some(item => item.tag.startsWith('socks5-exit')));
+  console.log('PASS: disabling all profiles removes all SOCKS5 outbounds while preserving other routes');
+
+  reset(baseConfig, enabledSettings);
+  const addProfile = run("socks5OutboundConfigure <<< $'us\\nus.example.test\\n1081\\nus-user\\nus-password\\ndomain:claude.ai\\n'");
+  assert(addProfile.stdout.includes('SOCKS5 outbound'));
+  const migratedSettings = readJson(settingsPath);
+  assert.deepEqual(migratedSettings.profiles.map(profile => profile.name), ['default', 'us']);
+  config = readJson(configPath);
+  assert(config.outbounds.some(item => item.tag === 'socks5-exit'));
+  assert(config.outbounds.some(item => item.tag === 'socks5-exit-us'));
+  assert(config.routing.rules.some(rule => rule.outboundTag === 'socks5-exit-us' && rule.domain.includes('domain:claude.ai')));
+  console.log('PASS: adding a profile preserves the legacy exit and creates an independent exit');
+
   reset(baseConfig);
-  const emptyDomain = run("socks5OutboundConfigure <<< $'proxy.example.test\\n1080\\nuser\\npassword\\n'", true);
+  const emptyDomain = run("socks5OutboundConfigure <<< $'default\\nproxy.example.test\\n1080\\nuser\\npassword\\n\\n'", true);
   assert.notEqual(emptyDomain.status, 0);
   assert(emptyDomain.stdout.includes('at least one domain rule is required'));
   assert(!emptyDomain.stderr.includes('invalid JSON text'));
