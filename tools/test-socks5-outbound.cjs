@@ -216,12 +216,15 @@ try {
   console.log('PASS: adding a profile preserves the legacy exit and creates an independent exit');
 
   reset(baseConfig);
-  const emptyDomain = run("socks5OutboundConfigure <<< $'default\\nproxy.example.test\\n1080\\nuser\\npassword\\n\\n'", true);
-  assert.notEqual(emptyDomain.status, 0);
-  assert(emptyDomain.stdout.includes('at least one domain rule is required'));
-  assert(!emptyDomain.stderr.includes('invalid JSON text'));
-  assert(!fs.existsSync(settingsPath));
-  console.log('PASS: empty domain input is rejected with a clear message');
+  const emptyDomain = run("socks5OutboundConfigure <<< $'default\\nproxy.example.test\\n1080\\nuser\\npassword\\n\\n'");
+  assert.equal(emptyDomain.status, 0, emptyDomain.stderr || emptyDomain.stdout);
+  const defaultSettings = readJson(settingsPath);
+  assert.equal(defaultSettings.profiles[0].name, 'default');
+  assert.deepEqual(defaultSettings.profiles[0].domains, []);
+  config = readJson(configPath);
+  assert.deepEqual(config.outbounds.map(item => item.tag), ['socks5-exit', ...baseConfig.outbounds.map(item => item.tag)]);
+  assert.deepEqual(config.routing.rules, baseConfig.routing.rules);
+  console.log('PASS: default SOCKS5 exit accepts empty domain rules and handles unmatched traffic');
 
   reset(baseConfig, enabledSettings);
   run('socks5OutboundSync');

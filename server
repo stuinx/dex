@@ -1686,7 +1686,7 @@ outbounds=$(jq -c '[.[] | select(.profile.enabled == true) | {
     users:[{user:.profile.server.username,pass:.profile.server.password}]
   } else {} end)]}
 }]' <<< "$profiles") || return 1
-rules=$(jq -c '[.[] | select(.profile.enabled == true and .profile.name != "default") | {
+rules=$(jq -c '[.[] | select(.profile.enabled == true and (.profile.domains | length) > 0) | {
   type:"field",
   domain:.profile.domains,
   outboundTag:.tag
