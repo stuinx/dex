@@ -30,11 +30,11 @@ nodeSMDomains=(
   '["domain:telegram.org","domain:t.me","domain:telegra.ph"]'
   '["domain:x.com","domain:twitter.com","domain:twimg.com"]'
   '["geosite:openai"]'
-  '["geosite:apple","geosite:apple-ads","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
+  '["geosite:apple","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
 )
 managedTags='["nodeSMyoutube","nodeSMclaude","nodeSMgemini","nodeSMgrok","nodeSMwikipedia","nodeSMreddit","nodeSMgithub","nodeSMdiscord","nodeSMtelegram","nodeSMx","nodeSMopenai","nodeSMapple","nodeSMsteam","nodeSMnetflix","nodeSMhdh","nodeSMtvb","nodeSMbahamut"]'
 managedKeys='["youtube","claude","gemini","grok","wikipedia","reddit","github","discord","telegram","x","openai","apple","steam","netflix","hdh","tvb","bahamut"]'
-appleDomains='["geosite:apple","geosite:apple-ads","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
+appleDomains='["geosite:apple","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
 steamDomains='["domain:steamserver.net","geosite:steam@cn","geosite:category-games@cn"]'
 
 savedNodeSM=()

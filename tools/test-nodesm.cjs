@@ -109,10 +109,16 @@ try {
   assert.equal(config.outbounds.filter(outbound => outbound.tag === 'nodeSMclaude').length, 1);
   assert.equal(config.routing.rules.filter(rule => rule.outboundTag === 'nodeSMclaude').length, 1);
 
+  run('ui-NodeSM', ['r', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '1', '0']);
+  config = readJson('vtrui/config.json');
+  assert(config.routing.rules.some(rule => rule.outboundTag === 'nodeSMapple' && rule.domain.includes('geosite:apple')));
+  assert(!config.routing.rules.some(rule => rule.domain.includes('geosite:apple-ads')));
+
   run('ui-NodeSM', ['r', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0']);
   config = readJson('vtrui/config.json');
   assert(!config.outbounds.some(outbound => outbound.tag.startsWith('nodeSM')));
   assert(config.routing.rules.some(rule => rule.outboundTag === 'direct' && rule.domain.includes('geosite:apple')));
+  assert(!config.routing.rules.some(rule => rule.domain.includes('geosite:apple-ads')));
   assert(config.routing.rules.some(rule => rule.outboundTag === 'direct' && rule.domain.includes('domain:steamserver.net')));
   assert.equal(readJson('0conf').v2nodeDIV.nodeSM.status, 'off');
   console.log('PASS: predefined routes, mixed protocols, legacy cleanup, rebuild, reset, and status detection');
