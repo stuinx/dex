@@ -21,7 +21,7 @@ function fn(name, source=server) {
   return block.slice(0, block.lastIndexOf('\n}') + 2);
 }
 const funcs = ['mainInbound','extraVmessWSNginxConf','nginxWebConf','XrayInbound','extra_settingsOrDefault',
-  'extra_validateSettings','extraNginxWebConf','extraXrayInbounds','extra_applyCandidate','extra_printNodes','extra_uriEncode','extra_vlessWSUrl','mainMigrate','extra_vmessWS','extra_vlessWS',
+  'extra_validateSettings','extraNginxWebConf','extraXrayInbounds','extra_applyCandidate','extra_printNodes','extra_uriEncode','extra_vlessWSUrl','mainMigrate','extra_vmessWS','extra_vlessWS','printNode',
   'deGWD_featureValidPort','deGWD_featureValidUUID','deGWD_featureValidHost','deGWD_featureUUID','deGWD_featureParseHostPort',
   'extra_validPort','extra_validUUID','extra_validHost','extra_parseDomainPort'];
 const prelude = `set -eo pipefail
@@ -34,6 +34,7 @@ extra_mainDomain() { echo example.test; }
 extra_mainPort() { echo 443; }
 extra_portAvailable() { return 0; }
 extra_certificateCovers() { return 0; }
+haproxy_printRules() { :; }
 extraSettings='${opt}/extra-inbounds.json'
 extraVlessWSConf='${nginx}/vless-ws.conf'
 legacyVmessConf='${nginx}/vmess.conf'
@@ -107,6 +108,10 @@ try {
   assert.equal(vmessWSSettings.vmess_ws.port,55445);
   assert.match(run('extra_printNodes'),/VMess WebSocket TLS/);
   assert.match(run('extra_printNodes'),/TLS:\s+vmess-ws\.example/);
+  const mainNodeOutput=run('printNode');
+  assert.match(mainNodeOutput,/Node Information/);
+  assert.doesNotMatch(mainNodeOutput,/VMess WebSocket TLS/);
+  assert.doesNotMatch(mainNodeOutput,/VLESS WebSocket TLS/);
   assert.match(fs.readFileSync(nginx + '/vmess-ws.conf','utf8'),/server_name vmess-ws\.example;/);
   assert.match(fs.readFileSync(nginx + '/vmess-ws.conf','utf8'),/proxy_pass http:\/\/127\.0\.0\.1:9893/);
   assert.match(fs.readFileSync(nginx + '/vmess-ws.conf','utf8'),/include .*\/\.ssl_certs;/);

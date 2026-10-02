@@ -5434,7 +5434,6 @@ echo "Protocol: $(mainInbound | jq -r '.protocol')"
 qrencode -t UTF8 -s 1 -m 3 $subUrl
 echo
 echo -e "${BLUE}Link:      ${YELLOW}${subUrl}${cRES}"
-extra_printNodes
 echo -e "${BLUE}-------------------------------------------------- ${cRES}"
 }
 
