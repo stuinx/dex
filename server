@@ -5377,20 +5377,20 @@ fi
 while true; do
   extra_show
   echo -e "$GREEN 1. VLESS WS$cRES"
-  echo -e "$GREEN 2. VLESS REALITY$cRES"
-  echo -e "$GREEN 3. SOCKS5$cRES"
-  echo -e "$GREEN 4. Port forwarding$cRES"
-  echo -e "$GREEN 5. Show nodes$cRES"
-  echo -e "$GREEN 6. VMESS WS$cRES"
+  echo -e "$GREEN 2. VMESS WS$cRES"
+  echo -e "$GREEN 3. VLESS REALITY$cRES"
+  echo -e "$GREEN 4. SOCKS5$cRES"
+  echo -e "$GREEN 5. Port forwarding$cRES"
+  echo -e "$GREEN 9. Show nodes$cRES"
   echo -e "$GREEN 0. Back$cRES"
   read -r -p "Select: " choice || return
   case "$choice" in
     1) extra_vlessWS ;;
-    2) extra_reality ;;
-    3) extra_socks5 ;;
-    4) extra_dokodemo ;;
-    5) extra_printNodes ;;
-    6) extra_vmessWS ;;
+    2) extra_vmessWS ;;
+    3) extra_reality ;;
+    4) extra_socks5 ;;
+    5) extra_dokodemo ;;
+    9) extra_printNodes ;;
     0) return 0 ;;
     *) echo -e "$RED Wrong number$cRES" ;;
   esac
