@@ -12,12 +12,15 @@ cRES='\E[0m'
 chmod 777 /tmp
 architecture=$(dpkg --print-architecture)
 export DEBIAN_FRONTEND=noninteractive
-TTYD_Ver="1.7.3"
+TTYD_Ver="1.7.7"
+TTYD_SHA256_x86_64="8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55"
+TTYD_SHA256_aarch64="b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165"
 aptGetOpts=(-o Acquire::Retries=2 -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::http::Pipeline-Depth=0 -o Acquire::https::Pipeline-Depth=0)
 repoOwner="${DE_GWD_REPO_OWNER:-stuinx}"
 repoName="${DE_GWD_REPO_NAME:-dex}"
-branch="${DE_GWD_BRANCH:-dev}"
+branch="${DE_GWD_BRANCH:-main}"
 repoBase="${DE_GWD_RAW_BASE:-https://gh.stuinx.eu.org/https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}}"
+repoFallbackBase="${DE_GWD_RAW_FALLBACK_BASE:-https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}}"
 chnrouteBase="${DE_GWD_CHNROUTE_BASE:-https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/chnroute/main}"
 
 
@@ -161,7 +164,16 @@ if [[ $currentEpoch -lt 1700000000 ]]; then
   echo -e "${WHITE}System time${RED} Clock is not plausible${cRES}"
   exit 1
 fi
-if command -v timedatectl >/dev/null 2>&1 && [[ $(timedatectl show -p NTPSynchronized --value 2>/dev/null) = "no" ]]; then
+local chronySynchronized="false"
+if command -v chronyc >/dev/null 2>&1 && systemctl is-active --quiet chrony 2>/dev/null; then
+  if chronyc tracking 2>/dev/null | grep -qE '^[[:space:]]*Leap status[[:space:]]*:[[:space:]]*Normal$' \
+    && chronyc -n sources 2>/dev/null | grep -qE '^[[:space:]]*\^\*'; then
+    chronySynchronized="true"
+  fi
+fi
+if command -v timedatectl >/dev/null 2>&1 \
+  && [[ $(timedatectl show -p NTPSynchronized --value 2>/dev/null) = "no" ]] \
+  && [[ $chronySynchronized != "true" ]]; then
   echo -e "${WHITE}System time${YELLOW} NTP is not synchronized; TLS results require follow-up${cRES}"
 fi
 }
@@ -236,7 +248,7 @@ else
     if [[ -n $sha256sum_de_GWD ]] && [[ $(checkSum /opt/de_GWD/.repo/de_GWD.zip $sha256sum_de_GWD) = "false" ]]; then
     rm -rf /tmp/de_GWD.zip
     wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip "$repoBase/de_GWD_${architecture}.zip"
-    [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && rm -rf /tmp/de_GWD.zip && wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip "https://de-gwd.accxio.workers.dev/de_GWD_${architecture}.zip"
+    [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && rm -rf /tmp/de_GWD.zip && wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip "$repoFallbackBase/de_GWD_${architecture}.zip"
     [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit 1
     [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "true" ]] && mv -f /tmp/de_GWD.zip /opt/de_GWD/.repo/de_GWD.zip
     fi
@@ -285,8 +297,15 @@ fi
 
 if [[ $(ttyd -v 2>&1 | grep -o '[0-9]\.[0-9]\.[0-9]') != $TTYD_Ver ]]; then
 ttydBase="${DE_GWD_TTYD_BASE:-https://gh.stuinx.eu.org/https://github.com/tsl0922/ttyd/releases/download}"
-wget --show-progress -cqO /tmp/ttyd "$ttydBase/$TTYD_Ver/ttyd.$(uname -m)"
+ttydArch=$(uname -m)
+case "$ttydArch" in
+  x86_64) ttydExpectedSha256=$TTYD_SHA256_x86_64 ;;
+  aarch64) ttydExpectedSha256=$TTYD_SHA256_aarch64 ;;
+  *) echo -e "${WHITE}TTYD${RED} Unsupported architecture${cRES}"; exit 1 ;;
+esac
+wget --show-progress -cqO /tmp/ttyd "$ttydBase/$TTYD_Ver/ttyd.$ttydArch"
 [[ $? -ne 0 ]] && echo -e "${WHITE}TTYD${RED} Download Failed${cRES}" && exit 1
+[[ $(sha256sum /tmp/ttyd 2>/dev/null | awk '{print$1}') = "$ttydExpectedSha256" ]] || { echo -e "${WHITE}TTYD${RED} Checksum Failed${cRES}"; exit 1; }
 [[ $(du -sk /tmp/ttyd 2>/dev/null | awk '{print$1}') -gt 1000 ]] && mv -f /tmp/ttyd /usr/bin/ttyd && chmod +x /usr/bin/ttyd && TTYD_UPDATE="true"
 fi
 
@@ -1896,7 +1915,10 @@ EOF
 
 echo "deb [signed-by=/etc/apt/keyrings/deb.sury.org.gpg] https://packages.sury.org/php/ $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) main" >/etc/apt/sources.list.d/php.list
 apt-key del 95BD4743 >/dev/null 2>&1
-curl -sSLo /etc/apt/keyrings/deb.sury.org.gpg https://packages.sury.org/php/apt.gpg
+curl -4 -fsSLo /etc/apt/keyrings/deb.sury.org.gpg \
+  --connect-timeout 10 --max-time 60 \
+  --retry 5 --retry-delay 2 --retry-all-errors \
+  https://packages.sury.org/php/apt.gpg
 [[ $? -ne 0 ]] && echo -e "${WHITE}PHP apt key${RED} Download Failed${cRES}" && exit 1
 
 apt-get "${aptGetOpts[@]}" update -o APT::Update::Error-Mode=any && apt-get "${aptGetOpts[@]}" upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
@@ -2306,7 +2328,7 @@ After=network.target
 User=root
 Type=oneshot
 ExecStartPre=/usr/bin/chmod +x /opt/de_GWD/update
-ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -o /opt/de_GWD/update
+ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -W -o /opt/de_GWD/update
 KillMode=process
 
 [Install]
@@ -2603,7 +2625,7 @@ serverName=$(jq -r '.address.serverName' /opt/de_GWD/0conf 2>/dev/null | grep -v
 nginxSet
 systemctl force-reload nginx >/dev/null
 
-sed -i "/ExecStart=/c\ExecStart=/usr/bin/ttyd -p $updatePort -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
+sed -i "/ExecStart=/c\ExecStart=/usr/bin/ttyd -p $updatePort -W -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
 systemctl daemon-reload >/dev/null
 
 jq --arg updatePort $updatePort '.update.updatePort=$updatePort' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf

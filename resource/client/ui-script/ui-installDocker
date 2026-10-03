@@ -8,7 +8,9 @@ PURPLE='\E[1;35m'
 CYAN='\E[1;36m'
 WHITE='\E[1;37m'
 cRES='\E[0m'
-dockerComposeVer_reserved="1.29.2"
+dockerComposeVer_default="v5.5.1"
+dockerComposeSha256_x86_64="db1889184726840f75c4f9c001048430d4f25b3be3cb084d3ddd762bc0aed576"
+dockerComposeSha256_aarch64="732e3a84c1a0f67256ce80bc2598a24546b10ca05f9faa97efceb1171ece2ef7"
 
 
 
@@ -47,10 +49,28 @@ EOF
 systemctl restart docker
 fi
 
-dockerComposeVer=$(curl -fsSL "https://api.github.com/repos/docker/compose/releases/latest" | jq -r .tag_name | grep -v '^null$')
-[[ -z $dockerComposeVer_reserved ]] && dockerComposeVer=$dockerComposeVer_reserved
+dockerComposeVer="${DE_GWD_DOCKER_COMPOSE_VERSION:-$dockerComposeVer_default}"
+dockerComposeOS=$(uname -s | tr '[:upper:]' '[:lower:]')
+dockerComposeArch=$(uname -m)
+[[ $dockerComposeOS = "linux" ]] || { echo -e "${WHITE}Docker Compose${RED} Unsupported OS${cRES}"; return 1; }
+[[ $dockerComposeArch = "x86_64" || $dockerComposeArch = "aarch64" ]] || { echo -e "${WHITE}Docker Compose${RED} Unsupported architecture${cRES}"; return 1; }
+dockerComposeExpectedSha256=""
+if [[ -z ${DE_GWD_DOCKER_COMPOSE_VERSION:-} ]]; then
+  case "$dockerComposeArch" in
+    x86_64) dockerComposeExpectedSha256=$dockerComposeSha256_x86_64 ;;
+    aarch64) dockerComposeExpectedSha256=$dockerComposeSha256_aarch64 ;;
+  esac
+fi
 
-curl -L https://github.com/docker/compose/releases/download/$dockerComposeVer/docker-compose-$(uname -s)-$(uname -m) >/usr/local/bin/docker-compose
+curl -fsSL -L "https://github.com/docker/compose/releases/download/$dockerComposeVer/docker-compose-$dockerComposeOS-$dockerComposeArch" -o /tmp/docker-compose || {
+  echo -e "${WHITE}Docker Compose${RED} Download Failed${cRES}"
+  return 1
+}
+if [[ -n $dockerComposeExpectedSha256 ]] && [[ $(sha256sum /tmp/docker-compose 2>/dev/null | awk '{print$1}') != "$dockerComposeExpectedSha256" ]]; then
+  echo -e "${WHITE}Docker Compose${RED} Checksum Failed${cRES}"
+  return 1
+fi
+mv -f /tmp/docker-compose /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install Docker${cRES}"

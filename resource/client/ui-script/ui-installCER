@@ -33,14 +33,16 @@ chmod 666 /opt/de_GWD/0conf
 curl -fsSL https://get.acme.sh | sh || exit 1
 "/root/.acme.sh"/acme.sh --force --upgrade --auto-upgrade || exit 1
 "/root/.acme.sh"/acme.sh --force --set-default-ca --server letsencrypt || exit 1
-"/root/.acme.sh"/acme.sh --force --issue --dns dns_cf -d "$domain" -d "*.$topDomain" -k ec-256 --dnssleep 180 || exit 1
-"/root/.acme.sh"/acme.sh --force --installcert -d "$domain" \
+"/root/.acme.sh"/acme.sh --force --issue --dns dns_cf -d "$topDomain" -d "*.$topDomain" -d "*.$domain" -k ec-256 --dnssleep 180 || exit 1
+"/root/.acme.sh"/acme.sh --force --installcert -d "$topDomain" \
                --key-file       /var/www/ssl/de_GWD.key  \
                --fullchain-file /var/www/ssl/de_GWD.cer \
                --ecc || exit 1
 
 [[ -s /var/www/ssl/de_GWD.cer ]] && [[ -s /var/www/ssl/de_GWD.key ]] || { echo -e "${WHITE}TLS certificate${RED} Certificate or key is missing${cRES}"; exit 1; }
-openssl x509 -in /var/www/ssl/de_GWD.cer -noout -checkhost "$domain" >/dev/null 2>&1 || { echo -e "${WHITE}TLS certificate${RED} Hostname is not covered${cRES}"; exit 1; }
+for certificateHost in "$domain" "probe.$topDomain" "probe.$domain"; do
+  openssl x509 -in /var/www/ssl/de_GWD.cer -noout -checkhost "$certificateHost" >/dev/null 2>&1 || { echo -e "${WHITE}TLS certificate${RED} Hostname is not covered: $certificateHost${cRES}"; exit 1; }
+done
 nginx -t >/dev/null 2>&1 || { echo -e "${WHITE}TLS certificate${RED} Nginx validation failed${cRES}"; exit 1; }
 systemctl force-reload nginx || exit 1
 

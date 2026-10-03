@@ -15,7 +15,7 @@ architecture=$(dpkg --print-architecture)
 export DEBIAN_FRONTEND=noninteractive
 repoOwner="${DE_GWD_REPO_OWNER:-stuinx}"
 repoName="${DE_GWD_REPO_NAME:-dex}"
-branch="${DE_GWD_BRANCH:-dev}"
+branch="${DE_GWD_BRANCH:-main}"
 repoBase="${DE_GWD_RAW_BASE:-https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}}"
 
 [[ -f "/etc/nginx/conf.d/default.conf" ]] && sed -i 's/fastopen=128/fastopen=500/g' /etc/nginx/conf.d/default.conf
@@ -109,6 +109,9 @@ fi
 }
 
 validateCertificate(){
+local certificateHost
+local -a certificateHosts=("$@")
+[[ ${#certificateHosts[@]} -gt 0 ]] || certificateHosts=("$domain")
 if [[ ! -s /var/www/ssl/de_GWD.cer ]] || [[ ! -s /var/www/ssl/de_GWD.key ]]; then
   echo -e "${WHITE}TLS certificate${RED} Certificate or key is missing${cRES}"
   exit 1
@@ -117,10 +120,13 @@ openssl x509 -in /var/www/ssl/de_GWD.cer -noout >/dev/null 2>&1 || {
   echo -e "${WHITE}TLS certificate${RED} Certificate is invalid${cRES}"
   exit 1
 }
-openssl x509 -in /var/www/ssl/de_GWD.cer -noout -checkhost "$domain" >/dev/null 2>&1 || {
-  echo -e "${WHITE}TLS certificate${RED} Hostname is not covered${cRES}"
-  exit 1
-}
+for certificateHost in "${certificateHosts[@]}"; do
+  [[ -n $certificateHost ]] || continue
+  openssl x509 -in /var/www/ssl/de_GWD.cer -noout -checkhost "$certificateHost" >/dev/null 2>&1 || {
+    echo -e "${WHITE}TLS certificate${RED} Hostname is not covered: $certificateHost${cRES}"
+    exit 1
+  }
+done
 nginx -t >/dev/null 2>&1 || {
   echo -e "${WHITE}TLS certificate${RED} Nginx validation failed${cRES}"
   exit 1
@@ -1182,12 +1188,16 @@ fi
 curl -fsSL https://get.acme.sh | sh || exit 1
 "/root/.acme.sh"/acme.sh --upgrade --auto-upgrade || exit 1
 "/root/.acme.sh"/acme.sh --set-default-ca --server letsencrypt || exit 1
-"/root/.acme.sh"/acme.sh --issue --dns dns_cf -d "$domain" -d "*.$topDomain" -k ec-256 --dnssleep 180 || exit 1
-"/root/.acme.sh"/acme.sh --installcert -d "$domain" \
+"/root/.acme.sh"/acme.sh --issue --dns dns_cf \
+               -d "$topDomain" \
+               -d "*.$topDomain" \
+               -d "*.$domain" \
+               -k ec-256 --dnssleep 180 || exit 1
+"/root/.acme.sh"/acme.sh --installcert -d "$topDomain" \
                --key-file       /var/www/ssl/de_GWD.key  \
                --fullchain-file /var/www/ssl/de_GWD.cer \
                --ecc || exit 1
-validateCertificate
+validateCertificate "$domain" "$topDomain" "probe.$topDomain" "probe.$domain"
 }
 
 
@@ -2122,7 +2132,9 @@ checkKernel
 enableAutoUpdate(){
 cat << "EOF" >/opt/de_GWD/autoUpdate
 #!/bin/bash
-repoBase="https://raw.githubusercontent.com/stuinx/dex/dev"
+EOF
+printf 'repoBase=%q\n' "$repoBase" >> /opt/de_GWD/autoUpdate
+cat << "EOF" >>/opt/de_GWD/autoUpdate
 localVer=$(awk 'NR==1' /opt/de_GWD/version.php)
 remoteVer=$(curl -fsSLo- "$repoBase/version.php" | head -n 1)
 
