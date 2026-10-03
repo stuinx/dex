@@ -4980,7 +4980,7 @@ extra_printNodes
 
 
 extra_vmessWS(){
-local switch oldDomain oldPort oldUUID oldPath mainDomain mainPort input parsed domainPort vmessDomain vmessPort vmessUUID vmessPath candidate base
+local switch oldDomain oldPort oldUUID mainDomain mainPort input parsed domainPort vmessDomain vmessPort vmessUUID vmessPath candidate base
 echo -e "$GREEN============================== $cRES"
 echo -e "$GREEN VMESS WS$cRES"
 echo -e "${GREEN}1. Enable${cRES}"
@@ -5010,7 +5010,6 @@ mainPort=$(extra_mainPort 2>/dev/null || true)
 oldDomain=$(jq -r '.vmess_ws.domain // empty' "$extraSettings" 2>/dev/null || true)
 oldPort=$(jq -r '.vmess_ws.port // empty' "$extraSettings" 2>/dev/null || true)
 oldUUID=$(jq -r '.vmess_ws.uuid // empty' "$extraSettings" 2>/dev/null || true)
-oldPath=$(jq -r '.vmess_ws.path // empty' "$extraSettings" 2>/dev/null || true)
 input=$oldDomain
 if [[ -n $oldPort ]]; then
   input="$oldDomain:$oldPort"
@@ -5030,8 +5029,7 @@ extra_certificateCovers "$vmessDomain" || { echo -e "$RED Certificate does not c
 
 vmessUUID=$oldUUID
 [[ -n $vmessUUID ]] || vmessUUID=$(deGWD_featureUUID)
-vmessPath=$oldPath
-[[ -n $vmessPath ]] || vmessPath=/$(deGWD_featureUUID | tr -d '-' | cut -c1-8)
+vmessPath=/${vmessUUID: -6}
 extra_validUUID "$vmessUUID" && [[ $vmessPath == /* && $vmessPath != *[[:space:]]* ]] || {
   echo -e "$RED Invalid VMESS credentials$cRES"
   return 1
