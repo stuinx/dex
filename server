@@ -5138,8 +5138,8 @@ realityPrivateKey=$oldPrivateKey
 realityPublicKey=$oldPublicKey
 if [[ -z $realityPrivateKey || -z $realityPublicKey ]]; then
   keyPair=$(/opt/de_GWD/vtrui/vtrui x25519 2>/dev/null)
-  realityPrivateKey=$(printf '%s\n' "$keyPair" | awk -F': ' '/^Private key:/ {print $2; exit}')
-  realityPublicKey=$(printf '%s\n' "$keyPair" | awk -F': ' '/^(Public key|Password):/ {print $2; exit}')
+  realityPrivateKey=$(printf '%s\n' "$keyPair" | awk -F': ' '/^(Private key|PrivateKey):/ {print $2; exit}')
+  realityPublicKey=$(printf '%s\n' "$keyPair" | awk -F': ' '/^(Public key|PublicKey|Password|Password \(PublicKey\)):/ {print $2; exit}')
 fi
 [[ $realityPrivateKey =~ ^[A-Za-z0-9_-]+$ && $realityPublicKey =~ ^[A-Za-z0-9_-]+$ ]] || { echo -e "$RED REALITY key generation failed$cRES"; return 1; }
 realityShortId=$oldShortId
