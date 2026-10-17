@@ -4,8 +4,6 @@
 
 * 基于性能考量，尽量避免使用虚拟交换
 
-Debian 13（trixie）适配已加入安装和更新流程：保留 trixie 软件源，使用 `libmimalloc3`，并通过 `/etc/sysctl.d` 持久加载网络参数。现有 amd64 Nginx 缺少 ABI 2 时，加载仓库维护并校验 SHA256 的 mimalloc 兼容库；arm64 使用 google-perftools。PHP 继续使用 Sury 的 PHP 7.4。Debian 12/13 的隔离脚本回归已覆盖 amd64/arm64；实机验收进度见 [vm1224 验收记录](docs/debian13-vm1224-acceptance.md)。
-
 
 [![Telegram](https://cdn.jsdelivr.net/gh/Patrolavia/telegram-badge@8fe3382b3fd3a1c533ba270e608035a27e430c2e/chat.svg)](https://t.me/de_GWD_DQ)  
 
@@ -18,8 +16,6 @@ bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx
 ![de_GWD 0](https://raw.githubusercontent.com/stuinx/dex/main/resource/screenshot/0.png)
 
 ## Client (amd64 & arm64):
-普通节点、测速和分流仅支持 VLESS；旧普通 VMess 节点会在更新或保存节点时清理，不会自动改成 VLESS。若当前主节点仍为 VMess，请先配置并切换到有效的 VLESS 节点。FWD0/FWD1、Rproxy 内部隧道协议保持不变，Server `55` 仍保留 VMess WS。
-
 ```
 bash <(wget --no-check-certificate -qO- https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/dev/client)
 ```
@@ -29,37 +25,6 @@ bash <(wget --no-check-certificate -qO- https://gh.stuinx.eu.org/https://raw.git
 ```
 chmod +x client
 ./client
-```
-
-## Release source
-
-dex 的安装入口和运行资源由本仓库维护。jacyl4/de_GWD 仅作为历史参考，不参与安装、更新或资源下载。
-
-此 dev 分支从 vless 重建，主协议为 VLESS；正式部署使用固定 tag，并将同一个 tag 传给安装脚本，避免分支变化导致后续资源漂移：
-
-    https://raw.githubusercontent.com/stuinx/dex/<tag>/server
-    https://raw.githubusercontent.com/stuinx/dex/<tag>/client
-
-安装时将 DE_GWD_BRANCH 和 DE_GWD_RAW_BASE 同时指向这个 tag：
-
-    DE_GWD_TAG=vX.Y.Z
-    DE_GWD_BRANCH="$DE_GWD_TAG" DE_GWD_RAW_BASE="https://raw.githubusercontent.com/stuinx/dex/$DE_GWD_TAG" bash <(wget --no-check-certificate -qO- "https://raw.githubusercontent.com/stuinx/dex/$DE_GWD_TAG/server")
-    DE_GWD_BRANCH="$DE_GWD_TAG" DE_GWD_RAW_BASE="https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/$DE_GWD_TAG" bash <(wget --no-check-certificate -qO- "https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/$DE_GWD_TAG/client")
-
-推送 v* tag 后，GitHub Actions 会构建 amd64/arm64 组件归档，校验仓库资源，并将归档、SHA256、组件版本清单和构建来源上传到 dex Release。
-
-## Component upgrade branch (test only)
-
-将 `codex/stable-component-upgrade` 推送到远端后，使用下面的命令才能让安装脚本和后续资源下载统一指向测试分支；不要在未确认前用于生产 VPS：
-
-```bash
-DE_GWD_RAW_BASE=https://raw.githubusercontent.com/stuinx/dex/codex/stable-component-upgrade \
-bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx/dex/codex/stable-component-upgrade/server)
-```
-
-```bash
-DE_GWD_RAW_BASE=https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/codex/stable-component-upgrade \
-bash <(wget --no-check-certificate -qO- https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/codex/stable-component-upgrade/client)
 ```
 
 ![de_GWD 1](https://raw.githubusercontent.com/stuinx/dex/main/resource/screenshot/1.png)
