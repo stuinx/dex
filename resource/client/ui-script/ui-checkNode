@@ -12,4 +12,4 @@ jq -r --arg nodecheck "$nodecheck" --slurpfile config /opt/de_GWD/vtrui/config.j
   $config[0].outbounds[0] as $out | .v2node | to_entries[] |
   select((.value.domain == $nodecheck or .value.domain == ($nodecheck+":443")) and .value.uuid == $out.settings.vnext[0].users[0].id
     and (.value.path // "") == ($out.streamSettings.wsSettings.path // "")
-    and (.value.protocol // "vmess") == $out.protocol) | .key' /opt/de_GWD/0conf
+    and .value.protocol == "vless" and $out.protocol == "vless") | .key' /opt/de_GWD/0conf

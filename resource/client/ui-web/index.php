@@ -36,10 +36,8 @@
 <?php $DoG = $de_GWDconf->dns->dog; ?>
 
 <?php $checkJellyfin = $de_GWDconf->app->jellyfin; ?>
-<?php $checkFileRun = file_exists('/var/www/html/filerun'); ?>
 <?php $checkBitwarden = $de_GWDconf->app->bitwarden; ?>
 
-<?php $FileRunWebConf = file_get_contents ('/etc/nginx/conf.d/filerun.conf'); preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $FileRunPort); $FileRunPort = $FileRunPort[0][0] ?>
 <?php $WebConf = file_get_contents ('/etc/nginx/conf.d/default.conf'); preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $serverName); $serverName = rtrim($serverName[0][0],";") ?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
 
@@ -57,12 +55,6 @@
 
     <!-- Navbar -->
     <ul class="nav navbar-nav ml-auto ml-md-0">
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkFileRun === true) echo 'block'; else echo 'none';?>">
-        <a class="nav-link" href="javascript:void(0)" onclick="window.open(<?php if ($serverName != "de_GWD") echo "'https://$serverName:$FileRunPort'"; else echo "location.origin+':$FileRunPort'" ?>)">
-          <i class="fas fa-folder"></i>
-          <span>FileRun</span>
-        </a>
-      </li>
 
       <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === installed) echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
@@ -244,6 +236,7 @@ $nodeSMroutes = array(
   array('key' => 'telegram', 'label' => 'Telegram', 'class' => 'border-info bg-info text-white', 'default' => '默认代理'),
   array('key' => 'x', 'label' => 'X / Twitter', 'class' => 'border-dark bg-dark text-white', 'default' => '默认代理'),
   array('key' => 'openai', 'label' => 'OpenAI', 'class' => 'text-white', 'style' => 'border-color: #75A99C;background-color: #75A99C;', 'default' => '默认代理'),
+  array('key' => 'metaai', 'label' => 'Meta AI', 'class' => 'border-primary bg-primary text-white', 'default' => '默认代理'),
   array('key' => 'apple', 'label' => 'APPLE', 'class' => 'border-secondary bg-secondary text-white', 'default' => '直连')
 );
 foreach ($nodeSMroutes as $nodeSMroute) {
@@ -839,7 +832,7 @@ $('#switch'+SWITCHindex).attr('class', 'btn btn-success btn-sm');
 $.get("./act/NodeChange.php", {nodenum:SWITCHindex}, function(){})
 }
 
-var nodeSMRouteKeys = ['youtube', 'claude', 'gemini', 'grok', 'wikipedia', 'reddit', 'github', 'discord', 'telegram', 'x', 'openai', 'apple']
+var nodeSMRouteKeys = ['youtube', 'claude', 'gemini', 'grok', 'wikipedia', 'reddit', 'github', 'discord', 'telegram', 'x', 'openai', 'metaai', 'apple']
 
 function nodeSMRouteId(key){
 return key.charAt(0).toUpperCase() + key.slice(1)

@@ -42,10 +42,11 @@ extraVmessWSConf='${nginx}/vmess-ws.conf'
 `;
 // The config test invocation is mocked here; native Xray validation is a separate check.
 const functions = rewrite(funcs.map(n => fn(n)).join('\n')).replaceAll(opt + '/vtrui/vtrui run -test -confdir ' + opt + '/vtrui', 'true');
-function run(body, args=[]) {
+function run(body, args=[], expectedFailure=false) {
   const uuidMock = `deGWD_featureUUID() { printf '%s\\n' '11111111-1111-4111-8111-111111111111'; }`;
   const result = cp.spawnSync('/bin/bash', ['-c', prelude + functions + '\n' + uuidMock + '\n' + rewrite(body), 'test', ...args], {encoding:'utf8',timeout:15000});
-  assert.equal(result.status, 0, result.stderr + '\n' + result.stdout);
+  if (expectedFailure) assert.notEqual(result.status, 0);
+  else assert.equal(result.status, 0, result.stderr + '\n' + result.stdout);
   return result.stdout;
 }
 const read = p => JSON.parse(fs.readFileSync(opt + '/' + p, 'utf8'));
@@ -101,7 +102,7 @@ try {
   assert.equal(read('vtrui/config.json').inbounds.filter(i=>i.tag==='extra-vmess-ws').length,1);
   const vmessWSConfig=read('vtrui/config.json').inbounds.find(i=>i.tag==='extra-vmess-ws');
   assert.equal(vmessWSConfig.port,9893);
-  assert.match(vmessWSConfig.streamSettings.wsSettings.path,/^\/[A-Za-z0-9_-]{8}$/);
+  assert.equal(vmessWSConfig.streamSettings.wsSettings.path,'/'+vmessWSConfig.settings.clients[0].id.slice(-6));
   assert.match(vmessWSConfig.settings.clients[0].id,/^[0-9a-f-]{36}$/);
   const vmessWSSettings=read('extra-inbounds.json');
   assert.equal(vmessWSSettings.vmess_ws.domain,'vmess-ws.example');
@@ -115,7 +116,7 @@ try {
   assert.match(fs.readFileSync(nginx + '/vmess-ws.conf','utf8'),/server_name vmess-ws\.example;/);
   assert.match(fs.readFileSync(nginx + '/vmess-ws.conf','utf8'),/proxy_pass http:\/\/127\.0\.0\.1:9893/);
   assert.match(fs.readFileSync(nginx + '/vmess-ws.conf','utf8'),/include .*\/\.ssl_certs;/);
-  // The original jacyl client passes only address, TLS host, UUID and PATH; omitted protocol means VMess.
+  // Server VMess WS remains available to old clients; the new Client rejects legacy nodes.
   const legacyClientNode={
     domain:vmessWSSettings.vmess_ws.domain+':'+vmessWSSettings.vmess_ws.port,
     tls:vmessWSSettings.vmess_ws.domain,
@@ -123,21 +124,16 @@ try {
     path:vmessWSSettings.vmess_ws.path
   };
   const configBeforeLegacyClient=read('vtrui/config.json');
+  fs.writeFileSync(root+'/server-coexist.json', JSON.stringify(configBeforeLegacyClient));
+  fs.writeFileSync(root+'/server-vmess-reference.json', JSON.stringify({outbounds:[{
+    protocol:'vmess', settings:{vnext:[{address:'vmess-ws.example',port:55445,users:[{id:legacyClientNode.uuid,alterId:0,security:'auto'}]}]},
+    streamSettings:{network:'ws',wsSettings:{path:legacyClientNode.path},security:'none'}
+  }]}));
   write('0conf',{v2node:[legacyClientNode]});
   write('vtrui/config.json',{outbounds:[]});
   const clientBuilder=fs.readFileSync(path.join(repo,'resource/client/ui-script/ui-V2outbound'),'utf8');
-  run(clientBuilder,['vmess-extra',legacyClientNode.domain,legacyClientNode.tls,legacyClientNode.uuid,legacyClientNode.path]);
-  const legacyClientOutbound=read('vtrui/config.json').outbounds[0];
-  assert.equal(legacyClientOutbound.protocol,'vmess');
-  assert.equal(legacyClientOutbound.settings.vnext[0].address,legacyClientNode.domain.split(':')[0]);
-  assert.equal(legacyClientOutbound.settings.vnext[0].port,vmessWSSettings.vmess_ws.port);
-  assert.equal(legacyClientOutbound.settings.vnext[0].users[0].id,legacyClientNode.uuid);
-  assert.equal(legacyClientOutbound.settings.vnext[0].users[0].alterId,0);
-  assert.equal(legacyClientOutbound.streamSettings.network,'ws');
-  assert.equal(legacyClientOutbound.streamSettings.security,'tls');
-  assert.equal(legacyClientOutbound.streamSettings.wsSettings.path,legacyClientNode.path);
-  assert.equal(legacyClientOutbound.streamSettings.wsSettings.headers.Host,legacyClientNode.tls);
-  assert.equal(legacyClientOutbound.streamSettings.tlsSettings.serverName,legacyClientNode.tls);
+  run(clientBuilder,['vmess-extra',legacyClientNode.domain,legacyClientNode.tls,legacyClientNode.uuid,legacyClientNode.path],true);
+  assert.deepEqual(read('vtrui/config.json').outbounds,[]);
   write('vtrui/config.json',configBeforeLegacyClient);
   run('extra_vlessWS <<< $\'1\\nvless-ws.example:55446\\n\'');
   assert.equal(read('vtrui/config.json').inbounds.filter(i=>i.tag==='extra-vmess-ws').length,1);
@@ -150,16 +146,20 @@ try {
   assert.equal(read('vtrui/config.json').inbounds.filter(i=>i.tag==='extra-vmess-ws').length,0);
   assert.equal(read('extra-inbounds.json').vmess_ws.enabled,false);
   assert(!fs.existsSync(nginx + '/vmess-ws.conf'));
-  // Client scripts: absent protocol stays VMess, VLESS survives node changes and rebuilds.
+  // Regular Client nodes reject legacy/VMess and build VLESS directly.
   for (const protocol of [undefined,'vmess','vless']) {
     const node={domain:'example.test:443',tls:'example.test',uuid,path:'/fresh',protocol};
     write('0conf',{v2node:[node],update:{v2node:{...node,domain:'example.test',port:'443'}}});
     for (const name of ['ui-NodeChange','ui-changeNodeSS0','ui-V2outbound']) {
       write('vtrui/config.json',{outbounds:[]});
       const source=fs.readFileSync(path.join(repo,'resource/client/ui-script',name),'utf8').replace(/^chmod .*$/mg,'');
-      run(source, name==='ui-V2outbound' ? ['default',node.domain,node.tls,uuid,node.path] : ['0']);
+      run(source, name==='ui-V2outbound' ? ['default',node.domain,node.tls,uuid,node.path] : ['0'], protocol!=='vless');
+      if (protocol!=='vless') {
+        assert.deepEqual(read('vtrui/config.json').outbounds,[]);
+        continue;
+      }
       const outbound=read('vtrui/config.json').outbounds[0];
-      assert.equal(outbound.protocol,protocol||'vmess');
+      assert.equal(outbound.protocol,'vless');
       assert.equal(outbound.streamSettings.sockopt.mark,255);
       if(protocol==='vless') {
         assert.equal(outbound.settings.vnext[0].users[0].encryption,'none');
@@ -181,13 +181,13 @@ try {
   const check=fs.readFileSync(path.join(repo,'resource/client/ui-script/ui-NodeSMcheck'),'utf8').split('\n\n\n')[0];
   assert.deepEqual(run(check).trim().split('\n').slice(0,2),['2','new']);
   if(process.env.XRAY_BIN) {
-    for(const name of ['server-migrated','client-legacy','client-vmess','client-vless']) {
+    for(const name of ['server-migrated','server-coexist','server-vmess-reference','client-vless']) {
       const result=cp.spawnSync(process.env.XRAY_BIN,['run','-test','-config',root+'/'+name+'.json'],{encoding:'utf8',timeout:15000});
       assert.equal(result.status,0,name+': '+result.stderr+'\n'+result.stdout);
     }
     console.log('PASS: native Xray configuration validation');
   }
-  console.log('PASS: migration, rollback, idempotency, reordered inbounds, VMess/VLESS WS coexistence, fresh install, client protocol preservation');
+  console.log('PASS: server VMess/VLESS coexistence, migration, rollback and VLESS-only regular Client nodes');
   console.log('Fixtures: '+root);
   module.exports = root;
 } catch(error) { console.error('Fixtures retained: '+root); throw error; }

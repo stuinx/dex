@@ -16,7 +16,7 @@ nodeSMcheck(){
             (.value.domain == $nodecheck or .value.domain == ($nodecheck + ":443"))
             and .value.uuid == $out.settings.vnext[0].users[0].id
             and (.value.path // "") == ($out.streamSettings.wsSettings.path // "")
-            and (.value.protocol // "vmess") == ($out.protocol // "vmess")
+            and .value.protocol == "vless" and $out.protocol == "vless"
           )
         | .key
       ][0] // empty
@@ -28,7 +28,7 @@ nodeSMcheck(){
             (.domain == $nodecheck or .domain == ($nodecheck + ":443"))
             and .uuid == $out.settings.vnext[0].users[0].id
             and (.path // "") == ($out.streamSettings.wsSettings.path // "")
-            and (.protocol // "vmess") == ($out.protocol // "vmess")
+            and .protocol == "vless" and $out.protocol == "vless"
           )
         | .name
       ][0] // empty
@@ -38,7 +38,7 @@ nodeSMcheck(){
   [[ -n $checkName ]] && echo "$checkName" || echo '-none-'
 }
 
-for tag in nodeSMyoutube nodeSMclaude nodeSMgemini nodeSMgrok nodeSMwikipedia nodeSMreddit nodeSMgithub nodeSMdiscord nodeSMtelegram nodeSMx nodeSMopenai nodeSMapple; do
+for tag in nodeSMyoutube nodeSMclaude nodeSMgemini nodeSMgrok nodeSMwikipedia nodeSMreddit nodeSMgithub nodeSMdiscord nodeSMtelegram nodeSMx nodeSMopenai nodeSMmetaai nodeSMapple; do
   nodeSMcheck "$tag"
 done
 

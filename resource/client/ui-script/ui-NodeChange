@@ -1,6 +1,6 @@
 #!/bin/bash
-protocol=$(jq -r --argjson index "$1" '.v2node[$index].protocol // "vmess"' /opt/de_GWD/0conf)
-[[ $protocol = vmess || $protocol = vless ]] || exit 1
+protocol=$(jq -r --argjson index "$1" '.v2node[$index].protocol // ""' /opt/de_GWD/0conf)
+[[ $protocol = vless ]] || exit 1
 address=$(jq -r --argjson domainNUM "$1" '.v2node | to_entries[] | select(.key == $domainNUM) | .value.domain' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 tls=$(jq -r --argjson domainNUM "$1" '.v2node | to_entries[] | select(.key == $domainNUM) | .value.tls' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 uuid=$(jq -r --argjson domainNUM "$1" '.v2node | to_entries[] | select(.key == $domainNUM) | .value.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
@@ -24,7 +24,7 @@ if [[ -z $path ]]; then
 OBdefault=`cat << EOF
     {
       "tag": "default",
-      "protocol": "vmess",
+      "protocol": "vless",
       "settings": {
         "vnext": [
           {
@@ -33,8 +33,7 @@ OBdefault=`cat << EOF
             "users": [
               {
                 "id": "$uuid",
-                "alterId": 0,
-                "security": "auto"
+                "encryption": "none"
               }
             ]
           }
@@ -56,7 +55,7 @@ else
 OBdefault=`cat << EOF
     {
       "tag": "default",
-      "protocol": "vmess",
+      "protocol": "vless",
       "settings": {
         "vnext": [
           {
@@ -65,8 +64,7 @@ OBdefault=`cat << EOF
             "users": [
               {
                 "id": "$uuid",
-                "alterId": 0,
-                "security": "auto"
+                "encryption": "none"
               }
             ]
           }
@@ -97,9 +95,6 @@ EOF
 `
 fi
 
-if [[ $protocol = vless ]]; then
-  OBdefault=$(jq '.protocol="vless" | .settings.vnext[].users |= map(del(.alterId,.security) | .encryption="none")' <<< "$OBdefault") || exit 1
-fi
 jq --argjson OBdefault "$OBdefault" '.outbounds[0]=$OBdefault' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
 
 systemctl restart vtrui

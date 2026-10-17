@@ -41,6 +41,7 @@ hash_matches resource/doh/doh_s_amd64 resource/doh/doh_s_amd64.sha256sum
 hash_matches resource/doh/doh_s_arm64 resource/doh/doh_s_arm64.sha256sum
 hash_matches resource/nginx/nginx_amd64 resource/nginx/nginx_amd64.sha256sum
 hash_matches resource/nginx/nginx_arm64 resource/nginx/nginx_arm64.sha256sum
+hash_matches resource/nginx/libmimalloc2_amd64 resource/nginx/libmimalloc2_amd64.sha256sum
 
 for archive in de_GWD_amd64.zip de_GWD_arm64.zip resource/client/Archive.zip resource/nginx/nginxConf.zip resource/server/sample.zip; do
   unzip -tq "$archive" >/dev/null || fail "invalid ZIP: $archive"

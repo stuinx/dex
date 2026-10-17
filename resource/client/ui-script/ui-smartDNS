@@ -121,11 +121,11 @@ done
 
 
 if [[ -n $doh1IP ]]; then
-echo "server-https https://$doh1Str -host-name $doh1Domain -no-check-certificate -group DNS_global -exclude-default-group" >>/opt/de_GWD/smartdns/smartdns.conf
+echo "server-https https://$doh1Str -host-name $doh1Domain -http-host $doh1Domain -tls-host-verify $doh1Domain -group DNS_global -exclude-default-group" >>/opt/de_GWD/smartdns/smartdns.conf
 fi
 
 if [[ -n $doh2IP ]]; then
-echo "server-https https://$doh2Str -host-name $doh2Domain -no-check-certificate -group DNS_global -exclude-default-group" >>/opt/de_GWD/smartdns/smartdns.conf
+echo "server-https https://$doh2Str -host-name $doh2Domain -http-host $doh2Domain -tls-host-verify $doh2Domain -group DNS_global -exclude-default-group" >>/opt/de_GWD/smartdns/smartdns.conf
 fi
 
 if [[ -n $DoGcIP ]]; then

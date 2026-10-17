@@ -10,6 +10,8 @@ cRES='\E[0m'
 
 
 
+jq '.v2node |= map(select(.protocol == "vless"))' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Collect V2 node${cRES}\r\c"
 
 >/opt/de_GWD/mosdns/domains_nodes

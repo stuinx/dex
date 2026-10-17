@@ -3,7 +3,7 @@
 config=/opt/de_GWD/0conf
 xrayConfig=/opt/de_GWD/vtrui/config.json
 
-nodeSMKeys=(youtube claude gemini grok wikipedia reddit github discord telegram x openai apple)
+nodeSMKeys=(youtube claude gemini grok wikipedia reddit github discord telegram x openai metaai apple)
 nodeSMTags=(
   nodeSMyoutube
   nodeSMclaude
@@ -16,6 +16,7 @@ nodeSMTags=(
   nodeSMtelegram
   nodeSMx
   nodeSMopenai
+  nodeSMmetaai
   nodeSMapple
 )
 nodeSMDomains=(
@@ -30,10 +31,11 @@ nodeSMDomains=(
   '["domain:telegram.org","domain:t.me","domain:telegra.ph"]'
   '["domain:x.com","domain:twitter.com","domain:twimg.com"]'
   '["geosite:openai"]'
+  '["domain:meta.ai"]'
   '["geosite:apple","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
 )
-managedTags='["nodeSMyoutube","nodeSMclaude","nodeSMgemini","nodeSMgrok","nodeSMwikipedia","nodeSMreddit","nodeSMgithub","nodeSMdiscord","nodeSMtelegram","nodeSMx","nodeSMopenai","nodeSMapple","nodeSMsteam","nodeSMnetflix","nodeSMhdh","nodeSMtvb","nodeSMbahamut"]'
-managedKeys='["youtube","claude","gemini","grok","wikipedia","reddit","github","discord","telegram","x","openai","apple","steam","netflix","hdh","tvb","bahamut"]'
+managedTags='["nodeSMyoutube","nodeSMclaude","nodeSMgemini","nodeSMgrok","nodeSMwikipedia","nodeSMreddit","nodeSMgithub","nodeSMdiscord","nodeSMtelegram","nodeSMx","nodeSMopenai","nodeSMmetaai","nodeSMapple","nodeSMsteam","nodeSMnetflix","nodeSMhdh","nodeSMtvb","nodeSMbahamut"]'
+managedKeys='["youtube","claude","gemini","grok","wikipedia","reddit","github","discord","telegram","x","openai","metaai","apple","steam","netflix","hdh","tvb","bahamut"]'
 appleDomains='["geosite:apple","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
 steamDomains='["domain:steamserver.net","geosite:steam@cn","geosite:category-games@cn"]'
 
@@ -46,6 +48,7 @@ savedSteam=$(jq -r '.v2nodeDIV.nodeSM.steam // empty' "$config" 2>/dev/null)
 
 nodeCount=$(jq -r '.v2node | length' "$config" 2>/dev/null)
 [[ $nodeCount =~ ^[0-9]+$ ]] || nodeCount=0
+steamArgIndex=$((${#nodeSMKeys[@]} + 2))
 
 if (( $# > 1 )); then
   for ((i=0; i<${#nodeSMKeys[@]}; i++)); do
@@ -54,10 +57,14 @@ if (( $# > 1 )); then
       selection=${!argIndex}
       [[ $selection =~ ^[0-9]+$ ]] || { echo "Invalid node selection for ${nodeSMKeys[$i]}" >&2; exit 1; }
       (( selection <= nodeCount )) || { echo "Node selection out of range for ${nodeSMKeys[$i]}" >&2; exit 1; }
+      if (( selection > 0 )); then
+        jq -e --argjson index "$((selection - 1))" '.v2node[$index].protocol == "vless"' "$config" >/dev/null || { echo 'Only VLESS nodes are supported' >&2; exit 1; }
+      fi
     fi
   done
-  if (( $# >= 14 )); then
-    [[ ${14} = 0 || ${14} = 1 ]] || { echo 'Invalid Steam selection' >&2; exit 1; }
+  if (( $# >= steamArgIndex )); then
+    steamSelection=${!steamArgIndex}
+    [[ $steamSelection = 0 || $steamSelection = 1 ]] || { echo 'Invalid Steam selection' >&2; exit 1; }
   fi
 fi
 
@@ -72,8 +79,8 @@ jq --argjson managedTags "$managedTags" \
       and .domain != $steamDomains
     )]
   | .v2nodeDIV = (.v2nodeDIV // {})
-  | .v2nodeDIV.nodeSM = ((.v2nodeDIV.nodeSM // {}) | del(.youtube,.claude,.gemini,.grok,.wikipedia,.reddit,.github,.discord,.telegram,.x,.openai,.apple,.steam,.netflix,.hdh,.tvb,.bahamut))
-  | .v2nodeDIV.outboundNodes = ((.v2nodeDIV.outboundNodes // {}) | del(.nodeSMyoutube,.nodeSMclaude,.nodeSMgemini,.nodeSMgrok,.nodeSMwikipedia,.nodeSMreddit,.nodeSMgithub,.nodeSMdiscord,.nodeSMtelegram,.nodeSMx,.nodeSMopenai,.nodeSMapple,.nodeSMsteam,.nodeSMnetflix,.nodeSMhdh,.nodeSMtvb,.nodeSMbahamut))
+  | .v2nodeDIV.nodeSM = ((.v2nodeDIV.nodeSM // {}) | del(.youtube,.claude,.gemini,.grok,.wikipedia,.reddit,.github,.discord,.telegram,.x,.openai,.metaai,.apple,.steam,.netflix,.hdh,.tvb,.bahamut))
+  | .v2nodeDIV.outboundNodes = ((.v2nodeDIV.outboundNodes // {}) | del(.nodeSMyoutube,.nodeSMclaude,.nodeSMgemini,.nodeSMgrok,.nodeSMwikipedia,.nodeSMreddit,.nodeSMgithub,.nodeSMdiscord,.nodeSMtelegram,.nodeSMx,.nodeSMopenai,.nodeSMmetaai,.nodeSMapple,.nodeSMsteam,.nodeSMnetflix,.nodeSMhdh,.nodeSMtvb,.nodeSMbahamut))
 ' "$xrayConfig" | sponge "$xrayConfig"
 
 jq --argjson managedTags "$managedTags" --argjson managedKeys "$managedKeys" '
@@ -100,14 +107,14 @@ for ((i=0; i<${#nodeSMKeys[@]}; i++)); do
     fi
   elif [[ -n ${savedNodeSM[$i]} ]]; then
     address=${savedNodeSM[$i]}
-    node=$(jq -ce --arg address "$address" '[.v2node[]? | select(.domain == $address)][0] // empty' "$config" 2>/dev/null) || continue
+    node=$(jq -ce --arg address "$address" '[.v2node[]? | select(.domain == $address and .protocol == "vless")][0] // empty' "$config" 2>/dev/null) || continue
   fi
 
   if [[ -n $address ]]; then
     tls=$(jq -r '.tls // empty' <<< "$node")
     uuid=$(jq -r '.uuid // empty' <<< "$node")
     path=$(jq -r '.path // empty' <<< "$node")
-    protocol=$(jq -r '.protocol // "vmess"' <<< "$node")
+    protocol=$(jq -r '.protocol // ""' <<< "$node")
     jq --arg key "$key" --arg address "$address" '.v2nodeDIV.nodeSM[$key]=$address' "$config" | sponge "$config"
     if [[ $key = apple ]]; then
       sed -i '/apple.china.conf/d' /opt/de_GWD/smartdns/smartdns.conf && systemctl restart smartdns
@@ -121,8 +128,8 @@ for ((i=0; i<${#nodeSMKeys[@]}; i++)); do
 done
 
 steamSelection=''
-if (( $# >= 14 )); then
-  steamSelection=${14}
+if (( $# >= steamArgIndex )); then
+  steamSelection=${!steamArgIndex}
 elif [[ $savedSteam = proxy ]]; then
   steamSelection=1
 else

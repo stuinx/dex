@@ -40,8 +40,8 @@ const nodeA = {
   uuid: '00000000-0000-4000-8000-000000000001', path: '/a', protocol: 'vless'
 };
 const nodeB = {
-  name: 'VMess-B', domain: 'b.example:8443', tls: 'b.example',
-  uuid: '00000000-0000-4000-8000-000000000002', path: '/b', protocol: 'vmess'
+  name: 'VLESS-B', domain: 'b.example:8443', tls: 'b.example',
+  uuid: '00000000-0000-4000-8000-000000000002', path: '/b', protocol: 'vless'
 };
 const oldConfig = {
   v2node: [nodeA, nodeB],
@@ -79,15 +79,27 @@ const run = (script, args = []) => {
 
 try {
   writeConfig();
-  run('ui-NodeSM', ['r', '1', '2', '1', '0', '0', '0', '0', '0', '0', '0', '0', '0', '1']);
+  const invalid = readJson('0conf');
+  invalid.v2node[1].protocol = 'vmess';
+  fs.writeFileSync(path.join(opt, '0conf'), JSON.stringify(invalid));
+  const beforeInvalid = fs.readFileSync(path.join(opt, 'vtrui/config.json'), 'utf8');
+  const rejected = cp.spawnSync('/bin/bash', [path.join(opt, 'ui-NodeSM'), 'r', '2'], {
+    encoding: 'utf8', env: {...process.env, PATH: `${bin}:${process.env.PATH}`}, timeout: 15000
+  });
+  assert.notEqual(rejected.status, 0);
+  assert.equal(fs.readFileSync(path.join(opt, 'vtrui/config.json'), 'utf8'), beforeInvalid);
+  writeConfig();
+  run('ui-NodeSM', ['r', '1', '2', '1', '0', '0', '0', '0', '0', '0', '0', '0', '2', '0', '1']);
   let config = readJson('vtrui/config.json');
   let tags = config.outbounds.map(outbound => outbound.tag);
-  assert.deepEqual(tags.filter(tag => tag.startsWith('nodeSM')), ['nodeSMyoutube', 'nodeSMclaude', 'nodeSMgemini']);
+  assert.deepEqual(tags.filter(tag => tag.startsWith('nodeSM')), ['nodeSMyoutube', 'nodeSMclaude', 'nodeSMgemini', 'nodeSMmetaai']);
   assert.equal(config.outbounds.find(outbound => outbound.tag === 'nodeSMyoutube').protocol, 'vless');
-  assert.equal(config.outbounds.find(outbound => outbound.tag === 'nodeSMclaude').protocol, 'vmess');
+  assert.equal(config.outbounds.find(outbound => outbound.tag === 'nodeSMclaude').protocol, 'vless');
   assert.equal(config.outbounds.find(outbound => outbound.tag === 'nodeSMgemini').protocol, 'vless');
+  assert.equal(config.outbounds.find(outbound => outbound.tag === 'nodeSMmetaai').protocol, 'vless');
   assert(config.routing.rules.some(rule => rule.outboundTag === 'nodeSMclaude' && rule.domain.includes('domain:claude.ai')));
   assert(config.routing.rules.some(rule => rule.outboundTag === 'nodeSMgemini' && rule.domain.includes('domain:gemini.google.com')));
+  assert(config.routing.rules.some(rule => rule.outboundTag === 'nodeSMmetaai' && rule.domain.includes('domain:meta.ai')));
   assert(!config.routing.rules.some(rule => rule.outboundTag === 'nodeSMnetflix'));
   assert(config.routing.rules.some(rule => rule.outboundTag === 'unrelated'));
 
@@ -95,12 +107,14 @@ try {
   assert.equal(state.v2nodeDIV.nodeSM.youtube, nodeA.domain);
   assert.equal(state.v2nodeDIV.nodeSM.claude, nodeB.domain);
   assert.equal(state.v2nodeDIV.nodeSM.gemini, nodeA.domain);
+  assert.equal(state.v2nodeDIV.nodeSM.metaai, nodeB.domain);
   assert.equal(state.v2nodeDIV.nodeSM.steam, 'proxy');
   assert.equal(state.v2nodeDIV.nodeSM.netflix, undefined);
   assert.equal(state.v2nodeDIV.nodeSM.status, 'on');
 
   const check = run('ui-NodeSMcheck').trim().split('\n');
-  assert.deepEqual(check.slice(0, 6), ['1', 'VLESS-A', '2', 'VMess-B', '1', 'VLESS-A']);
+  assert.deepEqual(check.slice(0, 6), ['1', 'VLESS-A', '2', 'VLESS-B', '1', 'VLESS-A']);
+  assert.deepEqual(check.slice(22, 24), ['2', 'VLESS-B']);
   assert.deepEqual(check.slice(-2), ['1', '默认代理']);
 
   run('ui-NodeSM');
@@ -109,19 +123,19 @@ try {
   assert.equal(config.outbounds.filter(outbound => outbound.tag === 'nodeSMclaude').length, 1);
   assert.equal(config.routing.rules.filter(rule => rule.outboundTag === 'nodeSMclaude').length, 1);
 
-  run('ui-NodeSM', ['r', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '1', '0']);
+  run('ui-NodeSM', ['r', ...Array(12).fill('0'), '1', '0']);
   config = readJson('vtrui/config.json');
   assert(config.routing.rules.some(rule => rule.outboundTag === 'nodeSMapple' && rule.domain.includes('geosite:apple')));
   assert(!config.routing.rules.some(rule => rule.domain.includes('geosite:apple-ads')));
 
-  run('ui-NodeSM', ['r', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0']);
+  run('ui-NodeSM', ['r', ...Array(14).fill('0')]);
   config = readJson('vtrui/config.json');
   assert(!config.outbounds.some(outbound => outbound.tag.startsWith('nodeSM')));
   assert(config.routing.rules.some(rule => rule.outboundTag === 'direct' && rule.domain.includes('geosite:apple')));
   assert(!config.routing.rules.some(rule => rule.domain.includes('geosite:apple-ads')));
   assert(config.routing.rules.some(rule => rule.outboundTag === 'direct' && rule.domain.includes('domain:steamserver.net')));
   assert.equal(readJson('0conf').v2nodeDIV.nodeSM.status, 'off');
-  console.log('PASS: predefined routes, mixed protocols, legacy cleanup, rebuild, reset, and status detection');
+  console.log('PASS: VLESS predefined routes including Meta AI, rejected VMess selection, legacy cleanup, rebuild, reset, and status detection');
   console.log(`Fixtures: ${root}`);
 } catch (error) {
   console.error(`Fixtures retained: ${root}`);

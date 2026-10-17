@@ -33,10 +33,8 @@
 <body id="page-top" class="sidebar-toggled">
 <?php $de_GWDconf = json_decode(file_get_contents('/opt/de_GWD/0conf')); ?>
 <?php $checkJellyfin = $de_GWDconf->app->jellyfin; ?>
-<?php $checkFileRun = file_exists('/var/www/html/filerun'); ?>
 <?php $checkBitwarden = $de_GWDconf->app->bitwarden; ?>
 
-<?php $FileRunWebConf = file_get_contents ('/etc/nginx/conf.d/filerun.conf'); preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $FileRunPort); $FileRunPort = $FileRunPort[0][0] ?>
 <?php $WebConf = file_get_contents ('/etc/nginx/conf.d/default.conf'); preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $serverName); $serverName = rtrim($serverName[0][0],";") ?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
 
@@ -54,12 +52,6 @@
 
     <!-- Navbar -->
     <ul class="nav navbar-nav ml-auto ml-md-0">
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkFileRun === true) echo 'block'; else echo 'none';?>">
-        <a class="nav-link" href="javascript:void(0)" onclick="window.open(<?php if ($serverName != "de_GWD") echo "'https://$serverName:$FileRunPort'"; else echo "location.origin+':$FileRunPort'" ?>)">
-          <i class="fas fa-folder"></i>
-          <span>FileRun</span>
-        </a>
-      </li>
 
       <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === installed) echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
@@ -175,6 +167,7 @@
 </span>
           </div>
           <div class="card-body">
+            <div id="nodeSaveError" class="alert alert-danger mb-3" role="alert" style="display:none;"></div>
             <div class="table-responsive">
               <table class="table table-bordered table-striped text-center text-nowrap my-2">
                 <thead>
@@ -184,13 +177,15 @@
                     <th class="text-nowrap text-center"><———— 节点名 ————></th>
                     <th class="text-nowrap text-center"><———————— UUID ————————></th>
                     <th class="text-nowrap text-center"><—— PATH ——></th>
-                    <th class="text-nowrap text-center">Protocol</th>
                     <th class="text-nowrap text-center"><i class="fas fa-caret-square-up fa-lg"></i></th>
                     <th class="text-nowrap text-center"><i class="fas fa-caret-square-down fa-lg"></i></th>
                   </tr>
                 </thead>
                 <tbody id="nodeTable">
 <?php 
+$de_GWDconf->v2node = array_values(array_filter($de_GWDconf->v2node, function($node) {
+    return ($node->protocol ?? '') === 'vless';
+}));
 for( $i=0; $i<count($de_GWDconf->v2node); $i++){
   $num = $i+1;
   $domain = $de_GWDconf->v2node[$i]->domain;
@@ -198,9 +193,6 @@ for( $i=0; $i<count($de_GWDconf->v2node); $i++){
   $name = $de_GWDconf->v2node[$i]->name;
   $path = $de_GWDconf->v2node[$i]->path;
   $uuid = $de_GWDconf->v2node[$i]->uuid;
-  $protocol = $de_GWDconf->v2node[$i]->protocol ?? 'vmess';
-  $vmessSelected = $protocol === 'vless' ? '' : 'selected';
-  $vlessSelected = $protocol === 'vless' ? 'selected' : '';
 print <<<EOT
 <tr>
 <td class="align-middle">$num</td>
@@ -215,7 +207,6 @@ print <<<EOT
 <td class="align-middle"><input type="text" class="form-control" value="$name"></td>
 <td class="align-middle"><input type="text" class="form-control" value="$uuid"></td>
 <td class="align-middle"><input type="text" class="form-control" value="$path"></td>
-<td class="align-middle"><select class="form-control"><option value="vmess" $vmessSelected>VMess</option><option value="vless" $vlessSelected>VLESS</option></select></td>
 <td class="align-middle"><button type="button" class="form-control btn btn-outline-secondary btn-sm" style="border-Radius: 0px;" onclick="moveUp(this)"><i class="fas fa-caret-up"></i></button></td>
 <td class="align-middle"><button type="button" class="form-control btn btn-outline-secondary btn-sm" style="border-Radius: 0px;" onclick="moveDown(this)"><i class="fas fa-caret-down"></i></button></td>
 </tr>
@@ -319,7 +310,6 @@ $('#buttonAddLine').click(function(){
                           <td class="align-middle"><input type="text" class="form-control" value=""></td>
                           <td class="align-middle"><input type="text" class="form-control" value=""></td>
                           <td class="align-middle"><input type="text" class="form-control" value=""></td>
-                          <td class="align-middle"><select class="form-control"><option value="vless">VLESS</option><option value="vmess">VMess</option></select></td>
                           <td class="align-middle"><button type="button" class="form-control btn btn-outline-secondary btn-sm" style="border-Radius: 0px;" onclick="moveUp(this)"><i class="fas fa-caret-up"></i></button></td>
                           <td class="align-middle"><button type="button" class="form-control btn btn-outline-secondary btn-sm" style="border-Radius: 0px;" onclick="moveDown(this)"><i class="fas fa-caret-down"></i></button></td>
                           </tr>
@@ -339,17 +329,21 @@ for( let i = 0; i<len; i++){
     var name = tdArr.eq(2).find('input').val()
     var uuid = tdArr.eq(3).find('input').val()
     var path = tdArr.eq(4).find('input').val()
-    var protocol = tdArr.eq(5).find('select').val()
+    var protocol = 'vless'
     if (tls == '' ) {
     var tls = domain.split(':')[0]
     }
-    if (domain !== '' && name !== '' && uuid !== '' ) {
+    if (domain !== '' || name !== '' || uuid !== '' || path !== '') {
     nodeList.push({domain, tls, name, uuid, path, protocol})
     }
 }
-$.get("./act/NodeSave.php", {nodeList:nodeList}, function(result){
+$('#nodeSaveError').hide().text('')
+$.get("./act/NodeSave.php", {nodeList:nodeList}).done(function(result){
   $("#buttonSaveNodeLoading").removeClass()
   window.location.href="index.php"
+}).fail(function(xhr){
+  $("#buttonSaveNodeLoading").removeClass()
+  $('#nodeSaveError').text($.trim(xhr.responseText) || '保存失败').show()
 })
 })
 })

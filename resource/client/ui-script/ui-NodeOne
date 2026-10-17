@@ -1,5 +1,7 @@
 #!/bin/bash
 tag="default"
+protocol=$(jq -r '.update.v2node.protocol // ""' /opt/de_GWD/0conf)
+[[ $protocol = vless ]] || exit 1
 domain=$(jq -r '.update.v2node.domain' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 port=$(jq -r '.update.v2node.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 tls=$(jq -r '.update.v2node.tls' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
@@ -48,7 +50,6 @@ cat << EOF >/opt/de_GWD/vtrui/config.json
 }
 EOF
 
-protocol=$(jq -r '.update.v2node.protocol // "vmess"' /opt/de_GWD/0conf)
 /opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" "$protocol" || exit 1
 
 OBdirect=`cat << EOF

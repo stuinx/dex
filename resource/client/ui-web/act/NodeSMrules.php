@@ -1,7 +1,7 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-$nodeSMkeys = array('youtube', 'claude', 'gemini', 'grok', 'wikipedia', 'reddit', 'github', 'discord', 'telegram', 'x', 'openai', 'apple', 'steam');
+$nodeSMkeys = array('youtube', 'claude', 'gemini', 'grok', 'wikipedia', 'reddit', 'github', 'discord', 'telegram', 'x', 'openai', 'metaai', 'apple', 'steam');
 $nodeSMargs = array('r');
 foreach ($nodeSMkeys as $nodeSMkey) {
   $nodeSMparam = 'nodeSMshow' . ucfirst($nodeSMkey);

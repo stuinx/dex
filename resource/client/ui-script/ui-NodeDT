@@ -25,7 +25,7 @@ address=$(jq -r '.v2nodeDIV.nodeDT.address' /opt/de_GWD/0conf 2>/dev/null | grep
                 port=$(jq -r '.update.v2node.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
                 uuid=$(jq -r '.update.v2node.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
                 path=$(jq -r '.update.v2node.path' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-                protocol=$(jq -r '.update.v2node.protocol // "vmess"' /opt/de_GWD/0conf)
+                protocol=$(jq -r '.update.v2node.protocol // ""' /opt/de_GWD/0conf)
                 /opt/de_GWD/ui-V2outbound "$tag" "$address:$port" "$tls" "$uuid" "$path" "$protocol" || exit 1
 	fi
 fi

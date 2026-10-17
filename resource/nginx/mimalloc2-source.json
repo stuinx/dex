@@ -1,0 +1,11 @@
+{
+  "purpose": "ABI 2 compatibility for the existing amd64 Nginx on Debian 13; no system package downgrade",
+  "package": "libmimalloc2.0",
+  "version": "2.0.9+ds-2",
+  "architecture": "amd64",
+  "url": "https://deb.debian.org/debian/pool/main/m/mimalloc/libmimalloc2.0_2.0.9+ds-2_amd64.deb",
+  "package_sha256": "a20035605a532be3186f0f48607c7106fe2a5551066c29de663c965692c446c4",
+  "library_path": "usr/lib/x86_64-linux-gnu/libmimalloc.so.2.0",
+  "library_sha256": "6be283f8dd7676fa9a27654845c28c6ae84fbb0d3ae43b07324c5352343e3925",
+  "copyright": "mimalloc2-copyright"
+}

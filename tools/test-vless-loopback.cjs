@@ -66,12 +66,12 @@ function socksUDP(port,target) {
     const targetPort=await listen(target);
     await new Promise(r=>udp.bind(0,'127.0.0.1',r));
     udp.on('message',(data,peer)=>udp.send(data,peer.port,peer.address));
-    const server=JSON.parse(fs.readFileSync(root+'/server-migrated.json'));
+    const server=JSON.parse(fs.readFileSync(root+'/server-coexist.json'));
     for(const inbound of server.inbounds) {inbound.port=await freePort();delete inbound.streamSettings.sockopt;}
     await launch('loop-server',server,server.inbounds[0].port);
     for(const protocol of ['vmess','vless']) {
       const inbound=server.inbounds.find(i=>i.protocol===protocol);
-      const client=JSON.parse(fs.readFileSync(root+'/client-'+protocol+'.json'));
+      const client=JSON.parse(fs.readFileSync(root+'/'+(protocol==='vmess'?'server-vmess-reference':'client-vless')+'.json'));
       const out=client.outbounds[0];const port=await freePort();
       out.settings.vnext[0].address='127.0.0.1';out.settings.vnext[0].port=inbound.port;
       out.streamSettings.wsSettings.path=inbound.streamSettings.wsSettings.path;
