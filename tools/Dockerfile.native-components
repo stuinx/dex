@@ -1,0 +1,9 @@
+FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
+RUN dpkg --add-architecture arm64 \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends build-essential gcc-aarch64-linux-gnu \
+    libc6-dev-arm64-cross qemu-user ca-certificates gnupg curl \
+    libssl-dev libssl-dev:arm64 libpcre2-dev libpcre2-dev:arm64 \
+    zlib1g-dev zlib1g-dev:arm64 libbrotli-dev libbrotli-dev:arm64 \
+    libsystemd-dev libsystemd-dev:arm64 \
+ && rm -rf /var/lib/apt/lists/*

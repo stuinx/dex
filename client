@@ -76,6 +76,9 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^gnupg2$') ]] && aptPKG+=(gnupg2)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^unzip$') ]] && aptPKG+=(unzip)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^zstd$') ]] && aptPKG+=(zstd)
+for runtimePackage in openssl libpcre2-8-0 zlib1g libcrypt1; do
+  dpkg-query -W -f='${Status}\n' "$runtimePackage" 2>/dev/null | grep -q 'install ok installed' || aptPKG+=("$runtimePackage")
+done
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^jq$') ]] && aptPKG+=(jq)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^bc$') ]] && aptPKG+=(bc)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^moreutils$') ]] && aptPKG+=(moreutils)

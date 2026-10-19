@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "checked_at": "2026-10-19",
+  "nginx": {
+    "archive": "nginx-1.30.6.tar.gz",
+    "version": "1.30.6",
+    "channel": "stable",
+    "url": "https://nginx.org/download/nginx-1.30.6.tar.gz",
+    "sha256": "3cf46f5ed7504d460125866b7bea99fb357f31d887e2e63b35503310e9b8b6c8",
+    "signature": "https://nginx.org/download/nginx-1.30.6.tar.gz.asc",
+    "signer": "D6786CE303D9A9022998DC6CC8464D549AF75C0A"
+  },
+  "haproxy": {
+    "archive": "haproxy-3.2.26.tar.gz",
+    "version": "3.2.26",
+    "channel": "LTS",
+    "url": "https://www.haproxy.org/download/3.2/src/haproxy-3.2.26.tar.gz",
+    "sha256": "760ef35fafc1e05844e73ad07e138e9e96fddbf5de02f606249c027f754827da",
+    "checksum_url": "https://www.haproxy.org/download/3.2/src/haproxy-3.2.26.tar.gz.sha256"
+  },
+  "ngx_brotli": {
+    "archive": "ngx_brotli.tar.gz",
+    "url": "https://codeload.github.com/google/ngx_brotli/tar.gz/a71f9312c2deb28875acc7bacfdd5695a111aa53",
+    "sha256": "1d21be34f3b7b6d05a8142945e59b3a47665edcdfe0f3ee3d3dbef121f90c08c"
+  },
+  "brotli_headers": {
+    "archive": "brotli.tar.gz",
+    "url": "https://codeload.github.com/google/brotli/tar.gz/ed738e842d2fbdf2d6459e39267a633c4a9b2f5d",
+    "sha256": "aaa739962a45b508b2e783b915e6b2b57ed3b12bd4b0feac73acfb144dffa54f",
+    "library": "Debian bookworm libbrotli-dev static archives"
+  },
+  "ngx_devel_kit": {
+    "archive": "ndk.tar.gz",
+    "version": "0.3.4",
+    "url": "https://codeload.github.com/vision5/ngx_devel_kit/tar.gz/bd44d16302273052d6005d7bdb55f74e23813de3",
+    "sha256": "31963f6eb21c11991bd7b301bed0939570093f45c95ab947e4ac54da5855d4fd"
+  },
+  "build": {
+    "recipe": "tools/build-native-components.sh",
+    "image": "tools/Dockerfile.native-components",
+    "architectures": ["amd64", "arm64"],
+    "arm64": "cross compiled; configure probes and functional tests run with QEMU user-mode, not native hardware",
+    "runtime": "Debian bookworm-compatible OpenSSL 3, PCRE2, zlib; HAProxy includes systemd notification support; Nginx uses libc allocator instead of the old custom mimalloc/tcmalloc linkage",
+    "limitations": "source archives and base image are pinned; Debian package repositories are not snapshot-pinned, so this is not a bit-for-bit reproducible build claim"
+  },
+  "build_packages": {
+    "gcc": "4:12.2.0-3",
+    "gcc-aarch64-linux-gnu": "4:12.2.0-3",
+    "libbrotli-dev": "1.0.9-2+b6",
+    "libpcre2-dev": "10.42-1+deb12u2",
+    "libssl-dev": "3.0.22-1~deb12u1",
+    "libsystemd-dev": "252.39-1~deb12u2",
+    "zlib1g-dev": "1:1.2.13.dfsg-1"
+  }
+}

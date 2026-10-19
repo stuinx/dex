@@ -42,6 +42,8 @@ hash_matches resource/doh/doh_s_arm64 resource/doh/doh_s_arm64.sha256sum
 hash_matches resource/nginx/nginx_amd64 resource/nginx/nginx_amd64.sha256sum
 hash_matches resource/nginx/nginx_arm64 resource/nginx/nginx_arm64.sha256sum
 hash_matches resource/nginx/libmimalloc2_amd64 resource/nginx/libmimalloc2_amd64.sha256sum
+hash_matches resource/haproxy/haproxy_amd64 resource/haproxy/haproxy_amd64.sha256sum
+hash_matches resource/haproxy/haproxy_arm64 resource/haproxy/haproxy_arm64.sha256sum
 
 for archive in de_GWD_amd64.zip de_GWD_arm64.zip resource/client/Archive.zip resource/nginx/nginxConf.zip resource/server/sample.zip; do
   unzip -tq "$archive" >/dev/null || fail "invalid ZIP: $archive"
@@ -54,5 +56,11 @@ cmp <(unzip -p resource/client/Archive.zip ui-script/ui-installDocker) \
 command -v jq >/dev/null 2>&1 || fail 'jq is required to validate the component manifest'
 jq -e '.schema == 1 and (.components | type == "object")' tools/component-versions.json >/dev/null \
   || fail 'invalid component manifest'
+jq -e '.schema == 1 and .nginx.archive and .haproxy.archive' tools/native-component-sources.json >/dev/null \
+  || fail 'invalid native component manifest'
+while IFS=$'\t' read -r archive expected; do
+  actual=$(sha256sum "resource/native/sources/$archive" | awk '{print $1}')
+  [[ "$actual" = "$expected" ]] || fail "native source checksum mismatch: $archive"
+done < <(jq -r 'to_entries[] | select(.value | type == "object") | .value | select(has("archive")) | [.archive,.sha256] | @tsv' tools/native-component-sources.json)
 
 printf 'release-chain check passed: dex-owned sources, resources, checksums, and archives are valid\n'

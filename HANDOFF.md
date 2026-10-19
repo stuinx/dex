@@ -1,5 +1,7 @@
 # 当前交接：整体优化隔离分支（2026-10-17）
 
+- 2026-10-19升级最终复核：用户确认vm1224 Rproxy新增属于其他操作，要求保留并继续；已保留并只读复核三机，本次组件升级范围无新增回归。准备提交并正常快进推送dev；不创建Release、不改README，不把sgn原有UDP超时视为修复或全项目通过。以本条覆盖下一条“等待并发确认”的状态。
+- 2026-10-19最新：用户确认vm1224指纹后已继续；三台Nginx升级1.30.6、sam/sgn HAProxy升级3.2.26；两架构资源/源码/哈希、构建与7例回退测试已落地，amd64及arm64 QEMU功能通过。sam TCP/UDP、两台实际HAProxy/DoH通过；sgn UDP前后同样失败属既有出口链路。未提交推送：vm1224在19:09新增FORWARD/Rproxy并启动RproxyC，非主代理写入，已请求用户确认并发来源；不覆盖该变化。原核心配置备份在三机/root/dex-components-20261019/before和本机私有临时目录；专用构建镜像已清理。详见docs/component-upgrade-20261019.md。先核验当前状态/用户回复，再决定补验及推送；README不改，Xray/SmartDNS/mosdns正式版不变，不重跑已通过测试。
 - 用户已明确要求推送到dev；本次提交包含当前隔离分支的既有适配和三批优化、测试/验收报告。推送目标为origin/dev，使用正常快进，不强推，不更改原dev/vless工作区。验收三条异常与缺口不因推送而视为解决；不创建Release。
 - 最新完整验收：Luna Medium执行回归/三机只读/DoH过期测试；主代理实际浏览器、入站、分流、RproxyS、HAProxy复核。暂不全通过：sgn默认SOCKS5 UDP、sgn公网RproxyS55500、sam HAProxy55443上游异常；WG/全CRUD/NodeDT/新完整安装仍有缺口。优先读docs/full-acceptance-20261017-main.md，原始报告full-acceptance-20261017-luna.md。
 - 浏览器添加/报错/保存/排序/删除通过，原0conf/runtime hash恢复一致；13项NodeSM、自定义和默认出口真实命中通过；过期证书拒绝主代理复跑通过。临时进程/转送停止，三机主要服务active。路由测试初版误触一次SmartDNS重启，未改配置，已隔离重跑通过。本轮未修业务源码/重装/重置/改权限/推送。
