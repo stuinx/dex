@@ -31,7 +31,7 @@ nodeSMDomains=(
   '["domain:telegram.org","domain:t.me","domain:telegra.ph"]'
   '["domain:x.com","domain:twitter.com","domain:twimg.com"]'
   '["geosite:openai"]'
-  '["domain:meta.ai"]'
+  '["domain:meta.ai","domain:muse.ai"]'
   '["geosite:apple","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
 )
 managedTags='["nodeSMyoutube","nodeSMclaude","nodeSMgemini","nodeSMgrok","nodeSMwikipedia","nodeSMreddit","nodeSMgithub","nodeSMdiscord","nodeSMtelegram","nodeSMx","nodeSMopenai","nodeSMmetaai","nodeSMapple","nodeSMsteam","nodeSMnetflix","nodeSMhdh","nodeSMtvb","nodeSMbahamut"]'
