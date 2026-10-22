@@ -99,7 +99,7 @@ try {
   assert.equal(config.outbounds.find(outbound => outbound.tag === 'nodeSMmetaai').protocol, 'vless');
   assert(config.routing.rules.some(rule => rule.outboundTag === 'nodeSMclaude' && rule.domain.includes('domain:claude.ai')));
   assert(config.routing.rules.some(rule => rule.outboundTag === 'nodeSMgemini' && rule.domain.includes('domain:gemini.google.com')));
-  assert(config.routing.rules.some(rule => rule.outboundTag === 'nodeSMmetaai' && rule.domain.includes('domain:meta.ai') && rule.domain.includes('domain:muse.ai')));
+  assert(config.routing.rules.some(rule => rule.outboundTag === 'nodeSMmetaai' && ['geosite:facebook', 'geosite:instagram', 'geosite:messenger', 'geosite:whatsapp', 'geosite:threads', 'geosite:oculus', 'domain:meta.ai', 'domain:muse.ai'].every(domain => rule.domain.includes(domain))));
   assert(!config.routing.rules.some(rule => rule.outboundTag === 'nodeSMnetflix'));
   assert(config.routing.rules.some(rule => rule.outboundTag === 'unrelated'));
 

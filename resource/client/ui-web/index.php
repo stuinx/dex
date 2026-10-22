@@ -236,7 +236,7 @@ $nodeSMroutes = array(
   array('key' => 'telegram', 'label' => 'Telegram', 'class' => 'border-info bg-info text-white', 'default' => '默认代理'),
   array('key' => 'x', 'label' => 'X / Twitter', 'class' => 'border-dark bg-dark text-white', 'default' => '默认代理'),
   array('key' => 'openai', 'label' => 'OpenAI', 'class' => 'text-white', 'style' => 'border-color: #75A99C;background-color: #75A99C;', 'default' => '默认代理'),
-  array('key' => 'metaai', 'label' => 'Meta AI', 'class' => 'border-primary bg-primary text-white', 'default' => '默认代理'),
+  array('key' => 'metaai', 'label' => 'Meta', 'class' => 'border-primary bg-primary text-white', 'default' => '默认代理'),
   array('key' => 'apple', 'label' => 'APPLE', 'class' => 'border-secondary bg-secondary text-white', 'default' => '直连')
 );
 foreach ($nodeSMroutes as $nodeSMroute) {
