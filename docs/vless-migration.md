@@ -9,9 +9,9 @@
 - 迁移后的主 VLESS 和全新安装的主节点都使用 `127.0.0.1:9890`。旧配置中的 `vmess` 兼容字段及 `vmess.conf` 会在成功应用配置时清理。
 - 主节点按 `tag=main` 识别；旧配置无标签时才回退到第一个入站。
 - `55 → 6. VMESS WS` 使用独立的 `vmess_ws` 字段。启用时填写域名和端口，自动生成 UUID 与 WS 路径；VMess WS 与 VLESS WS 均复用主线 `/var/www/ssl/de_GWD.cer` 和私钥，不单独申请证书。
-- Client 安装可选择 `vless` 或 `vmess`，默认 VLESS；旧 `0conf` 缺少 `protocol` 字段时仍解释为 VMess。节点管理、节点切换、恢复主节点及共享出站生成器识别协议。
+- Client 普通节点与分流只支持 VLESS；旧配置中缺少 `protocol` 或标记为 VMess 的普通节点会在清理时移除。Rproxy 内部隧道继续保留既有协议。
 - 同地址的不同节点按 UUID、路径、协议区分。分流出站在 `v2nodeDIV.outboundNodes` 保存所选身份，供按地址重建时消除歧义。旧记录没有身份且同时匹配多条时需重新选择一次节点，不任意猜测。
-- RproxyS 和 FWD 的独立 VMess 隧道不在此次协议迁移范围内。
+- Client FWD0/FWD1 使用 VLESS + WebSocket + TLS；FWD1 上游必须是带 WebSocket 路径的 VLESS 节点。RproxyS 内部隧道仍使用原有协议。
 
 ## 迁移检查与恢复
 

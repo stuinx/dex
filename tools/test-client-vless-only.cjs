@@ -49,8 +49,18 @@ for (const nodes of [[vmess], [{...vless, protocol: undefined}], [vless], []]) {
   }
 }
 assert.doesNotMatch(read('resource/client/ui-web/nodes.php'), /option value="vmess"/);
-for (const file of ['resource/client/ui-script/ui-FWD1save', 'resource/client/ui-script/ui-RproxyCsave']) {
+for (const file of ['resource/client/ui-script/ui-RproxyCsave']) {
   const original = cp.execFileSync('git', ['show', `HEAD:${file}`], {cwd: repo, encoding: 'utf8'});
   assert.equal(read(file), original, 'Internal tunnel protocol must remain unchanged');
 }
+const fwd0 = read('resource/client/ui-script/ui-FWD0save');
+const fwd1 = read('resource/client/ui-script/ui-FWD1save');
+for (const [name, script] of [['FWD0', fwd0], ['FWD1', fwd1]]) {
+  assert.match(script, /"protocol": "vless"/, `${name} inbound must use VLESS`);
+  assert.match(script, /"network": "ws"/, `${name} inbound must use WebSocket`);
+  assert.match(script, /"security": "tls"/, `${name} inbound must use TLS`);
+  assert.match(script, /10#\$FWD[01]port/, `${name} port must be normalized as decimal`);
+}
+assert.match(fwd1, /"protocol": "vless"[\s\S]*?"network": "ws"[\s\S]*?"security": "tls"/, 'FWD1 outbound must use VLESS WS TLS');
+assert(fwd1.includes('FWD1path="/${FWD1firstUUID: -6}"'), 'FWD1 path must use the first UUID suffix');
 console.log('PASS: VLESS-only node cleanup, PHP save validation, rejected legacy rebuild, and unchanged internal tunnels');

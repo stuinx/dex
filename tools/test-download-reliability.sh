@@ -81,7 +81,7 @@ run_client_case(){
       case "$*" in
         *nginx_amd64.sha256sum*) printf '%s\n' "$HASH_NGINX" ;;
         *nginxConf.zip.sha256sum*) printf '%s\n' "$HASH_CONFIG" ;;
-        *Archive.zip.sha256sum*) printf '%s\n' "$HASH_ARCHIVE" ;;
+        *Archive.zip.sha256sum*) printf '%s  Archive.zip\n' "$HASH_ARCHIVE" ;;
         *version.php*) printf '%s\n' 'old-version' ;;
         *) return 2 ;;
       esac
@@ -147,6 +147,9 @@ run_server_case(){
   local target="$fixture/opt/de_GWD/.repo/de_GWD.zip"
   local status=0
   mkdir -p "$fixture/opt/de_GWD/.repo" "$fixture/tmp" "$fixture/usr/sbin"
+  if [[ $mode == fail ]]; then
+    printf '%s' 'retained-prefix-' >"$fixture/tmp/de_GWD_amd64.zip"
+  fi
   printf '%s' 'current-doh-server' >"$fixture/opt/de_GWD/doh-server"
   printf '%s' 'current-nginx' >"$fixture/usr/sbin/nginx"
   printf '%s' 'current-nginx-config' >"$fixture/opt/de_GWD/.repo/nginxConf.zip"
@@ -198,21 +201,24 @@ run_server_case(){
       esac
     }
     wget(){
-      local output=''
+      local output='' url=''
       local i
       local -a args=("$@")
       printf 'wget %s\n' "${args[*]}" >>"$ARG_LOG"
       for ((i=0; i<${#args[@]}; i++)); do
         case ${args[i]} in
-          -cqO|-qO|-O)
-            i=$((i + 1))
-            output=${args[i]}
+          --directory-prefix=*)
+            output=${args[i]#*=}
+            ;;
+          http://*|https://*)
+            url=${args[i]}
             ;;
         esac
       done
-      [[ -n $output ]] || return 2
+      [[ -n $output && -n $url ]] || return 2
+      output="$output/${url##*/}"
       case $DOWNLOAD_MODE in
-        fail) printf '%s' "$PARTIAL_PAYLOAD" >"$output"; return 8 ;;
+        fail) printf '%s' "$PARTIAL_PAYLOAD" >>"$output"; return 8 ;;
         mismatch) printf '%s' "$PARTIAL_PAYLOAD" >"$output" ;;
         success) printf '%s' "$GOOD_PAYLOAD" >"$output" ;;
       esac
@@ -241,9 +247,19 @@ run_server_case(){
       report_case_failure "$fixture" "server repoDL $mode changed the existing target"
       return 1
     fi
+    if [[ $mode == fail && $(<"$fixture/tmp/de_GWD_amd64.zip") != "retained-prefix-$partialPayload" ]]; then
+      report_case_failure "$fixture" 'server repoDL did not retain the interrupted archive for resume'
+      return 1
+    fi
   fi
   if ! assert_download_bounds "$fixture/args.log"; then
     report_case_failure "$fixture" "server repoDL $mode did not pass all timeout/retry bounds"
+    return 1
+  fi
+  if ! grep -Fq -- 'timeout --signal=TERM --kill-after=5s 1800s' "$fixture/args.log" \
+    || ! grep -Fq -- 'wget --continue --directory-prefix=' "$fixture/args.log" \
+    || grep -Eq -- 'wget .* -O |wget .* -qO' "$fixture/args.log"; then
+    report_case_failure "$fixture" "server repoDL $mode did not use resumable long-download settings"
     return 1
   fi
   printf 'PASS server repoDL %s\n' "$mode"
@@ -252,8 +268,8 @@ run_server_case(){
 assert_download_bounds(){
   local log_file=$1
   grep -Fq -- 'curl --connect-timeout 10 --max-time 60 --retry 3 --retry-delay 2 --retry-max-time 180' "$log_file"
-  grep -Fq -- 'timeout --signal=TERM --kill-after=5s 300s' "$log_file"
-  grep -Fq -- 'wget --connect-timeout=10 --read-timeout=30 --tries=4 --waitretry=2' "$log_file"
+  grep -Eq -- 'timeout --signal=TERM --kill-after=5s (300s|1800s)' "$log_file"
+  grep -Eq -- 'wget (--continue )?(--directory-prefix=[^ ]+ )?--connect-timeout=10 --read-timeout=30 --tries=4 --waitretry=2|wget --connect-timeout=10 --read-timeout=30 --tries=4 --waitretry=2' "$log_file"
 }
 
 run_client_case fail

@@ -17,6 +17,7 @@ $cases = [
     'valid-vless' => ['nodeList' => [$validNode], 'status' => 200, 'savedNodes' => [$validNode]],
     'valid-tcp-vless' => ['nodeList' => [array_merge($validNode, ['path' => ''])], 'status' => 200, 'savedNodes' => [array_merge($validNode, ['path' => ''])]],
     'empty-list' => ['nodeList' => [], 'status' => 200, 'savedNodes' => []],
+    'empty-uuid-removes-node' => ['nodeList' => [array_merge($validNode, ['uuid' => '']), $validNode], 'status' => 200, 'savedNodes' => [$validNode]],
     'reject-unauthenticated' => ['nodeList' => [$validNode], 'auth' => false, 'status' => 401, 'message' => 'Authentication required'],
     'reject-protocol' => ['nodeList' => [array_merge($validNode, ['protocol' => 'vmess'])], 'status' => 400, 'message' => 'Only VLESS nodes are supported'],
     'reject-domain' => ['nodeList' => [array_merge($validNode, ['domain' => 'vless.example'])], 'status' => 400, 'message' => 'domain must be host:port'],

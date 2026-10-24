@@ -3,6 +3,10 @@
 <?php
 $FWD0port = $_GET['FWD0port'];
 $FWD0uuidList = $_GET['FWD0uuidList'];
+if (!is_string($FWD0port) || !preg_match('/^[0-9]{1,5}$/D', $FWD0port) || (int)$FWD0port < 1 || (int)$FWD0port > 65535) {
+    http_response_code(400);
+    exit('FWD0 port must be between 1 and 65535');
+}
 
 $data = json_decode(file_get_contents('/opt/de_GWD/0conf'), true);
 $data['FORWARD']['FWD0'] = array();

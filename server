@@ -193,10 +193,16 @@ timeout --signal=TERM --kill-after=5s 300s wget --connect-timeout=10 --read-time
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/de_GWD.zip $sha256sum_de_GWD) = "false" ]]; then
-rm -rf /tmp/de_GWD.zip
-timeout --signal=TERM --kill-after=5s 300s wget --connect-timeout=10 --read-timeout=30 --tries=4 --waitretry=2 --show-progress -cqO /tmp/de_GWD.zip "$repoBase/de_GWD_${architecture}.zip"
-[[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit 1
-[[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "true" ]] && mv -f /tmp/de_GWD.zip /opt/de_GWD/.repo/de_GWD.zip
+if ! timeout --signal=TERM --kill-after=5s 1800s wget --continue --directory-prefix=/tmp/ --connect-timeout=10 --read-timeout=30 --tries=4 --waitretry=2 --show-progress -q "$repoBase/de_GWD_${architecture}.zip"; then
+  echo -e "${WHITE}de_GWD${RED} Download interrupted; partial file retained for resume${cRES}"
+  exit 1
+fi
+if [[ $(checkSum /tmp/de_GWD_${architecture}.zip $sha256sum_de_GWD) != "true" ]]; then
+  rm -f /tmp/de_GWD_${architecture}.zip
+  echo -e "${WHITE}de_GWD${RED} Download checksum failed${cRES}"
+  exit 1
+fi
+mv -f /tmp/de_GWD_${architecture}.zip /opt/de_GWD/.repo/de_GWD.zip
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/nginxConf.zip $sha256sum_nginxConf) = "false" ]]; then
@@ -5538,23 +5544,18 @@ apt-get update -o APT::Update::Error-Mode=any && apt-get upgrade --allow-downgra
 apt-get full-upgrade -y && apt-get autoremove --purge -y && apt-get clean && apt-get autoclean || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 fi
 
+rm -f /etc/apt/sources.list.d/debian.sources
 cat << EOF >/etc/apt/sources.list
 deb http://deb.debian.org/debian $debianSuite main non-free-firmware
-deb-src http://deb.debian.org/debian $debianSuite main non-free-firmware
 
 deb http://deb.debian.org/debian-security/ $debianSuite-security main non-free-firmware
-deb-src http://deb.debian.org/debian-security/ $debianSuite-security main non-free-firmware
 
 deb http://deb.debian.org/debian $debianSuite-updates main non-free-firmware
-deb-src http://deb.debian.org/debian $debianSuite-updates main non-free-firmware
 
 deb http://deb.debian.org/debian $debianSuite-backports main non-free-firmware
-deb-src http://deb.debian.org/debian $debianSuite-backports main non-free-firmware
 EOF
 
-sed -i "s/ buster / bookworm /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
-sed -i "s/ bullseye / bookworm /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
-apt-get update -o APT::Update::Error-Mode=any && apt-get upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
+apt-get update -o Acquire::Languages=none -o APT::Update::Error-Mode=any && apt-get upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
 apt-get full-upgrade -y && apt-get autoremove --purge -y && apt-get clean && apt-get autoclean || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 
 preInstall

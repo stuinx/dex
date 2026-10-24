@@ -14,11 +14,16 @@ if (!is_array($nodeList)) {
     exit('nodeList must be an array');
 }
 $nodeNumber = 0;
+$validatedNodes = [];
 foreach ($nodeList as $node) {
     $nodeNumber++;
     if (!is_array($node)) {
         http_response_code(400);
         exit('Node ' . $nodeNumber . ' must be an object');
+    }
+    $uuid = $node['uuid'] ?? '';
+    if ($uuid === '') {
+        continue;
     }
     if (($node['protocol'] ?? '') !== 'vless') {
         http_response_code(400);
@@ -39,7 +44,7 @@ foreach ($nodeList as $node) {
         http_response_code(400);
         exit('Node ' . $nodeNumber . ': name is required');
     }
-    if (!isset($node['uuid']) || !is_string($node['uuid']) || !preg_match('/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iD', $node['uuid'])) {
+    if (!is_string($uuid) || !preg_match('/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iD', $uuid)) {
         http_response_code(400);
         exit('Node ' . $nodeNumber . ': uuid must be a valid UUID');
     }
@@ -53,9 +58,10 @@ foreach ($nodeList as $node) {
         http_response_code(400);
         exit('Node ' . $nodeNumber . ': tls must be a hostname or IPv4 address');
     }
+    $validatedNodes[] = $node;
 }
 
-$conf['v2node'] = $nodeList;
+$conf['v2node'] = $validatedNodes;
 $newJsonString = json_encode($conf, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 if ($newJsonString === false || file_put_contents('/opt/de_GWD/0conf', $newJsonString) === false) {
     http_response_code(500);

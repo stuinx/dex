@@ -404,14 +404,16 @@ EOT;
 
 <div class="btn-group">
   <label class="input-group-text">上级v2节点</label>
-  <button id="FWD1upstream" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown" value="<?php echo $checkFWD1OB[1] ?>"><?php echo $checkFWD1OB[0] ?></button>
+  <button id="FWD1upstream" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown" value="<?php echo htmlspecialchars($checkFWD1OB[1] ?? '', ENT_QUOTES, 'UTF-8') ?>"><?php echo htmlspecialchars($checkFWD1OB[0] ?? '', ENT_QUOTES, 'UTF-8') ?></button>
   <div id="FWD1upstreamDrop" class="dropdown-menu">
 <?php
 for( $i=0; $i<count($de_GWDconf->v2node); $i++){
-  $address = $de_GWDconf->v2node[$i]->domain;
-  $name = $de_GWDconf->v2node[$i]->name;
+  $node = $de_GWDconf->v2node[$i];
+  if (($node->protocol ?? '') !== 'vless' || !isset($node->path) || substr($node->path, 0, 1) !== '/') continue;
+  $identity = htmlspecialchars(json_encode(['domain' => $node->domain, 'uuid' => $node->uuid, 'path' => $node->path, 'protocol' => $node->protocol, 'tls' => $node->tls ?? ''], JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8');
+  $name = htmlspecialchars($node->name, ENT_QUOTES, 'UTF-8');
 print <<<EOT
-<button class='dropdown-item' href='#' id='FWD1upstream$i' value="$address" onclick="buttonFWD1upstream(this)">$name</button>
+<button class='dropdown-item' href='#' id='FWD1upstream$i' value="$identity" onclick="buttonFWD1upstream(this)">$name</button>
 EOT;
 }
 ?>
@@ -797,10 +799,8 @@ $('#FWD1qrcode'+FWD1index).qrcode({width: 240,height: 240,correctLevel:0,text:da
 }
 
 function buttonFWD1upstream(buttonFWD1upstream){
-var FWD1upstreamobj = $(buttonFWD1upstream).parent().find('button')
-var FWD1upstreamindex = FWD1upstreamobj.index($(buttonFWD1upstream))
-var FWD1upstreamAddress = $('#FWD1upstream'+FWD1upstreamindex).val()
-var FWD1upstreamName = $('#FWD1upstream'+FWD1upstreamindex).html()
+var FWD1upstreamAddress = $(buttonFWD1upstream).val()
+var FWD1upstreamName = $(buttonFWD1upstream).html()
 $('#FWD1upstream').html(FWD1upstreamName)
 $('#FWD1upstream').val(FWD1upstreamAddress)
 }

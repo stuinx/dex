@@ -35,6 +35,16 @@ for (const [codename, architecture] of [
     const sourceBlocks = [...source.matchAll(/cat << EOF >\/etc\/apt\/sources.list\n([\s\S]*?)\nEOF/g)]
       .filter(match => match[1].includes('$debianSuite'));
     assert.equal(sourceBlocks.length, 2, `${name}: install and update APT sources`);
+    assert(sourceBlocks.every(match => !/^deb-src\s/m.test(match[1])), `${name}: APT should not download source indexes`);
+    if (name === 'server') {
+      const installBlock = sourceBlocks.find(match => match[1].includes('deb http://deb.debian.org/debian $debianSuite'));
+      assert(installBlock, `${name}: initial install APT sources`);
+      const installer = functionSource(source, 'installGWD');
+      assert(installer.indexOf('rm -f /etc/apt/sources.list.d/debian.sources') < installer.lastIndexOf('apt-get update'));
+      assert(!installer.includes('s/ bullseye / bookworm /g'));
+      assert(!installer.includes('s/ buster / bookworm /g'));
+      assert(installer.includes('Acquire::Languages=none'));
+    }
     const persist = source.match(/if \[\[ \$debianSuite = trixie \]\]; then\n  ln -sf [^\n]+\nfi/)[0];
     const rewrite = text => text.replaceAll('/etc/', `${fixture}/etc/`);
     const run = body => {

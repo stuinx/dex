@@ -285,7 +285,7 @@ repoDL(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Repo Download${cRES}\r\c"
 sha256sum_nginx=$(curl --connect-timeout 10 --max-time 60 --retry 3 --retry-delay 2 --retry-max-time 180 -fsSLo- "$repoBase/resource/nginx/nginx_${architecture}.sha256sum")
 sha256sum_nginxConf=$(curl --connect-timeout 10 --max-time 60 --retry 3 --retry-delay 2 --retry-max-time 180 -fsSLo- "$repoBase/resource/nginx/nginxConf.zip.sha256sum")
-sha256sum_client=$(curl --connect-timeout 10 --max-time 60 --retry 3 --retry-delay 2 --retry-max-time 180 -fsSLo- "$repoBase/resource/client/Archive.zip.sha256sum")
+sha256sum_client=$(curl --connect-timeout 10 --max-time 60 --retry 3 --retry-delay 2 --retry-max-time 180 -fsSLo- "$repoBase/resource/client/Archive.zip.sha256sum" | awk '{print $1}')
 if [[ -z $sha256sum_nginx ]] || [[ -z $sha256sum_nginxConf ]] || [[ -z $sha256sum_client ]]; then
   echo -e "${WHITE}Repository${RED} Checksum download failed${cRES}"
   exit 1

@@ -2,23 +2,38 @@
 FWD1port=$(jq -r '.FORWARD.FWD1.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 FWD1uuid=$(jq -r '.FORWARD.FWD1.uuid[].FWD1uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 FWD1upstream=$(jq -r '.FORWARD.FWD1.upstream' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+FWD1firstUUID=${FWD1uuid%%$'\n'*}
+FWD1path="/${FWD1firstUUID: -6}"
+[[ $FWD1port =~ ^[0-9]{1,5}$ ]] || { echo "FWD1 requires a valid port, UUID, and installed TLS certificate" >&2; exit 1; }
+FWD1port=$((10#$FWD1port))
+(( FWD1port >= 1 && FWD1port <= 65535 )) && [[ -s /var/www/ssl/de_GWD.cer && -s /var/www/ssl/de_GWD.key && -n $FWD1uuid ]] || { echo "FWD1 requires a valid port, UUID, and installed TLS certificate" >&2; exit 1; }
 
-rm -rf /opt/de_GWD/vtrui1
-mkdir -p /opt/de_GWD/vtrui1
-cp -f /opt/de_GWD/vtrui/vtrui /opt/de_GWD/vtrui1/vtrui1
-chmod +x /opt/de_GWD/vtrui1/vtrui1
-
-v2nodeID=$(jq -r --arg FWD1upstream $FWD1upstream '.v2node | to_entries[] | select(.value.domain == $FWD1upstream) | .key' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+v2nodeID=$(jq -r --arg upstream "$FWD1upstream" '
+  .v2node as $nodes |
+  (if ($upstream | startswith("{")) then
+    (try ($upstream | fromjson) catch {}) as $selected |
+    [$nodes | to_entries[] | select(.value.domain == $selected.domain and .value.uuid == $selected.uuid and .value.path == $selected.path and .value.protocol == $selected.protocol and .value.tls == ($selected.tls // "") and .value.protocol == "vless")]
+  else
+    [$nodes | to_entries[] | select(.value.domain == $upstream and .value.protocol == "vless" and ((.value.path // "") | startswith("/")))]
+  end) |
+  if length == 1 then .[0].key else empty end
+' /opt/de_GWD/0conf 2>/dev/null)
+[[ $v2nodeID =~ ^[0-9]+$ ]] || { echo "FWD1 upstream must uniquely identify a VLESS WebSocket TLS node" >&2; exit 1; }
 
 address=$(jq -r --arg v2nodeID "$v2nodeID" ".v2node[$v2nodeID].domain" /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 domain=$(echo $address | cut -d: -f1)
 port=$(echo $address | cut -d: -f2 | grep '^[[:digit:]]*$')
 [[ -z $port ]] && port="443"
-[[ -z $tls ]] && tls=$domain
-
 tls=$(jq -r --arg v2nodeID "$v2nodeID" ".v2node[$v2nodeID].tls" /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 uuid=$(jq -r --arg v2nodeID "$v2nodeID" ".v2node[$v2nodeID].uuid" /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 path=$(jq -r --arg v2nodeID "$v2nodeID" ".v2node[$v2nodeID].path" /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+[[ -n $tls ]] || tls=$domain
+[[ -n $domain && -n $uuid && $path == /* ]] || { echo "FWD1 upstream must be a VLESS WebSocket TLS node" >&2; exit 1; }
+
+rm -rf /opt/de_GWD/vtrui1
+mkdir -p /opt/de_GWD/vtrui1
+cp -f /opt/de_GWD/vtrui/vtrui /opt/de_GWD/vtrui1/vtrui1
+chmod +x /opt/de_GWD/vtrui1/vtrui1
 
 cat << EOF >/opt/de_GWD/vtrui1/config.json
 {
@@ -40,52 +55,34 @@ cat << EOF >/opt/de_GWD/vtrui1/config.json
   "inbounds":[
     {
       "port": $FWD1port,
-      "protocol": "vmess",
+      "protocol": "vless",
       "settings":{
+        "decryption": "none",
         "clients":[]
       },
       "streamSettings": {
-        "network": "tcp"
+        "network": "ws",
+        "security": "tls",
+        "wsSettings": {
+          "path": "$FWD1path"
+        },
+        "tlsSettings": {
+          "certificates": [
+            {
+              "certificateFile": "/var/www/ssl/de_GWD.cer",
+              "keyFile": "/var/www/ssl/de_GWD.key"
+            }
+          ]
+        }
       }
     }
   ]
 }
 EOF
 
-if [[ -z $path ]]; then
-OBfwd=`cat << EOF
-    {
-      "protocol": "vmess",
-      "settings": {
-        "vnext": [
-          {
-            "address": "$domain",
-            "port": $port,
-            "users": [
-              {
-                "id": "$uuid",
-                "alterId": 0,
-                "security": "auto"
-              }
-            ]
-          }
-        ]
-      },
-      "streamSettings": {
-        "network": "tcp",
-        "sockopt": {
-          "mark": 255,
-          "tcpFastOpen": true,
-          "tcpNoDelay": true
-        }
-      }
-    }
-EOF
-`
-else
 OBfwd=`cat << EOF
 {
-      "protocol": "vmess",
+      "protocol": "vless",
       "settings": {
         "vnext": [
           {
@@ -94,8 +91,7 @@ OBfwd=`cat << EOF
             "users": [
               {
                 "id": "$uuid",
-                "alterId": 0,
-                "security": "auto"
+                "encryption": "none"
               }
             ]
           }
@@ -123,7 +119,6 @@ OBfwd=`cat << EOF
 }
 EOF
 `
-fi
 
 OBdir=`cat << EOF
 {
@@ -135,7 +130,7 @@ EOF
 `
 
 for uuid in $FWD1uuid; do
-uuidStr='{"id":"'$uuid'","alterId":0}'
+uuidStr='{"id":"'$uuid'"}'
 jq --argjson uuidStr "$uuidStr" '.inbounds[0].settings.clients+=[$uuidStr]' /opt/de_GWD/vtrui1/config.json | sponge /opt/de_GWD/vtrui1/config.json
 done
 jq '.outbounds=[]' /opt/de_GWD/vtrui1/config.json |\

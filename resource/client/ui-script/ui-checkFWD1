@@ -2,6 +2,9 @@
 if [[ -f "/opt/de_GWD/vtrui1/config.json" ]]; then
 domain=$(jq -r '.outbounds[0].settings.vnext[0].address' /opt/de_GWD/vtrui1/config.json 2>/dev/null | grep -v '^null$')
 port=$(jq -r '.outbounds[0].settings.vnext[0].port' /opt/de_GWD/vtrui1/config.json 2>/dev/null | grep -v '^null$')
+uuid=$(jq -r '.outbounds[0].settings.vnext[0].users[0].id' /opt/de_GWD/vtrui1/config.json 2>/dev/null | grep -v '^null$')
+path=$(jq -r '.outbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui1/config.json 2>/dev/null | grep -v '^null$')
+tls=$(jq -r '.outbounds[0].streamSettings.tlsSettings.serverName' /opt/de_GWD/vtrui1/config.json 2>/dev/null | grep -v '^null$')
 
 if [[ $port = "443" ]]; then
 nodecheck=$domain
@@ -9,8 +12,11 @@ else
 nodecheck=$domain:$port
 fi
 
-jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf
-
-echo $nodecheck | grep -v '^:'
+jq -r --arg nodecheck "$nodecheck" --arg address "$domain" --arg port "$port" --arg uuid "$uuid" --arg path "$path" --arg tls "$tls" '
+  .v2node[] |
+  select((.domain == $nodecheck or .domain == ($address + ":" + $port) or ($port == "443" and .domain == $address) or ($port == "443" and .domain == ($address + ":443"))) and .uuid == $uuid and .path == $path and .protocol == "vless" and ((.tls // "") == $tls or ((.tls // "") == "" and $tls == $address))) |
+  . as $node |
+  $node.name, ({domain:$node.domain, uuid:$node.uuid, path:$node.path, protocol:$node.protocol, tls:($node.tls // "")} | tojson)
+' /opt/de_GWD/0conf
 rm -rf /tmp/vtruiDomains
 fi
