@@ -29,6 +29,10 @@ branch="${DE_GWD_BRANCH:-dev}"
 repoBase="${DE_GWD_RAW_BASE:-https://gh.stuinx.eu.org/https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}}"
 repoFallbackBase="${DE_GWD_RAW_FALLBACK_BASE:-https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}}"
 chnrouteBase="${DE_GWD_CHNROUTE_BASE:-https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/chnroute/main}"
+extraSettings="/opt/de_GWD/extra-inbounds.json"
+haproxyConfig="/etc/haproxy/haproxy.cfg"
+haproxyMarker="# de_GWD managed HAProxy configuration"
+haproxyService="/etc/systemd/system/haproxy.service"
 
 
 installCMD=`cat << EOF
@@ -1845,11 +1849,15 @@ table ip de_GWD {
                 flags interval
                 auto-merge
         }
+        set HAProxyPort {
+                type inet_service
+        }
         chain prerouting {
                 type filter hook prerouting priority -280; policy accept;
                 meta l4proto udp th dport { 53, 5331, 5332, 5341, 9896, 67, 68, 1900, 5350, 5351, 5353 } accept
                 meta l4proto tcp th dport { 53, 5331, 5332, 5341, 9896, 2195, 2196, 2197, 3689, 5223, 5297 } accept
                 ip daddr @GlobalDNS accept
+                tcp dport @HAProxyPort accept
                 ip saddr @listBlan meta l4proto { tcp, udp } tproxy to 127.0.0.1:9896 meta mark set 0x9
                 ip saddr @listWlan accept
                 ip daddr \$RESERVED_IP accept
@@ -1875,6 +1883,7 @@ table ip de_GWD {
 }
 EOF
 chmod +x /opt/de_GWD/nftables/nftables
+haproxy_syncFirewall || { echo -e "${WHITE}HAProxy nftables${RED} synchronization failed${cRES}"; exit 1; }
 
 rm -rf /lib/systemd/system/nftables.service
 cat << EOF >/etc/systemd/system/nftables.service
@@ -2970,6 +2979,7 @@ else
   echo -e "${WHITE} AutoUpdate     \c" && echo -e "${WHITE}[ ${WHITE}- ${WHITE}]${cRES}"
 fi
 
+[[ $(systemctl is-active haproxy 2>/dev/null) = "active" ]] && echo -e "${PURPLE}[Enabled] HAProxy TCP Port Forward${cRES}"
 echo -e "${WHITE}---------------------- ${cRES}"
 
 if [[ $(du -sk /opt/de_GWD/.repo/geosite.dat 2>/dev/null | awk '{print$1}') -gt 3500 ]]; then
@@ -2991,6 +3001,618 @@ else
 fi
 }
 
+
+
+deGWD_featureValidPort(){
+local port=${1:-}
+[[ $port =~ ^[1-9][0-9]{0,4}$ ]] && (( 10#$port <= 65535 ))
+}
+
+
+
+deGWD_featureValidUUID(){
+[[ ${1:-} =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]
+}
+
+
+
+deGWD_featureValidHost(){
+[[ ${1:-} =~ ^[A-Za-z0-9.-]+$ ]]
+}
+
+
+
+deGWD_featureUUID(){
+cat /proc/sys/kernel/random/uuid
+}
+
+
+
+deGWD_featureMainDomain(){
+local serverDomain
+serverDomain=$(awk '$1 == "server_name" && $2 != ";" {gsub(/;/, "", $2); print $2; exit}' /etc/nginx/conf.d/default.conf 2>/dev/null)
+deGWD_featureValidHost "$serverDomain" || return 1
+printf '%s\n' "$serverDomain"
+}
+
+
+
+deGWD_featureMainPort(){
+local serverPort
+serverPort=$(awk '$1 == "listen" && $2 ~ /^[1-9][0-9]{0,4}$/ && $3 == "default" {print $2; exit}' /etc/nginx/conf.d/default.conf 2>/dev/null)
+deGWD_featureValidPort "$serverPort" || return 1
+printf '%s\n' "$serverPort"
+}
+
+
+
+deGWD_featureParseHostPort(){
+local input=${1:-} allowHostOnly=${2:-0} host port
+if [[ $input =~ ^\[([0-9A-Fa-f:.]+)\]:([1-9][0-9]{0,4})$ ]]; then
+  host=${BASH_REMATCH[1]}
+  port=${BASH_REMATCH[2]}
+elif [[ $input =~ ^([A-Za-z0-9.-]+):([1-9][0-9]{0,4})$ ]]; then
+  host=${BASH_REMATCH[1]}
+  port=${BASH_REMATCH[2]}
+elif [[ $allowHostOnly = 1 && $input =~ ^[A-Za-z0-9.-]+$ ]]; then
+  printf '%s\n' "$input"
+  return
+else
+  return 1
+fi
+deGWD_featureValidPort "$port" || return 1
+printf '%s %s\n' "$host" "$port"
+}
+
+
+
+deGWD_featureFormatHostPort(){
+if [[ ${1:-} == *:* ]]; then
+  printf '[%s]:%s\n' "$1" "$2"
+else
+  printf '%s:%s\n' "$1" "$2"
+fi
+}
+
+
+
+deGWD_featurePortAvailable(){
+local candidate=${1:-} current=${2:-} used mainPort
+deGWD_featureValidPort "$candidate" || return 1
+[[ $candidate = "$current" ]] && return 0
+[[ $candidate != 9890 && $candidate != 9891 ]] || return 1
+
+mainPort=$(deGWD_featureMainPort 2>/dev/null || true)
+[[ -z $mainPort || $candidate != "$mainPort" ]] || return 1
+
+if [[ -s $haproxyConfig ]] && haproxy_configManaged; then
+  while IFS=$'\t' read -r used _; do
+    [[ -n $used && $used != "$current" && $used = "$candidate" ]] && return 1
+  done < <(haproxy_extractRules)
+fi
+
+if [[ -s $extraSettings ]]; then
+  while IFS= read -r used; do
+    [[ -n $used && $used != "$current" && $used = "$candidate" ]] && return 1
+  done < <(jq -r '
+    [
+      (.vless_ws, .reality, .socks5 | select(type == "object" and .enabled == true) | .port),
+      ((.dokodemo.rules // [])[]?.port)
+    ] | .[] | select(. != null)
+  ' "$extraSettings" 2>/dev/null)
+fi
+
+if [[ -s /opt/de_GWD/RproxyS/settings.json ]]; then
+  while IFS= read -r used; do
+    [[ -n $used && $used != "$current" && $used = "$candidate" ]] && return 1
+  done < <(jq -r '.tunnel.port // empty, (.mapping[]?.port // empty)' /opt/de_GWD/RproxyS/settings.json 2>/dev/null)
+fi
+
+if [[ $candidate != "$current" ]] && command -v ss >/dev/null 2>&1 &&
+   ss -H -lntu 2>/dev/null | awk -v port=":$candidate" '$5 ~ port "$" {found=1} END {exit !found}'; then
+  return 1
+fi
+return 0
+}
+
+
+
+haproxy_validPort(){
+deGWD_featureValidPort "$@"
+}
+
+
+
+haproxy_parseUpstream(){
+deGWD_featureParseHostPort "$1" 0
+}
+
+
+
+haproxy_formatUpstream(){
+deGWD_featureFormatHostPort "$@"
+}
+
+
+
+haproxy_extractLegacyRules(){
+[[ -s $haproxyConfig ]] || return 0
+awk '
+function emit() {
+  if (frontendPort != "" && frontendBackend != "" && backendName == frontendBackend && endpoint != "") {
+    print frontendPort "\t" endpoint
+  }
+}
+/^frontend[[:space:]]+/ {
+  if (seen) emit()
+  seen=1
+  frontendPort=""
+  frontendBackend=""
+  backendName=""
+  endpoint=""
+  next
+}
+/^[[:space:]]+bind[[:space:]]+:[0-9]+([[:space:]]|$)/ {
+  frontendPort=$2
+  sub(/^:/, "", frontendPort)
+  next
+}
+/^[[:space:]]+default_backend[[:space:]]+/ {
+  frontendBackend=$2
+  next
+}
+/^backend[[:space:]]+/ {
+  backendName=$2
+  next
+}
+/^[[:space:]]+server[[:space:]]+endpoint[[:space:]]+/ {
+  if (backendName == frontendBackend) endpoint=$3
+  next
+}
+END { if (seen) emit() }
+' "$haproxyConfig"
+}
+
+
+
+haproxy_extractRules(){
+[[ -s $haproxyConfig ]] || return 0
+if grep -qF "$haproxyMarker" "$haproxyConfig"; then
+  awk '
+    /^# de_GWD rule begin / {port=$NF; next}
+    /^[[:space:]]+server[[:space:]]+endpoint[[:space:]]+/ && port != "" {print port "\t" $3; next}
+    /^# de_GWD rule end / {port=""}
+  ' "$haproxyConfig"
+else
+  haproxy_extractLegacyRules
+fi
+}
+
+
+
+haproxy_legacyManaged(){
+[[ -f $haproxyConfig && ! -L $haproxyConfig ]] || return 1
+[[ -f $haproxyService ]] || return 1
+grep -qF 'Environment="CONFIG=/etc/haproxy/haproxy.cfg"' "$haproxyService" || return 1
+grep -qF 'ExecStart=/usr/sbin/haproxy -Ws -f $CONFIG' "$haproxyService" || return 1
+grep -Eq '^  ulimit-n[[:space:]]+500000$' "$haproxyConfig" || return 1
+grep -Eq '^  maxconn[[:space:]]+200000$' "$haproxyConfig" || return 1
+grep -Eq '^resolvers local$' "$haproxyConfig" || return 1
+grep -Eq '^  nameserver[[:space:]]+dns[[:space:]]+127\.0\.0\.1:53$' "$haproxyConfig" || return 1
+local rules port upstream
+rules=$(haproxy_extractLegacyRules) || return 1
+[[ -n $rules ]] || return 1
+while IFS=$'\t' read -r port upstream; do
+  [[ -n $port && -n $upstream ]] || continue
+  haproxy_validPort "$port" || return 1
+  haproxy_parseUpstream "$upstream" >/dev/null || return 1
+done <<< "$rules"
+return 0
+}
+
+
+
+haproxy_configManaged(){
+if [[ ! -e $haproxyConfig ]]; then
+  return 0
+fi
+[[ -f $haproxyConfig && ! -L $haproxyConfig ]] || return 1
+grep -qF "$haproxyMarker" "$haproxyConfig" && return 0
+haproxy_legacyManaged
+}
+
+
+
+haproxy_checkOwnership(){
+if ! haproxy_configManaged; then
+  echo -e "${WHITE}HAProxy${RED} Existing /etc/haproxy/haproxy.cfg is not managed by de_GWD; no changes made${cRES}"
+  return 1
+fi
+return 0
+}
+
+
+
+haproxy_defaultConfig(){
+cat << EOF
+$haproxyMarker
+global
+  ulimit-n              500000
+  maxconn               200000
+
+defaults
+  mode                  tcp
+  option                dontlognull
+  timeout connect       10s
+  timeout client        1m
+  timeout server        1m
+  timeout check         10s
+
+resolvers local
+  nameserver            dns 127.0.0.1:53
+  resolve_retries       3
+  timeout retry         3s
+  hold valid            10s
+  accepted_payload_size 8192
+EOF
+}
+
+
+
+haproxy_appendRule(){
+local candidate=$1 listenPort=$2 upstream=$3 parsed upstreamHost upstreamPort
+parsed=$(haproxy_parseUpstream "$upstream") || return 1
+read -r upstreamHost upstreamPort <<< "$parsed"
+cat << EOF >> "$candidate"
+
+# de_GWD rule begin $listenPort
+frontend de_gwd_$listenPort
+  mode tcp
+  bind :$listenPort
+  timeout client 1m
+  default_backend de_gwd_backend_$listenPort
+backend de_gwd_backend_$listenPort
+  mode tcp
+  timeout connect 10s
+  timeout server 1m
+  server endpoint $(haproxy_formatUpstream "$upstreamHost" "$upstreamPort") check resolvers local init-addr none
+# de_GWD rule end $listenPort
+EOF
+}
+
+
+
+haproxy_buildCandidate(){
+local dropPort=${1:-} addPort=${2:-} addUpstream=${3:-} candidate=$4
+local rules port upstream
+[[ -n $candidate ]] || return 1
+
+if [[ -e $haproxyConfig ]]; then
+  haproxy_configManaged || return 1
+  rules=$(haproxy_extractRules) || return 1
+  if grep -qF "$haproxyMarker" "$haproxyConfig"; then
+    awk '
+      /^# de_GWD rule begin / {skip=1; next}
+      /^# de_GWD rule end / {skip=0; next}
+      !skip {print}
+    ' "$haproxyConfig" > "$candidate" || return 1
+  else
+    {
+      printf '%s\n' "$haproxyMarker"
+      awk '/^frontend[[:space:]]+/ {stop=1} !stop {print}' "$haproxyConfig"
+    } > "$candidate" || return 1
+  fi
+else
+  rules=""
+  haproxy_defaultConfig > "$candidate" || return 1
+fi
+
+while IFS=$'\t' read -r port upstream; do
+  [[ -n $port && -n $upstream ]] || continue
+  [[ $dropPort = "all" || $port = "$dropPort" ]] && continue
+  haproxy_appendRule "$candidate" "$port" "$upstream" || return 1
+done <<< "$rules"
+
+if [[ -n $addPort ]]; then
+  haproxy_appendRule "$candidate" "$addPort" "$addUpstream" || return 1
+fi
+return 0
+}
+
+
+
+haproxy_ruleExists(){
+local listenPort=$1
+haproxy_extractRules | awk -F '\t' -v port="$listenPort" '$1 == port {found=1} END {exit !found}'
+}
+
+
+
+haproxy_portAvailable(){
+deGWD_featurePortAvailable "$@"
+}
+
+
+
+haproxy_ensureInstalled(){
+if ! command -v haproxy >/dev/null 2>&1; then
+apt-get update -o APT::Update::Error-Mode=any || { echo -e "${WHITE}HAProxy${RED} APT update failed${cRES}"; return 1; }
+apt-get install -y haproxy || { echo -e "${WHITE}HAProxy${RED} package installation failed${cRES}"; return 1; }
+fi
+local expected candidate backup wasActive
+expected=$(curl --connect-timeout 10 --max-time 60 --retry 3 --retry-delay 2 --retry-max-time 180 -fsSL "$repoBase/resource/haproxy/haproxy_$architecture.sha256sum") || return 1
+[[ $expected =~ ^[0-9a-f]{64}$ ]] || { echo 'HAProxy checksum missing'; return 1; }
+[[ $(sha256sum /usr/sbin/haproxy | awk '{print $1}') = "$expected" ]] && return 0
+candidate=$(mktemp /usr/sbin/.de-gwd-haproxy.XXXXXX) || return 1
+backup=$(mktemp /usr/sbin/.de-gwd-haproxy-backup.XXXXXX) || { rm -f "$candidate"; return 1; }
+cp -p /usr/sbin/haproxy "$candidate" && cp -p /usr/sbin/haproxy "$backup" || { rm -f "$candidate" "$backup"; return 1; }
+if ! curl --connect-timeout 10 --max-time 120 --retry 3 --retry-max-time 300 -fsSL "$repoBase/resource/haproxy/haproxy_$architecture" -o "$candidate" \
+  || [[ $(sha256sum "$candidate" | awk '{print $1}') != "$expected" ]] \
+  || ! "$candidate" -v >/dev/null 2>&1; then
+  echo 'HAProxy core download or validation failed'
+  rm -f "$candidate" "$backup"
+  return 1
+fi
+if [[ -s $haproxyConfig ]] && ! "$candidate" -c -q -f "$haproxyConfig"; then
+  rm -f "$candidate" "$backup"
+  return 1
+fi
+wasActive=$(systemctl is-active haproxy 2>/dev/null || true)
+mv -f "$candidate" /usr/sbin/haproxy || { rm -f "$candidate" "$backup"; return 1; }
+if [[ $wasActive = active ]] && { ! systemctl restart haproxy || ! systemctl is-active --quiet haproxy; }; then
+  mv -f "$backup" /usr/sbin/haproxy
+  systemctl restart haproxy || true
+  echo 'HAProxy restart failed; previous core restored'
+  return 1
+fi
+rm -f "$backup"
+return 0
+}
+
+
+
+haproxy_candidateHasListener(){
+grep -Eq '^(frontend|listen)[[:space:]]' "$1"
+}
+
+
+haproxy_syncFirewall(){
+local rules ports port elements="" setFile="/opt/de_GWD/nftables/SET_HAProxyPort.nft" nftFile="/opt/de_GWD/nftables/nftables"
+[[ -d /opt/de_GWD/nftables ]] || return 0
+rules=$(haproxy_extractRules) || return 1
+while IFS=$'\t' read -r port _; do
+  [[ -n $port ]] || continue
+  haproxy_validPort "$port" || return 1
+  if [[ -n $elements ]]; then elements+=", "; fi
+  elements+="$port"
+done <<< "$rules"
+
+{
+  printf '%s\n' '#!/usr/sbin/nft -f' 'table ip de_GWD {' '        set HAProxyPort {' '                type inet_service'
+  [[ -n $elements ]] && printf '                elements = { %s }\n' "$elements"
+  printf '%s\n' '        }' '}'
+} > "$setFile" || return 1
+chmod +x "$setFile" || return 1
+
+if [[ -f $nftFile ]]; then
+  if ! grep -Fq 'tcp dport @HAProxyPort accept' "$nftFile"; then
+    sed -i '/ip saddr @listBlan/i\                tcp dport @HAProxyPort accept' "$nftFile" || return 1
+  fi
+fi
+
+if command -v nft >/dev/null 2>&1 && nft list table ip de_GWD >/dev/null 2>&1; then
+  if ! nft list set ip de_GWD HAProxyPort >/dev/null 2>&1; then
+    nft add set ip de_GWD HAProxyPort '{ type inet_service; }' || return 1
+  fi
+  if ! nft -a list chain ip de_GWD prerouting 2>/dev/null | grep -Fq '@HAProxyPort accept'; then
+    nft insert rule ip de_GWD prerouting tcp dport @HAProxyPort accept || return 1
+  fi
+  nft flush set ip de_GWD HAProxyPort || return 1
+  if [[ -n $elements ]]; then
+    nft add element ip de_GWD HAProxyPort "{ $elements }" || return 1
+  fi
+fi
+}
+
+
+
+haproxy_applyCandidate(){
+local candidate=$1 shouldRun=${2:-1} backup="" configExisted=0
+local wasActive wasEnabled hasListener=0 status=0
+[[ -s $candidate ]] || return 1
+command -v haproxy >/dev/null 2>&1 || return 1
+haproxy_candidateHasListener "$candidate" && hasListener=1
+if [[ $hasListener = 1 ]] && ! haproxy -c -q -f "$candidate" >/dev/null 2>&1; then
+  echo -e "${WHITE}HAProxy${RED} Configuration check failed${cRES}"
+  return 1
+fi
+
+if [[ -e $haproxyConfig ]]; then
+  [[ -f $haproxyConfig && ! -L $haproxyConfig ]] || return 1
+  backup=$(mktemp /tmp/de_GWD-haproxy-backup.XXXXXX) || return 1
+  cp -p "$haproxyConfig" "$backup" || { rm -f "$backup"; return 1; }
+  configExisted=1
+fi
+wasActive=$(systemctl is-active haproxy 2>/dev/null || true)
+wasEnabled=$(systemctl is-enabled haproxy 2>/dev/null || true)
+
+if ! cat "$candidate" > "$haproxyConfig"; then
+  [[ $configExisted = 1 ]] && cp -p "$backup" "$haproxyConfig"
+  rm -f "$backup"
+  return 1
+fi
+
+if [[ $shouldRun = 1 ]]; then
+  if systemctl is-active --quiet haproxy; then
+    systemctl reload haproxy >/dev/null 2>&1 || systemctl restart haproxy >/dev/null 2>&1 || status=1
+  else
+    systemctl start haproxy >/dev/null 2>&1 || status=1
+  fi
+  systemctl is-active --quiet haproxy || status=1
+  if (( status == 0 )); then
+    systemctl enable haproxy >/dev/null 2>&1 || status=1
+  fi
+else
+  systemctl stop haproxy >/dev/null 2>&1 || true
+  systemctl disable haproxy >/dev/null 2>&1 || status=1
+fi
+if (( status == 0 )) && ! haproxy_syncFirewall; then status=1; fi
+
+if (( status != 0 )); then
+  if (( configExisted )); then
+    cp -p "$backup" "$haproxyConfig"
+  else
+    rm -f "$haproxyConfig"
+  fi
+  if [[ $wasActive = active ]]; then
+    systemctl restart haproxy >/dev/null 2>&1 || true
+  else
+    systemctl stop haproxy >/dev/null 2>&1 || true
+  fi
+  if [[ $wasEnabled = enabled ]]; then
+    systemctl enable haproxy >/dev/null 2>&1 || true
+  elif [[ $wasEnabled = disabled ]]; then
+    systemctl disable haproxy >/dev/null 2>&1 || true
+  fi
+  haproxy_syncFirewall >/dev/null 2>&1 || true
+  rm -f "$backup"
+  return 1
+fi
+
+if [[ $shouldRun = 0 && $hasListener = 0 ]]; then
+  rm -f "$haproxyConfig"
+fi
+rm -f "$backup"
+return 0
+}
+
+
+
+haproxy_listRules(){
+local rules port upstream domain
+if [[ ! -e $haproxyConfig ]]; then
+  echo -e "${WHITE}HAProxy TCP Port Forward${YELLOW} not configured${cRES}"
+  return 0
+fi
+haproxy_checkOwnership || return 1
+rules=$(haproxy_extractRules) || return 1
+echo -e "${BLUE}------------------------------------------------ ${cRES}"
+echo -e "${GREEN}HAProxy TCP Port Forward${cRES}"
+if [[ -z $rules ]]; then
+  echo -e "${YELLOW}No de_GWD forwarding rules${cRES}"
+  echo -e "${BLUE}------------------------------------------------ ${cRES}"
+  return 0
+fi
+domain=$(deGWD_featureMainDomain 2>/dev/null || true)
+while IFS=$'\t' read -r port upstream; do
+  [[ -n $port ]] || continue
+  echo -e "${BLUE}Address: ${YELLOW}$domain:$port${cRES}  ${BLUE}Target: ${YELLOW}$upstream${cRES}"
+done <<< "$rules"
+echo -e "${BLUE}------------------------------------------------ ${cRES}"
+}
+
+
+
+haproxy_printRules(){
+local domain=$1 rules port upstream
+haproxy_configManaged || return 0
+rules=$(haproxy_extractRules) || return 0
+[[ -n $rules ]] || return 0
+echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+echo -e "${GREEN}HAProxy TCP Port Forward${cRES}"
+echo
+while IFS=$'\t' read -r port upstream; do
+  [[ -n $port ]] || continue
+  echo -e "${BLUE}Address:       ${YELLOW}$domain:$port${cRES}"
+  echo -e "${BLUE}tls:           ${YELLOW}$upstream${cRES}"
+  echo
+done <<< "$rules"
+}
+
+
+
+changeTCPPF(){
+local action listenPort upstreamInput upstream upstreamHost upstreamPort candidate rules shouldRun
+while true; do
+  haproxy_checkOwnership || return 1
+  haproxy_listRules
+  echo -e "${GREEN}1. Add forward${cRES}"
+  echo -e "${GREEN}2. List rules${cRES}"
+  echo -e "${GREEN}3. Delete rule${cRES}"
+  echo -e "${GREEN}4. Delete all${cRES}"
+  echo -e "${GREEN}0. Back${cRES}"
+  read -r -p "Select: " action || return
+  case "$action" in
+    1)
+      read -r -p "Local listen port: " listenPort
+      haproxy_validPort "$listenPort" || { echo -e "${WHITE}Port${RED} Invalid${cRES}"; continue; }
+      haproxy_ruleExists "$listenPort" && { echo -e "${WHITE}Port${YELLOW} Rule already exists${cRES}"; continue; }
+      haproxy_portAvailable "$listenPort" || { echo -e "${WHITE}Port${YELLOW} Already in use${cRES}"; continue; }
+      read -r -p "Upstream host:port (IPv6 uses [address]:port): " upstreamInput
+      upstream=$(haproxy_parseUpstream "$upstreamInput") || { echo -e "${WHITE}Upstream${RED} Invalid${cRES}"; continue; }
+      read -r upstreamHost upstreamPort <<< "$upstream"
+      upstream=$(haproxy_formatUpstream "$upstreamHost" "$upstreamPort")
+      candidate=$(mktemp /tmp/de_GWD-haproxy-candidate.XXXXXX) || return 1
+      if ! haproxy_buildCandidate "" "$listenPort" "$upstream" "$candidate"; then
+        rm -f "$candidate"
+        echo -e "${WHITE}HAProxy${RED} Existing configuration is not managed by de_GWD${cRES}"
+        continue
+      fi
+      if ! haproxy_ensureInstalled || ! haproxy_applyCandidate "$candidate" 1; then
+        rm -f "$candidate"
+        continue
+      fi
+      rm -f "$candidate"
+      echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\t${WHITE}TCP Port Forward ${GREEN}Deployed${cRES}"
+      ;;
+    3)
+      rules=$(haproxy_extractRules)
+      [[ -n $rules ]] || { echo -e "${WHITE}HAProxy${YELLOW} No de_GWD forwarding rules${cRES}"; continue; }
+      read -r -p "Local listen port to delete: " listenPort
+      haproxy_ruleExists "$listenPort" || { echo -e "${WHITE}Port${YELLOW} Rule not found${cRES}"; continue; }
+      candidate=$(mktemp /tmp/de_GWD-haproxy-candidate.XXXXXX) || return 1
+      if ! haproxy_buildCandidate "$listenPort" "" "" "$candidate"; then
+        rm -f "$candidate"
+        continue
+      fi
+      shouldRun=0
+      haproxy_candidateHasListener "$candidate" && shouldRun=1
+      if ! haproxy_applyCandidate "$candidate" "$shouldRun"; then
+        rm -f "$candidate"
+        continue
+      fi
+      rm -f "$candidate"
+      echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\t${WHITE}TCP Port Forward ${GREEN}Deleted${cRES}"
+      ;;
+    4)
+      rules=$(haproxy_extractRules)
+      [[ -n $rules ]] || { echo -e "${WHITE}HAProxy${YELLOW} No de_GWD forwarding rules${cRES}"; continue; }
+      candidate=$(mktemp /tmp/de_GWD-haproxy-candidate.XXXXXX) || return 1
+      if ! haproxy_buildCandidate all "" "" "$candidate"; then
+        rm -f "$candidate"
+        continue
+      fi
+      shouldRun=0
+      haproxy_candidateHasListener "$candidate" && shouldRun=1
+      if ! haproxy_applyCandidate "$candidate" "$shouldRun"; then
+        rm -f "$candidate"
+        continue
+      fi
+      rm -f "$candidate"
+      echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\t${WHITE}All de_GWD TCP Port Forwards ${GREEN}Deleted${cRES}"
+      ;;
+    2)
+      haproxy_listRules
+      ;;
+    0)
+      return 0
+      ;;
+    *)
+      echo -e "${RED}Wrong number${cRES}"
+      ;;
+  esac
+done
+}
 
 
 start_menu(){
@@ -3021,6 +3643,7 @@ echo -e "${YELLOW}3. Clear Pi-hole Subscribed lists${cRES}"
 echo -e "${YELLOW}8. Change Web UI port & Web update port${cRES}"
 echo -e "${YELLOW}9. Change de_GWD password${cRES}"
 echo -e "${YELLOW}0. Update de_GWD${cRES}"
+echo -e "${CYAN}44.HAProxy TCP${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
 echo ""
 read -r -p "Select:" num || exit 0
@@ -3047,6 +3670,10 @@ read -r -p "Select:" num || exit 0
     ;;
     0)
     updateGWD
+    start_menu
+    ;;
+    44)
+    changeTCPPF
     start_menu
     ;;
     *)
