@@ -143,7 +143,7 @@
         <h5 id="markThisLabel"class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo $de_GWDconf->address->alias ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars((string)($de_GWDconf->address->alias ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -205,7 +205,7 @@
                 </div>
               <div class="btn-group btn-group-sm">
                 <button id="autoUpdateHourShow" class="btn <?php if ($checkAutoUpdateStatus === true) echo 'btn-success'; else echo 'btn-outline-secondary';?> mt-1 dropdown-toggle dropdown-toggle-split" type="button" data-toggle="dropdown" style="border-radius: 0px;">
-                  <?php if ($checkAutoUpdateHour === off || $checkAutoUpdateHour === null) echo '关闭 '; else echo "$checkAutoUpdateHour:00";?>
+                  <?php if ($checkAutoUpdateHour === off || $checkAutoUpdateHour === null) echo '关闭 '; else echo htmlspecialchars((string)($checkAutoUpdateHour ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . ":00";?>
                 </button>
 <div class="dropdown-menu dropdown-menu-sm">
 <a class="dropdown-item text-center" href="#" onclick="autoUpdateHour(this)">关闭</a>
@@ -230,18 +230,18 @@ EOT;
         <div class="input-group-prepend">
           <span class="input-group-text justify-content-center">本机地址</span>
         </div>
-          <input id="updateAddr" type="text" class="form-control" value="<?php echo $de_GWDconf->update->updateAddr ?>">
+          <input id="updateAddr" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->update->updateAddr ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
         <div class="input-group-prepend input-group-append">
           <span class="input-group-text">端口</span>
         </div>
-          <input id="updatePort" type="text" class="form-control col-md-2" value="<?php echo $de_GWDconf->update->updatePort ?>">
+          <input id="updatePort" type="text" class="form-control col-md-2" value="<?php echo htmlspecialchars((string)($de_GWDconf->update->updatePort ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
       </div>
 
       <div class="input-group my-2 col-md-8">
         <div class="input-group-prepend">
           <span class="input-group-text justify-content-center">CMD</span>
         </div>
-          <input id="updateCMD" type="text" class="form-control" value="<?php echo $de_GWDconf->update->updateCMD ?>">
+          <input id="updateCMD" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->update->updateCMD ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
           <button id="buttonUpdateSave" type="button" class="btn btn-outline-danger btn-sm text-right ml-2" style="border-Radius: 0px;">
             <span id="buttonUpdateSaveLoading"></span>
             保存并更新
@@ -322,7 +322,7 @@ $.get('./act/backup.php', function(result){window.location.href = "/restore/de_G
 
 $("#restorefile").on("change", function() {
   var fileName = $(this).val().split("\\").pop()
-  $(this).siblings("#restorefileLabel").addClass("selected").html(fileName);
+  $(this).siblings("#restorefileLabel").addClass("selected").text(fileName);
   if( fileName != "de_GWD_bak" ){
   alert("文件选择错误，备份文件名为 de_GWD_bak ")
   }
@@ -355,6 +355,9 @@ $.get('./act/updateSave.php', {updateAddr:updateAddr,updatePort:updatePort,updat
 $("#updateDst").val(data)
 $("#updateModal").modal('show')
 $("#buttonUpdateSaveLoading").removeClass()
+}).fail(function(xhr){
+$("#buttonUpdateSaveLoading").removeClass()
+alert($.trim(xhr.responseText) || "更新准备失败，请重试")
 })
 })
 

@@ -1,25 +1,12 @@
 #!/bin/bash
-rm -rf /opt/de_GWD/update
-rm -rf /opt/de_GWD/__MACOSX
-rm -rf ~/client*
-rm -rf ~/wget-log*
-rm -rf /var/log/*1*
-rm -rf /var/log/*2*
-rm -rf /var/log/*.gz
-rm -rf /var/log/auth.log
-rm -rf /var/log/lighttpd*
-rm -rf /var/www/html/log.log
-rm -rf /var/www/html/restore/*
-rm -rf /var/www/html/__MACOSX
-rm -rf /tmp/systemd-private-*
-rm -rf /tmp/tmp.*
+rm -rf /opt/de_GWD/__MACOSX /var/www/html/__MACOSX
 
-
-
-sed -i '/^\s*$/d' /opt/de_GWD/0conf
-if [[ -n $(cat /opt/de_GWD/0conf) ]]; then
-	cp -f /opt/de_GWD/0conf /opt/de_GWD/0conf_bak
-elif [[ -z $(cat /opt/de_GWD/0conf) ]]; then
-	cp -f /opt/de_GWD/0conf_bak /opt/de_GWD/0conf
-	chmod 666 /opt/de_GWD/0conf
+if jq -e 'type == "object"' /opt/de_GWD/0conf >/dev/null 2>&1; then
+    cp -f /opt/de_GWD/0conf /opt/de_GWD/0conf_bak
+elif jq -e 'type == "object"' /opt/de_GWD/0conf_bak >/dev/null 2>&1; then
+    cp -f /opt/de_GWD/0conf_bak /opt/de_GWD/0conf || exit 1
+    chmod 666 /opt/de_GWD/0conf
+else
+    echo 'Cannot back up or restore invalid configuration' >&2
+    exit 1
 fi

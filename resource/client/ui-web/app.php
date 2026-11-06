@@ -144,7 +144,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo $de_GWDconf->address->alias ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars((string)($de_GWDconf->address->alias ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -178,9 +178,9 @@ $NFSnum=count($arrayNFS)-1;
 for( $i=0; $i<$NFSnum; $i++){
   $NFSstr1 = explode(" ",$arrayNFS[$i]);
   $NFSstr2 = explode(":",$NFSstr1[2]);
-  $NFSpoint = $NFSstr1[0];
-  $NFSserver = $NFSstr2[0];
-  $NFSaddress = $NFSstr2[1];
+  $NFSpoint = htmlspecialchars((string)($NFSstr1[0] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $NFSserver = htmlspecialchars((string)($NFSstr2[0] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $NFSaddress = htmlspecialchars((string)($NFSstr2[1] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 print <<<EOT
 <div class="form-row">
   <div class="col-md-4 input-group my-2">
@@ -384,9 +384,9 @@ $('#buttonNFSAdd').click(function(){
   for( let i = 0; i<len; i++){
     let NFSlistLine = data[i];
     $('#NFSlist').append(`
-        <li id="NFSlistLine${i}" type="button" class="list-group-item">${NFSlistLine}</li>
+        <li id="NFSlistLine${i}" type="button" class="list-group-item"></li>
                           `)
-    $('#NFSlistLine'+i).click(function(){
+    $('#NFSlistLine'+i).text(NFSlistLine).click(function(){
       $("#NFSpath").val(NFSlistLine.split(' ')[0])
   })
   }
@@ -397,7 +397,7 @@ $('#buttonNFSAdd').click(function(){
 $('#confirmNFSaddr').click(function(){
   var NFSmodalID =  $(":hidden#NFSmodalID").val()
   var NFSaddress = $('#NFSpath').val()
-  $("#NFSaddress"+NFSmodalID).html(NFSaddress)
+  $("#NFSaddress"+NFSmodalID).text(NFSaddress)
   $("#NFSpoint"+NFSmodalID).val("/mnt/"+NFSaddress.split('/')[NFSaddress.split('/').length - 1])
 var NFSlist = []
 var len = $("#NFSbody .form-row").length
@@ -405,7 +405,7 @@ var NFSpoint, NFSserver, NFSaddress
 for( let i = 0; i<len; i++){
     var NFSpoint = $('#NFSpoint'+i).val()
     var NFSserver = $('#NFSserver'+i).val()
-    var NFSaddress = $('#NFSaddress'+i).html()
+    var NFSaddress = $('#NFSaddress'+i).text()
     if ( NFSpoint !== '' && NFSserver !== '' && NFSaddress !== '') {
     NFSlist.push({NFSpoint, NFSserver, NFSaddress})
     }
@@ -450,7 +450,7 @@ $.get('./act/backupBitwarden.php', function(result){
 
 $('#bitwardenRestoreFile').on('change',function(){
   let fileName = $(this).val().split('\\').pop()
-  $(this).siblings('#bitwardenRestoreFileLabel').addClass('selected').html(fileName)
+  $(this).siblings('#bitwardenRestoreFileLabel').addClass('selected').text(fileName)
   if( fileName != "Bitwarden_bak.zip" ){
   alert("文件选择错误，备份文件名为 Bitwarden_bak.zip ")
   }
@@ -495,7 +495,7 @@ $.get('./act/backupJellyfin.php', function(result){
 
 $('#JellyfinRestoreFile').on('change',function(){
   let fileName = $(this).val().split('\\').pop()
-  $(this).siblings('#JellyfinRestoreFileLabel').addClass('selected').html(fileName)
+  $(this).siblings('#JellyfinRestoreFileLabel').addClass('selected').text(fileName)
   if( fileName != "Jellyfin_bak.zip" ){
   alert("文件选择错误，备份文件名为 Jellyfin_bak.zip ")
   }

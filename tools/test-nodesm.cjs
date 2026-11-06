@@ -40,7 +40,7 @@ const nodeA = {
   uuid: '00000000-0000-4000-8000-000000000001', path: '/a', protocol: 'vless'
 };
 const nodeB = {
-  name: 'VLESS-B', domain: 'b.example:8443', tls: 'b.example',
+  name: 'VLESS-B', domain: 'a.example:443', tls: 'b.example',
   uuid: '00000000-0000-4000-8000-000000000002', path: '/b', protocol: 'vless'
 };
 const oldConfig = {
@@ -122,6 +122,9 @@ try {
   assert.equal(config.outbounds.filter(outbound => outbound.tag === 'nodeSMyoutube').length, 1);
   assert.equal(config.outbounds.filter(outbound => outbound.tag === 'nodeSMclaude').length, 1);
   assert.equal(config.routing.rules.filter(rule => rule.outboundTag === 'nodeSMclaude').length, 1);
+  assert.equal(config.outbounds.find(outbound => outbound.tag === 'nodeSMclaude').settings.vnext[0].users[0].id, nodeB.uuid,
+    'rebuild must preserve a selected same-address node identity');
+  assert.equal(config.outbounds.find(outbound => outbound.tag === 'nodeSMclaude').streamSettings.tlsSettings.serverName, nodeB.tls);
 
   run('ui-NodeSM', ['r', ...Array(12).fill('0'), '1', '0']);
   config = readJson('vtrui/config.json');

@@ -1,100 +1,23 @@
 #!/bin/bash
-protocol=$(jq -r --argjson index "$1" '.v2node[$index].protocol // ""' /opt/de_GWD/0conf)
-[[ $protocol = vless ]] || exit 1
-address=$(jq -r --argjson domainNUM "$1" '.v2node | to_entries[] | select(.key == $domainNUM) | .value.domain' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-tls=$(jq -r --argjson domainNUM "$1" '.v2node | to_entries[] | select(.key == $domainNUM) | .value.tls' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-uuid=$(jq -r --argjson domainNUM "$1" '.v2node | to_entries[] | select(.key == $domainNUM) | .value.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-path=$(jq -r --argjson domainNUM "$1" '.v2node | to_entries[] | select(.key == $domainNUM) | .value.path' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+[[ ${1:-} =~ ^[0-9]+$ ]] || exit 1
+node=$(jq -ce --arg index "$1" '.v2node[$index | tonumber] | select(.protocol == "vless")' /opt/de_GWD/0conf) || exit 1
+address=$(jq -r '.domain' <<<"$node")
+tls=$(jq -r '.tls // ""' <<<"$node")
+uuid=$(jq -r '.uuid' <<<"$node")
+path=$(jq -r '.path // ""' <<<"$node")
+[[ $address == *:* ]] || address="$address:443"
+[[ $address =~ ^([A-Za-z0-9.-]+):([0-9]{1,5})$ ]] || exit 1
+domain=${BASH_REMATCH[1]}
+port=$((10#${BASH_REMATCH[2]}))
+(( port >= 1 && port <= 65535 )) || exit 1
+[[ -n $tls ]] || tls=$domain
 
-domain=$(echo -e $address | cut -d: -f1)
-port=$(echo -e $address | cut -d: -f2 | grep '^[[:digit:]]*$')
-[[ -z $port ]] && port="443"
-[[ -z $tls ]] && tls=$domain
-
-jq '.update.v2node={}' /opt/de_GWD/0conf |\
-jq --arg protocol "$protocol" '.update.v2node.protocol=$protocol' |\
-jq --arg domain "$domain" '.update.v2node.domain=$domain' |\
-jq --arg tls "$tls" '.update.v2node.tls=$tls' |\
-jq --arg port "$port" '.update.v2node.port=$port' |\
-jq --arg uuid "$uuid" '.update.v2node.uuid=$uuid' |\
-jq --arg path "$path" '.update.v2node.path=$path' | sponge /opt/de_GWD/0conf
-chmod 666 /opt/de_GWD/0conf
-
-if [[ -z $path ]]; then
-OBdefault=`cat << EOF
-    {
-      "tag": "default",
-      "protocol": "vless",
-      "settings": {
-        "vnext": [
-          {
-            "address": "$domain",
-            "port": $port,
-            "users": [
-              {
-                "id": "$uuid",
-                "encryption": "none"
-              }
-            ]
-          }
-        ]
-      },
-      "streamSettings": {
-        "network": "tcp",
-        "sockopt": {
-          "mark": 255,
-          "tcpFastOpen": true,
-          "tcpNoDelay": true
-        }
-      },
-      "mux":{"enabled":true,"concurrency":1,"xudpConcurrency":1,"xudpProxyUDP443":"skip"}
-    }
-EOF
-`
-else
-OBdefault=`cat << EOF
-    {
-      "tag": "default",
-      "protocol": "vless",
-      "settings": {
-        "vnext": [
-          {
-            "address": "$domain",
-            "port": $port,
-            "users": [
-              {
-                "id": "$uuid",
-                "encryption": "none"
-              }
-            ]
-          }
-        ]
-      },
-      "streamSettings": {
-        "network": "ws",
-        "wsSettings": {
-          "path": "$path",
-          "headers": {
-            "Host": "$tls"
-          }
-        },
-        "security": "tls",
-        "tlsSettings": {
-          "serverName": "$tls",
-          "allowInsecure": false
-        },
-        "sockopt": {
-          "mark": 255,
-          "tcpFastOpen": true,
-          "tcpNoDelay": true
-        }
-      },
-      "mux":{"enabled":true,"concurrency":1,"xudpConcurrency":1,"xudpProxyUDP443":"skip"}
-    }
-EOF
-`
-fi
-
-jq --argjson OBdefault "$OBdefault" '.outbounds[0]=$OBdefault' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
-
+/opt/de_GWD/ui-V2outbound default "$address" "$tls" "$uuid" "$path" vless || exit 1
+confTemp=$(mktemp /opt/de_GWD/0conf.XXXXXX) || exit 1
+trap 'rm -f "$confTemp"' EXIT
+cp -p /opt/de_GWD/0conf "$confTemp" || exit 1
+jq -e --arg domain "$domain" --arg port "$port" --arg tls "$tls" --arg uuid "$uuid" --arg path "$path" \
+  '.update.v2node={protocol:"vless",domain:$domain,port:$port,tls:$tls,uuid:$uuid,path:$path}' \
+  /opt/de_GWD/0conf >"$confTemp" || exit 1
+mv -f "$confTemp" /opt/de_GWD/0conf || exit 1
 systemctl restart vtrui

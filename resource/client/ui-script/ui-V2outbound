@@ -11,7 +11,9 @@ if [[ $uuid == *$'\n'* || $path == *$'\n'* || $tls == *$'\n'* ]]; then
   node=$(jq -ce --arg tag "$tag" --arg address "$address" '
     .v2nodeDIV.outboundNodes[$tag] as $saved |
     [.v2node[]? | select(.domain == $address and .uuid == $saved.uuid
-      and (.path // "") == $saved.path and (.protocol // "") == $saved.protocol)] |
+      and (.path // "") == $saved.path and (.protocol // "") == $saved.protocol
+      and ($saved.domain == null or .domain == $saved.domain or (.domain + ":443") == $saved.domain)
+      and ($saved.tls == null or (if (.path // "") == "" then "" else (.tls // "" | if . == "" then ($address | split(":")[0]) else . end) end) == $saved.tls))] |
     if length == 1 then .[0] else empty end' /opt/de_GWD/0conf) || { echo 'Ambiguous node; select the routing node again.' >&2; exit 1; }
   tls=$(jq -r '.tls // empty' <<< "$node")
   uuid=$(jq -r '.uuid' <<< "$node")
@@ -25,100 +27,34 @@ if [[ -z $protocol ]]; then
 fi
 [[ $protocol = vless ]] || exit 1
 
-if [[ -z $tag ]] || [[ -z $address ]] || [[ -z $uuid ]]; then
-exit
-fi
+[[ -n $tag && -n $address && -n $uuid ]] || exit 1
+[[ $address == *:* ]] || address="$address:443"
+[[ $address =~ ^([A-Za-z0-9.-]+):([0-9]{1,5})$ ]] || exit 1
+domain=${BASH_REMATCH[1]}
+port=$((10#${BASH_REMATCH[2]}))
+(( port >= 1 && port <= 65535 )) || exit 1
+[[ -n $tls ]] || tls=$domain
+identityTLS=$tls
+[[ -n $path ]] || identityTLS=""
 
-domain=$(echo $address | cut -d: -f1)
-port=$(echo $address | cut -d: -f2 | grep '^[[:digit:]]*$')
-[[ -z $port ]] && port="443"
-[[ -z $tls ]] && tls=$domain
+OBadd=$(jq -n --arg tag "$tag" --arg domain "$domain" --argjson port "$port" \
+  --arg tls "$tls" --arg uuid "$uuid" --arg path "$path" '
+  {tag:$tag, protocol:"vless",
+   settings:{vnext:[{address:$domain,port:$port,users:[{id:$uuid,encryption:"none"}]}]},
+   streamSettings:({network:"tcp",sockopt:{mark:255,tcpFastOpen:true,tcpNoDelay:true}} +
+     if $path == "" then {} else {network:"ws",wsSettings:{path:$path,headers:{Host:$tls}},
+       security:"tls",tlsSettings:{serverName:$tls,allowInsecure:false}} end),
+   mux:{enabled:true,concurrency:1,xudpConcurrency:1,xudpProxyUDP443:(if $tag == "default" then "skip" else "reject" end)}}') || exit 1
 
-if [[ $tag = "default" ]]; then
-muxSet='"enabled":true,"concurrency":1,"xudpConcurrency":1,"xudpProxyUDP443":"skip"'
-else
-muxSet='"enabled":true,"concurrency":1,"xudpConcurrency":1,"xudpProxyUDP443":"reject"'
-fi
-
-if [[ -z $path ]]; then
-OBadd=`cat << EOF
-    {
-      "tag": "$tag",
-      "protocol": "vless",
-      "settings": {
-        "vnext": [
-          {
-            "address": "$domain",
-            "port": $port,
-            "users": [
-              {
-                "id": "$uuid",
-                "encryption": "none"
-              }
-            ]
-          }
-        ]
-      },
-      "streamSettings": {
-        "network": "tcp",
-        "sockopt": {
-          "mark": 255,
-          "tcpFastOpen": true,
-          "tcpNoDelay": true
-        }
-      },
-      "mux": {
-        $muxSet
-      }
-    }
-EOF
-`
-else
-OBadd=`cat << EOF
-    {
-      "tag": "$tag",
-      "protocol": "vless",
-      "settings": {
-        "vnext": [
-          {
-            "address": "$domain",
-            "port": $port,
-            "users": [
-              {
-                "id": "$uuid",
-                "encryption": "none"
-              }
-            ]
-          }
-        ]
-      },
-      "streamSettings": {
-        "network": "ws",
-        "wsSettings": {
-          "path": "$path",
-          "headers": {
-            "Host": "$tls"
-          }
-        },
-        "security": "tls",
-        "tlsSettings": {
-          "serverName": "$tls",
-          "allowInsecure": false
-        },
-        "sockopt": {
-          "mark": 255,
-          "tcpFastOpen": true,
-          "tcpNoDelay": true
-        }
-      },
-      "mux": {
-        $muxSet
-      }
-    }
-EOF
-`
-fi
-
-jq --argjson OBadd "$OBadd" '.outbounds+=[$OBadd]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
-jq --arg tag "$tag" --arg uuid "$uuid" --arg path "${path:-}" --arg protocol "$protocol" \
-  '.v2nodeDIV.outboundNodes[$tag]={uuid:$uuid,path:$path,protocol:$protocol}' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+runtime=${DE_GWD_RUNTIME_CONFIG:-/opt/de_GWD/vtrui/config.json}
+runtimeTemp=$(mktemp "${runtime}.XXXXXX") || exit 1
+confTemp=$(mktemp /opt/de_GWD/0conf.XXXXXX) || { rm -f "$runtimeTemp"; exit 1; }
+trap 'rm -f "$runtimeTemp" "$confTemp"' EXIT
+cp -p "$runtime" "$runtimeTemp" && cp -p /opt/de_GWD/0conf "$confTemp" || exit 1
+jq -e --arg tag "$tag" --argjson OBadd "$OBadd" '
+  if $tag == "default" then .outbounds[0]=$OBadd else .outbounds+=[$OBadd] end' "$runtime" >"$runtimeTemp" || exit 1
+jq -e --arg tag "$tag" --arg domain "$domain:$port" --arg tls "$identityTLS" \
+  --arg uuid "$uuid" --arg path "$path" --arg protocol "$protocol" \
+  '.v2nodeDIV.outboundNodes[$tag]={domain:$domain,tls:$tls,uuid:$uuid,path:$path,protocol:$protocol}' \
+  /opt/de_GWD/0conf >"$confTemp" || exit 1
+mv -f "$confTemp" /opt/de_GWD/0conf && mv -f "$runtimeTemp" "$runtime"

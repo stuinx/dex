@@ -9,7 +9,7 @@ const opt = path.join(fixture, 'opt/de_GWD');
 const ssl = path.join(fixture, 'var/www/ssl');
 const systemd = path.join(fixture, 'etc/systemd/system');
 const legacySystemd = path.join(fixture, 'lib/systemd/system');
-const upstream = {domain: 'same.example:8443', uuid: '00000000-0000-4000-8000-000000000002', path: '/upstream', protocol: 'vless', tls: 'sni.example'};
+const upstream = {domain: 'same.example:8443', uuid: '00000000-0000-4000-8000-000000000002', path: '/quote"back\\slash<&', protocol: 'vless', tls: 'sni.example'};
 const config = {
   FORWARD: {FWD1: {port: '00443', uuid: [{FWD1uuid: '10000000-0000-4000-8000-000000000001'}], upstream: JSON.stringify(upstream)}},
   v2node: [
@@ -50,7 +50,33 @@ try {
   assert.equal(generated.outbounds[0].streamSettings.security, 'tls');
   assert.equal(generated.outbounds[0].streamSettings.wsSettings.path, upstream.path);
   assert.equal(generated.outbounds[0].streamSettings.tlsSettings.serverName, upstream.tls);
-  console.log('PASS: FWD1 emits valid VLESS WS TLS inbound and selected VLESS WS TLS upstream');
+  assert.equal(generated.inbounds[0].streamSettings.tlsSettings.certificates[0].keyFile, path.join(ssl, 'de_GWD.key'));
+  const runtimeFile = path.join(opt, 'vtrui1/config.json');
+  const originalRuntime = fs.readFileSync(runtimeFile, 'utf8');
+  config.FORWARD.FWD1.uuid[0].FWD1uuid = 'invalid"uuid';
+  fs.writeFileSync(path.join(opt, '0conf'), JSON.stringify(config));
+  const rejected = cp.spawnSync('/bin/bash', ['-c', prelude + script], {encoding: 'utf8'});
+  assert.notEqual(rejected.status, 0);
+  assert.equal(fs.readFileSync(runtimeFile, 'utf8'), originalRuntime, 'bad UUID must preserve existing FWD1 runtime');
+
+  config.FORWARD.FWD0 = {port:'00443',uuid:[{FWD0uuid:'10000000-0000-4000-8000-000000000001'}]};
+  fs.writeFileSync(path.join(opt, '0conf'), JSON.stringify(config));
+  const mainRuntime = path.join(opt,'vtrui/config.json');
+  fs.writeFileSync(mainRuntime, JSON.stringify({inbounds:[{tag:'transparent'}],outbounds:[{tag:'default'}]}));
+  let fwd0 = fs.readFileSync(path.join(root,'resource/client/ui-script/ui-FWD0save'),'utf8').replaceAll('/opt/de_GWD',opt).replaceAll('/var/www/ssl',ssl);
+  const fwd0Result = cp.spawnSync('/bin/bash',['-c',prelude+fwd0,'fixture','r'],{encoding:'utf8'});
+  assert.equal(fwd0Result.status,0,fwd0Result.stderr);
+  const fwd0Config = JSON.parse(fs.readFileSync(mainRuntime));
+  assert.equal(fwd0Config.inbounds[0].tag,'transparent');
+  assert.equal(fwd0Config.inbounds[1].settings.clients[0].id,config.FORWARD.FWD0.uuid[0].FWD0uuid);
+  assert.equal(fwd0Config.inbounds[1].streamSettings.tlsSettings.certificates[0].keyFile,path.join(ssl,'de_GWD.key'));
+  const originalMain = fs.readFileSync(mainRuntime,'utf8');
+  config.FORWARD.FWD0.uuid[0].FWD0uuid='invalid"uuid';
+  fs.writeFileSync(path.join(opt,'0conf'),JSON.stringify(config));
+  const rejectedFwd0 = cp.spawnSync('/bin/bash',['-c',prelude+fwd0,'fixture','r'],{encoding:'utf8'});
+  assert.notEqual(rejectedFwd0.status,0);
+  assert.equal(fs.readFileSync(mainRuntime,'utf8'),originalMain);
+  console.log('PASS: FWD0/FWD1 JSON-safe VLESS WS TLS generation and invalid-UUID preservation');
 } finally {
   fs.rmSync(fixture, {recursive: true, force: true});
 }

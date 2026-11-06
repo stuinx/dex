@@ -4,38 +4,20 @@ config=/opt/de_GWD/0conf
 xrayConfig=/opt/de_GWD/vtrui/config.json
 
 nodeSMcheck(){
-  local tag=$1 domain port nodecheck checkNum checkName
-  domain=$(jq -r --arg tag "$tag" '.outbounds[]? | select(.tag == $tag) | .settings.vnext[0].address // empty' "$xrayConfig" 2>/dev/null)
-  port=$(jq -r --arg tag "$tag" '.outbounds[]? | select(.tag == $tag) | .settings.vnext[0].port // empty' "$xrayConfig" 2>/dev/null)
-  [[ $port = 443 || -z $port ]] && nodecheck=$domain || nodecheck="$domain:$port"
-
-  checkNum=$(jq -r --arg nodecheck "$nodecheck" --arg tag "$tag" --slurpfile xray "$xrayConfig" '
-    ($xray[0].outbounds[]? | select(.tag == $tag)) as $out
-    | [ .v2node | to_entries[]
-        | select(
-            (.value.domain == $nodecheck or .value.domain == ($nodecheck + ":443"))
-            and .value.uuid == $out.settings.vnext[0].users[0].id
-            and (.value.path // "") == ($out.streamSettings.wsSettings.path // "")
-            and .value.protocol == "vless" and $out.protocol == "vless"
-          )
-        | .key
-      ][0] // empty
-  ' "$config" 2>/dev/null)
-  checkName=$(jq -r --arg nodecheck "$nodecheck" --arg tag "$tag" --slurpfile xray "$xrayConfig" '
-    ($xray[0].outbounds[]? | select(.tag == $tag)) as $out
-    | [ .v2node[]?
-        | select(
-            (.domain == $nodecheck or .domain == ($nodecheck + ":443"))
-            and .uuid == $out.settings.vnext[0].users[0].id
-            and (.path // "") == ($out.streamSettings.wsSettings.path // "")
-            and .protocol == "vless" and $out.protocol == "vless"
-          )
-        | .name
-      ][0] // empty
-  ' "$config" 2>/dev/null)
-
-  [[ -n $checkNum ]] && echo $((checkNum + 1)) || echo 0
-  [[ -n $checkName ]] && echo "$checkName" || echo '-none-'
+  jq -r --arg tag "$1" --slurpfile xray "$xrayConfig" '
+    [$xray[0].outbounds[]? | select(.tag == $tag)][0] as $out |
+    ($out.settings.vnext[0].address // "") as $address |
+    ($out.settings.vnext[0].port // 443 | tostring) as $port |
+    [.v2node | to_entries[] | select(
+      (.value.domain == ($address + ":" + $port) or ($port == "443" and .value.domain == $address))
+      and .value.uuid == $out.settings.vnext[0].users[0].id
+      and (.value.path // "") == ($out.streamSettings.wsSettings.path // "")
+      and .value.protocol == "vless" and $out.protocol == "vless"
+      and (if (.value.path // "") == "" then "" else
+        (.value.tls // "" | if . == "" then $address else . end) end) == ($out.streamSettings.tlsSettings.serverName // "")
+    )] |
+    if length > 0 then (.[0].key + 1), (.[0].value.name // "-none-") else 0, "-none-" end
+  ' "$config" 2>/dev/null
 }
 
 for tag in nodeSMyoutube nodeSMclaude nodeSMgemini nodeSMgrok nodeSMwikipedia nodeSMreddit nodeSMgithub nodeSMdiscord nodeSMtelegram nodeSMx nodeSMopenai nodeSMmetaai nodeSMapple; do

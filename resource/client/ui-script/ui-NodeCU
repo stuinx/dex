@@ -1,25 +1,29 @@
 #!/bin/bash
 tag="custom"
 
-jq 'del(.outbounds[] | select(.tag == "custom"))' /opt/de_GWD/vtrui/config.json |\
-jq 'del(.routing.rules[] | select(.outboundTag == "custom"))' | sponge /opt/de_GWD/vtrui/config.json
-
 if [[ -n $2 ]]; then
-address=$(jq -r --argjson nodecheck $2 '.v2node | to_entries[] | select(.key == $nodecheck) | .value.domain' /opt/de_GWD/0conf)
-tls=$(jq -r --argjson nodecheck $2 '.v2node | to_entries[] | select(.key == $nodecheck) | .value.tls' /opt/de_GWD/0conf)
-uuid=$(jq -r --argjson nodecheck $2 '.v2node | to_entries[] | select(.key == $nodecheck) | .value.uuid' /opt/de_GWD/0conf)
-path=$(jq -r --argjson nodecheck $2 '.v2node | to_entries[] | select(.key == $nodecheck) | .value.path' /opt/de_GWD/0conf)
-/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
-
-jq --arg address $address '.v2nodeDIV.nodeCU.address=$address' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+node=$(jq -ce --argjson index "$2" '.v2node[$index] | select(.protocol == "vless")' /opt/de_GWD/0conf) || exit 1
 else
-address=$(jq -r '.v2nodeDIV.nodeCU.address' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-	if [[ -n $address ]]; then
-		tls=$(jq -r --arg nodecheck $address '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .value.tls' /opt/de_GWD/0conf)
-		uuid=$(jq -r --arg nodecheck $address '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .value.uuid' /opt/de_GWD/0conf)
-		path=$(jq -r --arg nodecheck $address '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .value.path' /opt/de_GWD/0conf)
-		/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" || exit 1
-	fi
+address=$(jq -r '.v2nodeDIV.nodeCU.address // empty' /opt/de_GWD/0conf) || exit 1
+if [[ -n $address ]]; then
+node=$(jq -ce --arg address "$address" --arg tag "$tag" '
+  .v2nodeDIV.outboundNodes[$tag] as $saved |
+  [.v2node[]? | select(.domain == $address and .protocol == "vless") |
+    select($saved == null or (.uuid == $saved.uuid and (.path // "") == $saved.path and .protocol == $saved.protocol
+      and (($saved | has("tls") | not) or (if (.path // "") == "" then "" else (.tls // "" | if . == "" then ($address | split(":")[0]) else . end) end) == $saved.tls)))] |
+  if length == 1 then .[0] else empty end' /opt/de_GWD/0conf) || { echo 'Ambiguous or missing custom node; select the node again.' >&2; exit 1; }
+fi
+fi
+
+jq 'del(.outbounds[] | select(.tag == "custom")) | del(.routing.rules[] | select(.outboundTag == "custom"))' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+
+if [[ -n $node ]]; then
+address=$(jq -r '.domain' <<< "$node")
+tls=$(jq -r '.tls // empty' <<< "$node")
+uuid=$(jq -r '.uuid' <<< "$node")
+path=$(jq -r '.path // empty' <<< "$node")
+/opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path" vless || exit 1
+jq --arg address "$address" '.v2nodeDIV.nodeCU.address=$address' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 fi
 
 jq -r '.v2nodeDIV.nodeCU.rulesDomain[]' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$' >/tmp/routingDomain

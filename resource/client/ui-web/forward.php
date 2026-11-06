@@ -164,7 +164,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo $de_GWDconf->address->alias ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars((string)($de_GWDconf->address->alias ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -197,21 +197,21 @@
                 <div class="input-group-prepend">
                   <span class="input-group-text justify-content-center" style="min-width: 120px;">域名</span>
                 </div>
-                  <input id="CFdomain" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?>">
+                  <input id="CFdomain" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->domain ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
               </div>
 
               <div class="col-md-5 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text justify-content-center" style="min-width: 120px;">CF API KEY</span>
                 </div>
-                  <input id="CFapikey" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->APIkey ?>">
+                  <input id="CFapikey" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->APIkey ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
               </div>
 
               <div class="col-md-4 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text justify-content-center" style="min-width: 120px;">CF E-mail</span>
                 </div>
-                  <input id="CFemail" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->Email ?>">
+                  <input id="CFemail" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->Email ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
               </div>
             </div>
           </div>
@@ -246,14 +246,14 @@
                 <div class="input-group-prepend">
                   <span class="input-group-text">端口</span>
                 </div>
-                  <input id="DoGsPort" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->DoGs->port ?>">
+                  <input id="DoGsPort" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->DoGs->port ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
               </div>
 
               <div class="col-md-3 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text">地址</span>
                 </div>
-                <input type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?>:<?php echo $de_GWDconf->FORWARD->DoGs->port ?>" READONLY>
+                <input type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->domain ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>:<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->DoGs->port ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>" READONLY>
               </div>
             </div>
           </div>
@@ -302,7 +302,7 @@
                   <div class="input-group-prepend">
                     <span class="input-group-text">端口</span>
                   </div>
-                  <input id="FWD0port" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->FWD0->port ?>">
+                  <input id="FWD0port" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->FWD0->port ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
                 </div>
               </div>
 
@@ -311,7 +311,7 @@
                   <div class="input-group-prepend">
                     <span class="input-group-text">地址</span>
                   </div>
-                  <input type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?>:<?php echo $de_GWDconf->FORWARD->FWD0->port ?>" READONLY>
+                  <input type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->domain ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>:<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->FWD0->port ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>" READONLY>
                 </div>
               </div>
 
@@ -319,8 +319,8 @@
 <?php 
 for( $i=0; $i<count($de_GWDconf->FORWARD->FWD0->uuid); $i++){
   $FWD0num = $i + 1;
-  $FWD0uuid = $de_GWDconf->FORWARD->FWD0->uuid[$i]->FWD0uuid;
-  $FWD0mark = $de_GWDconf->FORWARD->FWD0->uuid[$i]->FWD0mark;
+  $FWD0uuid = htmlspecialchars((string)($de_GWDconf->FORWARD->FWD0->uuid[$i]->FWD0uuid ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $FWD0mark = htmlspecialchars((string)($de_GWDconf->FORWARD->FWD0->uuid[$i]->FWD0mark ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 print <<<EOT
               <div>
                 <div id="FWD0UUIDline" class="input-group my-2">
@@ -390,7 +390,7 @@ EOT;
                   <div class="input-group-prepend">
                     <span class="input-group-text">端口</span>
                   </div>
-                  <input id="FWD1port" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->FWD1->port ?>">
+                  <input id="FWD1port" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->FWD1->port ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
                 </div>
               </div>
 
@@ -399,7 +399,7 @@ EOT;
                   <div class="input-group-prepend">
                     <span class="input-group-text">地址</span>
                   </div>
-                  <input type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?>:<?php echo $de_GWDconf->FORWARD->FWD1->port ?>" READONLY>
+                  <input type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->domain ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>:<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->FWD1->port ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>" READONLY>
                 </div>
 
 <div class="btn-group">
@@ -425,8 +425,8 @@ EOT;
 <?php 
 for( $i=0; $i<count($de_GWDconf->FORWARD->FWD1->uuid); $i++){
   $FWD1num = $i + 1;
-  $FWD1uuid = $de_GWDconf->FORWARD->FWD1->uuid[$i]->FWD1uuid;
-  $FWD1mark = $de_GWDconf->FORWARD->FWD1->uuid[$i]->FWD1mark;
+  $FWD1uuid = htmlspecialchars((string)($de_GWDconf->FORWARD->FWD1->uuid[$i]->FWD1uuid ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $FWD1mark = htmlspecialchars((string)($de_GWDconf->FORWARD->FWD1->uuid[$i]->FWD1mark ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 print <<<EOT
               <div>
                 <div class="input-group my-2">
@@ -491,21 +491,21 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text">端口</span>
                 </div>
-                  <input id="RproxyStunnelPort" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?>">
+                  <input id="RproxyStunnelPort" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
               </div>
 
               <div class="col-md-3 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text">对接地址</span>
                 </div>
-                <input type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?>:<?php echo $de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?>" READONLY>
+                <input type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->domain ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>:<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>" READONLY>
               </div>
 
               <div class="col-md-7 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text">UUID</span>
                 </div>
-                  <input id="RproxyStunnelUUID" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->Rproxy->server->tunnel->uuid ?>">
+                  <input id="RproxyStunnelUUID" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->Rproxy->server->tunnel->uuid ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
                 </div>
             </div>
 
@@ -527,7 +527,7 @@ EOT;
                     <div class="input-group-prepend">
                       <span class="input-group-text">连入地址</span>
                     </div>
-                    <input type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?>:<?php echo $de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?>" READONLY>
+                    <input type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->domain ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>:<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>" READONLY>
                   </div>
                   </div>
 
@@ -535,8 +535,8 @@ EOT;
 <?php 
 for( $i=0; $i<count($de_GWDconf->FORWARD->Rproxy->server->inUUID); $i++){
   $RproxyS0num = $i + 1;
-  $RproxyS0uuid = $de_GWDconf->FORWARD->Rproxy->server->inUUID[$i]->RproxyS0uuid;
-  $RproxyS0mark = $de_GWDconf->FORWARD->Rproxy->server->inUUID[$i]->RproxyS0mark;
+  $RproxyS0uuid = htmlspecialchars((string)($de_GWDconf->FORWARD->Rproxy->server->inUUID[$i]->RproxyS0uuid ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $RproxyS0mark = htmlspecialchars((string)($de_GWDconf->FORWARD->Rproxy->server->inUUID[$i]->RproxyS0mark ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 print <<<EOT
                   <div>
                     <div class="input-group my-2">
@@ -590,8 +590,8 @@ EOT;
                 <div id="RproxyS1List" class="form-row">
 <?php 
 for( $i=0; $i<count($de_GWDconf->FORWARD->Rproxy->server->mapping); $i++){
-  $RproxyS1Port = $de_GWDconf->FORWARD->Rproxy->server->mapping[$i]->port;
-  $RproxyS1Protocol = $de_GWDconf->FORWARD->Rproxy->server->mapping[$i]->protocol;
+  $RproxyS1Port = htmlspecialchars((string)($de_GWDconf->FORWARD->Rproxy->server->mapping[$i]->port ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $RproxyS1Protocol = htmlspecialchars((string)($de_GWDconf->FORWARD->Rproxy->server->mapping[$i]->protocol ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 print <<<EOT
 <div class="col-md-4 input-group my-2">
   <div class="input-group-prepend">
@@ -645,14 +645,14 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text">对接地址</span>
                 </div>
-                  <input id="RproxyCtunnelAddress" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->Rproxy->client->tunnel->address ?>">
+                  <input id="RproxyCtunnelAddress" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->Rproxy->client->tunnel->address ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
               </div>
 
               <div class="col-md-7 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text">UUID</span>
                 </div>
-                  <input id="RproxyCtunnelUUID" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->Rproxy->client->tunnel->uuid ?>">
+                  <input id="RproxyCtunnelUUID" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->FORWARD->Rproxy->client->tunnel->uuid ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
                 </div>
             </div>
 
@@ -693,10 +693,10 @@ EOT;
                 <div id="RproxyC1List" class="form-row">
 <?php 
 for( $i=0; $i<count($de_GWDconf->FORWARD->Rproxy->client->mapping); $i++){
-  $RproxyC1extPort = $de_GWDconf->FORWARD->Rproxy->client->mapping[$i]->extPort;
-  $RproxyC1extProtocol = $de_GWDconf->FORWARD->Rproxy->client->mapping[$i]->extProtocol;
-  $RproxyC1intIP = $de_GWDconf->FORWARD->Rproxy->client->mapping[$i]->intIP;
-  $RproxyC1intPort = $de_GWDconf->FORWARD->Rproxy->client->mapping[$i]->intPort;
+  $RproxyC1extPort = htmlspecialchars((string)($de_GWDconf->FORWARD->Rproxy->client->mapping[$i]->extPort ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $RproxyC1extProtocol = htmlspecialchars((string)($de_GWDconf->FORWARD->Rproxy->client->mapping[$i]->extProtocol ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $RproxyC1intIP = htmlspecialchars((string)($de_GWDconf->FORWARD->Rproxy->client->mapping[$i]->intIP ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $RproxyC1intPort = htmlspecialchars((string)($de_GWDconf->FORWARD->Rproxy->client->mapping[$i]->intPort ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 print <<<EOT
 <div class="col-md-6 input-group my-2">
   <div class="input-group-prepend">
@@ -1073,7 +1073,7 @@ var len = $("#RproxyS1List .input-group").length
 var RproxyS1Port, RproxyS1Protocol
 for( let i = 0; i<len; i++){
     var port = $('#RproxyS1Port'+i).val().trim()
-    var protocol = $('#RproxyS1Protocol'+i).html()
+    var protocol = $('#RproxyS1Protocol'+i).text()
     if ( port !== '' && protocol !== '') {
     RproxyS1List.push({port, protocol})
     }
@@ -1193,7 +1193,7 @@ var len = $("#RproxyC1List .input-group").length
 var RproxyC1extPort, RproxyC1extProtocol, RproxyC1intIP, RproxyC1intPort
 for( let i = 0; i<len; i++){
     var extPort = $('#RproxyC1extPort'+i).val().trim()
-    var extProtocol = $('#RproxyC1extProtocol'+i).html()
+    var extProtocol = $('#RproxyC1extProtocol'+i).text()
     var intIP = $('#RproxyC1intIP'+i).val().trim()
     var intPort = $('#RproxyC1intPort'+i).val().trim()
     if ( extPort !== '' && extProtocol !== '' && intIP !== '' && intPort !== '') {

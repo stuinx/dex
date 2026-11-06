@@ -221,12 +221,17 @@ fi
 
 localVer=$(awk 'NR==1' /opt/de_GWD/version.php 2>/dev/null)
 remoteVer=$(curl --connect-timeout 10 --max-time 60 --retry 3 --retry-delay 2 --retry-max-time 180 -fsSLo- "$repoBase/version.php" | head -n 1)
+[[ -n $remoteVer ]] || { echo -e "${WHITE}Version File${RED} Download Failed${cRES}"; exit 1; }
 
-if [[ $localVer != $remoteVer ]]; then
-rm -rf /tmp/version.php
-timeout --signal=TERM --kill-after=5s 300s wget --connect-timeout=10 --read-timeout=30 --tries=4 --waitretry=2 --show-progress -cqO /tmp/version.php "$repoBase/version.php"
-[[ $? -ne 0 ]] && echo -e "${WHITE}Version File${RED} Download Failed${cRES}" && exit 1
-[[ $(du -sk /tmp/version.php 2>/dev/null | awk '{print$1}') -ge 4 ]] && mv -f /tmp/version.php /opt/de_GWD/version.php
+if [[ $localVer != $remoteVer ]] || [[ ! -f /opt/de_GWD/version.php ]]; then
+local versionTmp
+versionTmp=$(mktemp /opt/de_GWD/version.php.XXXXXX) || exit 1
+if ! timeout --signal=TERM --kill-after=5s 300s wget --connect-timeout=10 --read-timeout=30 --tries=4 --waitretry=2 --show-progress -cqO "$versionTmp" "$repoBase/version.php" || [[ ! -s $versionTmp ]] || [[ $(head -n 1 "$versionTmp") != "$remoteVer" ]]; then
+  rm -f "$versionTmp"
+  echo -e "${WHITE}Version File${RED} Download Failed${cRES}"
+  exit 1
+fi
+chmod 0644 "$versionTmp" && mv -f "$versionTmp" /opt/de_GWD/version.php || { rm -f "$versionTmp"; exit 1; }
 fi
 
 for requiredResource in /opt/de_GWD/doh-server /opt/de_GWD/.repo/de_GWD.zip /opt/de_GWD/.repo/nginxConf.zip /opt/de_GWD/.repo/sample.zip; do
@@ -3888,6 +3893,44 @@ fi
 
 if [[ -s $settings ]]; then
   jq empty "$settings" >/dev/null 2>&1 || return 1
+  if jq -e 'type == "object" and (has("tunnel") | not)' "$settings" >/dev/null 2>&1; then
+    local candidate legacyBackup
+    [[ -f $settings && ! -L $settings && -s $config ]] || return 1
+    candidate=$(mktemp /opt/de_GWD/RproxyS/settings.migrate.XXXXXX) || return 1
+    cp -p "$settings" "$candidate" || { rm -f "$candidate"; return 1; }
+    if ! jq -e --slurpfile runtime "$config" '
+      . as $old |
+      select(
+        (.clients == []) and (.mapping | type == "array") and
+        (has("inUUID") | not) and (has("inStatus") | not) and (has("mappingStatus") | not) and
+        ($runtime | length == 1) and
+        ($runtime[0].inbounds | type == "array") and
+        (($runtime[0].inbounds | length) == (($old.mapping | length) + 1)) and
+        ($runtime[0].inbounds[0] |
+          .tag == "reverseTunnel" and .protocol == "vmess" and .streamSettings.network == "tcp" and
+          .port == $old.port and (.settings.clients | length == 1) and
+          .settings.clients[0].id == $old.uuid and
+          (.settings.clients[0].alterId // 0) == 0 and
+          (.settings.clients[0] | keys - ["id","alterId"] | length == 0)) and
+        all($runtime[0].inbounds[1:][];
+          ((.tag // "") | startswith("mapping")) and .protocol == "dokodemo-door" and
+          .settings.address == "127.0.0.1" and .settings.port == .port) and
+        ($old.mapping == [$runtime[0].inbounds[1:][] | {port:.port,protocol:(.settings.network // "tcp")}])
+      ) |
+      . + {tunnel:{port:.port,uuid:.uuid},inUUID:[],inStatus:"off",
+        mappingStatus:(if (.mapping | length) > 0 then "on" else "off" end)}
+    ' "$settings" > "$candidate" 2>/dev/null || ! rproxyS_validateSettings "$candidate"; then
+      rm -f "$candidate"
+      return 1
+    fi
+    legacyBackup="/opt/de_GWD/RproxyS/settings.legacy.json"
+    if [[ -e $legacyBackup || -L $legacyBackup ]]; then
+      [[ -f $legacyBackup && ! -L $legacyBackup && -s $legacyBackup ]] || { rm -f "$candidate"; return 1; }
+    else
+      cp -p "$settings" "$legacyBackup" || { rm -f "$candidate"; return 1; }
+    fi
+    mv -f "$candidate" "$settings" || { rm -f "$candidate"; return 1; }
+  fi
 fi
 }
 
@@ -4042,6 +4085,14 @@ jq -n --argjson port "$tunnelPort" --arg uuid "$tunnelUUID" '
     "streamSettings":{"network":"tcp"}
   }]
 }' > "$tempFile" || { rm -rf "$tempDir"; return 1; }
+
+if [[ $(jq -r '.inStatus // "off"' "$settings") = "on" ]]; then
+  jq --slurpfile saved "$settings" '
+    .inbounds[0].settings.clients += ($saved[0].inUUID | map(
+      select(.RproxyS0uuid != $saved[0].tunnel.uuid) | {id:.RproxyS0uuid,alterId:0}))
+  ' "$tempFile" > "$tempNext" || { rm -rf "$tempDir"; return 1; }
+  mv -f "$tempNext" "$tempFile" || { rm -rf "$tempDir"; return 1; }
+fi
 
 if [[ $(jq -r '.mappingStatus // "off"' "$settings") = "on" ]]; then
   local mappingNum=0 mappingPort mappingProtocol routingMapping
@@ -5649,27 +5700,22 @@ printf 'repoBase=%q\n' "$repoBase" >> /opt/de_GWD/autoUpdate
 cat << "EOF" >>/opt/de_GWD/autoUpdate
 localVer=$(awk 'NR==1' /opt/de_GWD/version.php)
 remoteVer=$(curl --connect-timeout 10 --max-time 60 --retry 3 --retry-delay 2 --retry-max-time 180 -fsSLo- "$repoBase/version.php" | head -n 1)
+[[ -n $localVer && -n $remoteVer ]] || exit 1
 
-echo $localVer >/tmp/de_GWD_Ver
-echo $remoteVer >>/tmp/de_GWD_Ver
-
-VerCP=$(cat /tmp/de_GWD_Ver | sort -rV | uniq | awk NR==2)
+VerCP=$(printf '%s\n' "$localVer" "$remoteVer" | sort -rV | uniq | awk NR==2)
 
 if [[ $VerCP == $localVer ]]; then
-rm -rf /tmp/autoUpdate
-timeout --signal=TERM --kill-after=5s 300s wget --connect-timeout=10 --waitretry=2 -t 5 -T 10 -cqO /tmp/autoUpdate "$repoBase/server"
-
-if [[ $(du -sk /tmp/autoUpdate 2>/dev/null | awk '{print$1}') -gt 70 ]]; then
-sed -i '$d' /tmp/autoUpdate
-echo "updateGWD" >>  /tmp/autoUpdate
-chmod +x /tmp/autoUpdate
-/tmp/autoUpdate
-rm -rf /tmp/autoUpdate
+autoUpdateTmp=$(mktemp /tmp/de_GWD-autoUpdate.XXXXXX) || exit 1
+trap 'rm -f "$autoUpdateTmp"' EXIT
+if ! timeout --signal=TERM --kill-after=5s 300s wget --connect-timeout=10 --waitretry=2 -t 5 -T 10 -qO "$autoUpdateTmp" "$repoBase/server" || [[ ! -s $autoUpdateTmp ]] || ! bash -n "$autoUpdateTmp"; then
+  echo 'Automatic update script download or validation failed' >&2
+  exit 1
 fi
+sed -i '$d' "$autoUpdateTmp" || exit 1
+echo "updateGWD" >> "$autoUpdateTmp"
+chmod +x "$autoUpdateTmp" || exit 1
+"$autoUpdateTmp"
 fi
-
-rm -rf /tmp/de_GWD_Ver
-rm -rf /tmp/autoUpdate
 EOF
 chmod +x /opt/de_GWD/autoUpdate
 

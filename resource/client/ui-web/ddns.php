@@ -144,7 +144,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo $de_GWDconf->address->alias ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars((string)($de_GWDconf->address->alias ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -196,21 +196,21 @@
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">域名</span>
         </div>
-          <input id="f3322domain" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddns3322->domain ?>">
+          <input id="f3322domain" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->ddns->ddns3322->domain ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
       </div>
 
       <div class="col-md-4 input-group my-2">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">用户名</span>
         </div>
-          <input id="f3322usr" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddns3322->user ?>">
+          <input id="f3322usr" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->ddns->ddns3322->user ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
       </div>
 
       <div class="col-md-4 input-group my-2">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">密码</span>
         </div>
-          <input id="f3322pwd" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddns3322->pwd ?>">
+          <input id="f3322pwd" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->ddns->ddns3322->pwd ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
       </div>
     </div>
           </div>
@@ -244,21 +244,21 @@
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">域名</span>
         </div>
-          <input id="CFdomain" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddnsCF->cfDomain ?>">
+          <input id="CFdomain" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->ddns->ddnsCF->cfDomain ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
       </div>
 
       <div class="col-md-5 input-group my-2">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">CF API KEY</span>
         </div>
-          <input id="CFapikey" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddnsCF->cfAPIkey ?>">
+          <input id="CFapikey" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->ddns->ddnsCF->cfAPIkey ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
       </div>
 
       <div class="col-md-4 input-group my-2">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">CF E-mail</span>
         </div>
-          <input id="CFemail" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddnsCF->cfEmail ?>">
+          <input id="CFemail" type="text" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->ddns->ddnsCF->cfEmail ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
       </div>
     </div>
           </div>
@@ -310,6 +310,11 @@
     $WGgenSkeyHtml = "重新生成密钥";
   }
 
+  $sprivatekey = htmlspecialchars((string)($sprivatekey ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $spublickey = htmlspecialchars((string)($spublickey ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $WGaddress = htmlspecialchars((string)($WGaddress ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $WGport = htmlspecialchars((string)($WGport ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
 print <<<EOT
 <div class="form-row mb-3">
       <div class="input-group col-md-12 my-2">
@@ -348,33 +353,37 @@ for( $i=0; $i<count($de_GWDconf->wireguard->clients); $i++){
     $buttonWGgenCKeyHtml = "重新生成节点密钥";
   }
 
+  $cprivatekey = htmlspecialchars((string)($cprivatekey ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $cpublickey = htmlspecialchars((string)($cpublickey ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $mark = htmlspecialchars((string)($mark ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
 print <<<EOT
       <div class="input-group mb-2 col-md-6">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 90px;">节点$nodeNUM</span>
-          <button id="buttonWGgenCKey${i}" type="button" class="btn $buttonWGgenCKeyClass btn-sm" style="min-width: 150px; border-Radius: 0px;" onclick="WGgenCkey(this)">$buttonWGgenCKeyHtml</button>
-          <input id="cprivatekey${i}" type="hidden" value="$cprivatekey">
-          <input id="cpublickey${i}" type="hidden" value="$cpublickey">
+          <button id="buttonWGgenCKey{$i}" type="button" class="btn $buttonWGgenCKeyClass btn-sm" style="min-width: 150px; border-Radius: 0px;" onclick="WGgenCkey(this)">$buttonWGgenCKeyHtml</button>
+          <input id="cprivatekey{$i}" type="hidden" value="$cprivatekey">
+          <input id="cpublickey{$i}" type="hidden" value="$cpublickey">
           <span class="input-group-text">备注</span>
         </div>
-          <input id="WGmark${i}" type="text" class="form-control" value="$mark">
+          <input id="WGmark{$i}" type="text" class="form-control" value="$mark">
         <div class="input-group-prepend input-group-append">
-          <button type="button" class="btn btn-secondary btn-sm" style="min-width: 120px; border-Radius: 0px;" data-toggle="modal" data-target="#wgqrpop${i}" onclick="WGqr(this)">显示二维码</button>
+          <button type="button" class="btn btn-secondary btn-sm" style="min-width: 120px; border-Radius: 0px;" data-toggle="modal" data-target="#wgqrpop{$i}" onclick="WGqr(this)">显示二维码</button>
         </div>
         <div class="input-group-append">
           <button type="button" class="btn btn-outline-secondary btn-sm" style="border-Radius: 0px;" onclick="WGclear(this)">清空</button>
         </div>
       </div>
 
-<div id="wgqrpop${i}" class="modal fade" role="dialog" aria-hidden="true">
+<div id="wgqrpop{$i}" class="modal fade" role="dialog" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title mx-auto" >WireGuard客户端$nodeNUM</h5>
       </div>
       <div class="modal-body">
-        <div id="qrcode${i}" class="text-center"></div>
-        <textarea id="qrstr${i}" class="mx-auto mt-3 col-12 small" rows="8" readonly></textarea>
+        <div id="qrcode{$i}" class="text-center"></div>
+        <textarea id="qrstr{$i}" class="mx-auto mt-3 col-12 small" rows="8" readonly></textarea>
       </div>
     </div>
   </div>

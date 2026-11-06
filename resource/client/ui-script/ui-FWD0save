@@ -7,39 +7,19 @@ FWD0path="/${FWD0firstUUID: -6}"
 FWD0port=$((10#$FWD0port))
 (( FWD0port >= 1 && FWD0port <= 65535 )) && [[ -s /var/www/ssl/de_GWD.cer && -s /var/www/ssl/de_GWD.key && -n $FWD0uuid ]] || { echo "FWD0 requires a valid port, UUID, and installed TLS certificate" >&2; exit 1; }
 
-FWD0in=`cat << EOF
-    {
-      "tag": "forward0",
-      "port": $FWD0port,
-      "protocol": "vless",
-      "settings":{
-        "decryption": "none",
-        "clients":[]
-      },
-      "streamSettings": {
-        "network": "ws",
-        "security": "tls",
-        "wsSettings": {
-          "path": "$FWD0path"
-        },
-        "tlsSettings": {
-          "certificates": [
-            {
-              "certificateFile": "/var/www/ssl/de_GWD.cer",
-              "keyFile": "/var/www/ssl/de_GWD.key"
-            }
-          ]
-        }
-      }
-    }
-EOF
-`
-jq --argjson FWD0in "$FWD0in" '.inbounds[1]=$FWD0in' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
-
-for uuid in $FWD0uuid; do
-uuidStr='{"id":"'$uuid'"}'
-jq --argjson uuidStr1 "$uuidStr" '.inbounds[1].settings.clients+=[$uuidStr1]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
-done
+clients=$(jq -ce '.FORWARD.FWD0.uuid | if type == "array" and length > 0 and all(.[]; .FWD0uuid | type == "string" and test("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$")) then map({id:.FWD0uuid}) else error("Invalid FWD0 UUID list") end' /opt/de_GWD/0conf) || exit 1
+FWD0in=$(jq -n --argjson port "$FWD0port" --arg path "$FWD0path" --argjson clients "$clients" '
+  {tag:"forward0",port:$port,"protocol": "vless",
+   settings:{decryption:"none",clients:$clients},
+   streamSettings:{"network": "ws", "security": "tls",wsSettings:{path:$path},
+     tlsSettings:{certificates:[{certificateFile:"/var/www/ssl/de_GWD.cer",keyFile:"/var/www/ssl/de_GWD.key"}]}}}') || exit 1
+configTemp=$(mktemp /opt/de_GWD/vtrui/config.json.XXXXXX) || exit 1
+trap 'rm -f "$configTemp"' EXIT
+cp -p /opt/de_GWD/vtrui/config.json "$configTemp" || exit 1
+jq -e --argjson FWD0in "$FWD0in" '.inbounds[1]=$FWD0in' /opt/de_GWD/vtrui/config.json >"$configTemp" || exit 1
+mv -f "$configTemp" /opt/de_GWD/vtrui/config.json || exit 1
 chmod 644 /var/www/ssl/*.key
 
-[[ $1 = "r" ]] && systemctl restart vtrui >/dev/null
+if [[ ${1:-} = "r" ]]; then
+  systemctl restart vtrui >/dev/null
+fi

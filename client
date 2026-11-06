@@ -110,13 +110,16 @@ fi
 }
 
 pkgDEP2(){
-local debianCodename
+local debianCodename dockerKeyTmp
 debianCodename=$( . /etc/os-release && printf '%s' "$VERSION_CODENAME" )
-install -m 0644 -D /dev/null /etc/apt/keyrings/docker.asc
-curl --connect-timeout 10 --max-time 60 --retry 3 --retry-delay 2 --retry-max-time 180 -fsSL https://mirrors.ustc.edu.cn/docker-ce/linux/debian/gpg -o /etc/apt/keyrings/docker.asc || {
+mkdir -p /etc/apt/keyrings || exit 1
+dockerKeyTmp=$(mktemp /etc/apt/keyrings/docker.asc.XXXXXX) || exit 1
+if ! curl --connect-timeout 10 --max-time 60 --retry 3 --retry-delay 2 --retry-max-time 180 -fsSL https://mirrors.ustc.edu.cn/docker-ce/linux/debian/gpg -o "$dockerKeyTmp" || [[ ! -s $dockerKeyTmp ]]; then
+  rm -f "$dockerKeyTmp"
   echo -e "${WHITE}Docker CE key${RED} Download Failed${cRES}"
   exit 1
-}
+fi
+chmod 0644 "$dockerKeyTmp" && mv -f "$dockerKeyTmp" /etc/apt/keyrings/docker.asc || { rm -f "$dockerKeyTmp"; exit 1; }
 rm -f /etc/apt/sources.list.d/docker.list
 cat << EOF >/etc/apt/sources.list.d/docker.sources
 Types: deb
@@ -335,11 +338,17 @@ fi
 
 localVer=$(awk 'NR==1' /opt/de_GWD/.repo/version.php 2>/dev/null)
 remoteVer=$(curl --connect-timeout 10 --max-time 60 --retry 3 --retry-delay 2 --retry-max-time 180 -fsSLo- "$repoBase/version.php" | head -n 1)
+[[ -n $remoteVer ]] || { echo -e "${WHITE}Version file${RED} Download Failed${cRES}"; exit 1; }
 
 if [[ $localVer != $remoteVer ]] || [[ ! -f '/opt/de_GWD/.repo/version.php' ]]; then
-rm -rf /opt/de_GWD/.repo/version.php
-timeout --signal=TERM --kill-after=5s 300s wget --connect-timeout=10 --read-timeout=30 --tries=4 --waitretry=2 --show-progress -cqO /opt/de_GWD/.repo/version.php "$repoBase/version.php"
-[[ $? -ne 0 ]] && echo -e "${WHITE}Version file${RED} Download Failed${cRES}" && exit 1
+local versionTmp
+versionTmp=$(mktemp /opt/de_GWD/.repo/version.php.XXXXXX) || exit 1
+if ! timeout --signal=TERM --kill-after=5s 300s wget --connect-timeout=10 --read-timeout=30 --tries=4 --waitretry=2 --show-progress -cqO "$versionTmp" "$repoBase/version.php" || [[ ! -s $versionTmp ]] || [[ $(head -n 1 "$versionTmp") != "$remoteVer" ]]; then
+  rm -f "$versionTmp"
+  echo -e "${WHITE}Version file${RED} Download Failed${cRES}"
+  exit 1
+fi
+chmod 0644 "$versionTmp" && mv -f "$versionTmp" /opt/de_GWD/.repo/version.php || { rm -f "$versionTmp"; exit 1; }
 fi
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Repo Download${cRES}"
@@ -1927,7 +1936,19 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Deploy nftable
 
 
 updateAPT(){
+local phpKeyTmp
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Debian Updated${cRES}\r\c"
+mkdir -p /etc/apt/keyrings || exit 1
+phpKeyTmp=$(mktemp /etc/apt/keyrings/deb.sury.org.gpg.XXXXXX) || exit 1
+if ! curl -4 -fsSLo "$phpKeyTmp" \
+  --connect-timeout 10 --max-time 60 \
+  --retry 5 --retry-delay 2 --retry-all-errors \
+  https://packages.sury.org/php/apt.gpg || [[ ! -s $phpKeyTmp ]]; then
+  rm -f "$phpKeyTmp"
+  echo -e "${WHITE}PHP apt key${RED} Download Failed${cRES}"
+  exit 1
+fi
+chmod 0644 "$phpKeyTmp" && mv -f "$phpKeyTmp" /etc/apt/keyrings/deb.sury.org.gpg || { rm -f "$phpKeyTmp"; exit 1; }
 rm -f /etc/apt/sources.list.d/debian.sources
 cat << EOF >/etc/apt/sources.list
 deb http://$chnAPTsource/debian $debianSuite main contrib non-free non-free-firmware
@@ -1940,12 +1961,6 @@ echo "deb [signed-by=/etc/apt/keyrings/deb.sury.org.gpg] https://packages.sury.o
 if command -v apt-key >/dev/null 2>&1; then
   apt-key del 95BD4743 >/dev/null 2>&1
 fi
-curl -4 -fsSLo /etc/apt/keyrings/deb.sury.org.gpg \
-  --connect-timeout 10 --max-time 60 \
-  --retry 5 --retry-delay 2 --retry-all-errors \
-  https://packages.sury.org/php/apt.gpg
-[[ $? -ne 0 ]] && echo -e "${WHITE}PHP apt key${RED} Download Failed${cRES}" && exit 1
-
 apt-get "${aptGetOpts[@]}" update -o APT::Update::Error-Mode=any && apt-get "${aptGetOpts[@]}" upgrade --allow-downgrades -y || { echo -e "${WHITE}Debian${RED} APT update/upgrade Failed${cRES}"; exit 1; }
 apt-get "${aptGetOpts[@]}" full-upgrade -y && apt-get "${aptGetOpts[@]}" autoremove --purge -y && apt-get "${aptGetOpts[@]}" clean && apt-get "${aptGetOpts[@]}" autoclean || { echo -e "${WHITE}Debian${RED} APT full-upgrade Failed${cRES}"; exit 1; }
 
@@ -2329,9 +2344,20 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Nginx${cRES}"
 
 
 installWebUI(){
-rm -rf /tmp/ui-script
-rm -rf /tmp/ui-web
-unzip /opt/de_GWD/.repo/client.zip -d /tmp >/dev/null 2>&1
+local webuiStage requiredFile
+webuiStage=$(mktemp -d /tmp/de_GWD-webui.XXXXXX) || exit 1
+if ! unzip /opt/de_GWD/.repo/client.zip -d "$webuiStage" >/dev/null 2>&1; then
+  rm -rf "$webuiStage"
+  echo -e "${WHITE}Web UI${RED} Extraction Failed${cRES}"
+  exit 1
+fi
+for requiredFile in ui-script/ui-updateSave ui-script/ui_4am ui-web/index.php ui-web/auth.php ui-web/act/NodeSave.php; do
+  if [[ ! -s "$webuiStage/$requiredFile" ]]; then
+    rm -rf "$webuiStage"
+    echo -e "${WHITE}Web UI${RED} Missing resource: $requiredFile${cRES}"
+    exit 1
+  fi
+done
 
 rm -rf /opt/de_GWD/ui-*
 rm -rf /opt/de_GWD/ui_*
@@ -2342,8 +2368,12 @@ rm -rf /var/www/html/vendor
 rm -rf /var/www/html/css
 rm -rf /var/www/html/js
 
-mv -f /tmp/ui-script/* /opt/de_GWD >/dev/null
-mv -f /tmp/ui-web/* /var/www/html >/dev/null
+if ! mv -f "$webuiStage"/ui-script/* /opt/de_GWD >/dev/null || ! mv -f "$webuiStage"/ui-web/* /var/www/html >/dev/null; then
+  rm -rf "$webuiStage"
+  echo -e "${WHITE}Web UI${RED} Installation Failed${cRES}"
+  exit 1
+fi
+rm -rf "$webuiStage"
 
 mkdir -p /var/www/html/restore
 chown -R www-data:www-data /var/www/html

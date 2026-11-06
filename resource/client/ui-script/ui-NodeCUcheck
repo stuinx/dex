@@ -1,11 +1,11 @@
 #!/bin/bash
-domain=$(jq -r '.outbounds[] | select(.tag == "custom") | .settings.vnext[0].address' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-port=$(jq -r '.outbounds[] | select(.tag == "custom") | .settings.vnext[0].port' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-
-if [[ $port = "443" ]]; then
-nodecheck=$domain
-else
-nodecheck=$domain:$port
-fi
-
-jq -r --arg nodecheck "$nodecheck" --arg tag "custom" --slurpfile config /opt/de_GWD/vtrui/config.json '($config[0].outbounds[] | select(.tag == $tag)) as $out | .v2node[] | select((.domain == $nodecheck or .domain == ($nodecheck+":443")) and .uuid == $out.settings.vnext[0].users[0].id and (.path // "") == ($out.streamSettings.wsSettings.path // "") and .protocol == "vless" and $out.protocol == "vless") | .name' /opt/de_GWD/0conf
+jq -nr --arg tag "custom" --slurpfile nodes /opt/de_GWD/0conf --slurpfile config /opt/de_GWD/vtrui/config.json '
+  $config[0].outbounds[]? | select(.tag == $tag and .protocol == "vless") as $out |
+  $out.settings.vnext[0] as $next |
+  ($next.address + (if $next.port == 443 then "" else ":" + ($next.port | tostring) end)) as $address |
+  $nodes[0].v2node[]? |
+  select((.domain == $address or .domain == ($address + ":443"))
+    and .uuid == $next.users[0].id and .protocol == "vless"
+    and (.path // "") == ($out.streamSettings.wsSettings.path // "")
+    and (if (.path // "") == "" then "" elif (.tls // "") == "" then $next.address else .tls end)
+      == ($out.streamSettings.tlsSettings.serverName // "")) | .name'

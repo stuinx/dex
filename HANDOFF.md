@@ -1,3 +1,33 @@
+# 当前交接：双端验收通过，准备推送 dev（2026-11-06）
+
+- 用户授权：sam验证并追加vm1225 Client验收；透明代理异常先修复再推送。该异常已修复并复测通过，当前准备提交与正常推送dev，不强推、不碰main、不创建Release。
+- sam/vm1225源码回归、真实Xray TCP/UDP回环、各34项真实nft及vm1225→sam四种实际入口TCP/UDP均通过。HNN实际主VLESS是32087，旧32096是VMess兼容入口；LAX保留32096，新增32087转发，vm1225所选VLESS节点及2个outbound引用同步正确身份。最终透明HTTPS200、UDP/STUN通过，七服务active无failed。
+- sam生产不变；HNN只读。vm1225仅0conf/runtime两文件内容变更、元数据保持，vtrui按需重启；LAX仅HAProxy追加规则并reload，原配置保留。精确备份位置、曾回滚的失败探针、临时数据清理及验证边界见docs/sam-vm1225-validation-20261106.md。
+- 未执行完整安装升级、主机重启或完整浏览器/FPM验收，勿将隔离测试夸大。当前源码基线4042408，资源链与差异检查通过；下一步核对差异，提交本轮源码/测试/报告并正常快进推送origin/dev，再核对远端HEAD。
+
+# 当前交接：dev 本地全面优化（2026-11-06）
+
+- 目标与范围：用户要求全面覆盖稳定性、安全性、性能和可维护性，保留功能；当前仓库为 dex-workspace/原始仓库/dex，分支 dev，基线 4042408。本轮源码与资源修改均未提交、推送、部署，不沿用历史推送/远端操作授权。
+- 已完成：Web 鉴权/命令参数/6页输出编码/浏览器来源限制、session锁释放和测速时限；节点与FWD安全JSON及失败保护；分流完整身份保持；DNS hosts、nft候选与单批次刷新；定时更新锁与故障传播、限定清理；版本/key/WebUI/两端自动更新失败保护；canonical Rproxy额外用户生成；全量资源包一致性检查。普通节点/分流/FWD使用VLESS，Rproxy和Server额外VMess兼容保留。
+- 已验证：17套Node本地回归、节点保存13项/FWD保存16项PHP回归、下载与DoH回归通过；91个Bash和86个PHP语法检查无错误或弃用提示，git diff --check通过。完整命令与边界见 docs/dev-optimization-20261106.md。
+- 性能证据：相同fixture输出一致，ui-NodeSMcheck的jq调用53降至14；开发机单次617.2ms降至85.4ms，不能外推代理吞吐或生产整体性能。
+- Archive已重打包：1753文件与源码逐字节一致，原条目权限、CRC/SHA256/发布链通过；SHA256 6d4171b754c85775bc589380dfe3979aed41b2dd14382ce8783f18c3399f7e92。
+- 当前状态：本地改动可审查，工作区有本轮业务/测试/归档修改，以及另一聊天新增的sam报告；勿自动reset、清理、提交全部或覆盖报告。下方sam报告验证4042408快照，不代表本轮代码已实机通过。
+- 未完成/阻塞：legacy Rproxy顶层clients的schema来源未知，无法证明等价迁移，原文件保持；PHP/Shell写锁与全流程事务未统一；GET接口未全面改POST/CSRF token，广泛sudo权限策略仍保留。不能宣称全部安全风险消除。
+- 下一步：先审查本轮差异和报告，再使用脱敏legacy结构补兼容测试；最新代码须在授权的隔离Linux环境验收真实nft、完整安装/更新、重启、TProxy、外部TCP/UDP和浏览器交互后，再决定发布。
+- 修改文件：client/server、相关ui-script、6个Web页面/auth/act handler、Archive与校验值、tools检查器及回归；详单以git diff --name-only和新报告为准。
+- 已踩坑/恢复：独立复核发现并已修无端口旧节点切换、nft候选shebang/权限及持久文件提前覆盖问题。不要source整个安装器；本机服务/下载/nft/部分core校验为fixture模拟，无Linux nft或原生Xray环境，不得当作线上数据面证据。
+
+# 当前交接：sam 非侵入测试（2026-11-06）
+
+- 用户改为在 sam 测试 dev Server，已完成只读基线与临时目录测试；报告见 docs/sam-dev-acceptance-20261106.md。
+- 测试输入为 dev 4042408 的 server/client 快照，上传 SHA256 与该提交一致；测试期间其他并发修改未上传，不属于本轮验证范围。
+- 通过：现有主/额外 VLESS、REALITY、SOCKS5 的 sam 同机 HTTPS/UDP，外部 DoH，下载/DoH 参数回归，最新 dev 的 native Xray 配置生成、VLESS/VMess WS localhost 双端，以及 VMess Rproxy 临时双端 TCP/UDP。
+- 新发现：sam 旧 RproxyS settings 顶层 port/uuid/clients/mapping 无法被 dev 的 .tunnel 格式管理逻辑直接识别。仅临时重建 canonical 副本后生成和双端通过；生产旧设置未修改，当前隧道未受影响。下一步先处理此兼容缺口，再考虑管理菜单或完整升级验收。
+- 生产六份配置哈希/权限/属主前后相同；七服务 active、失败单元零；无本轮服务重启，临时测试进程已停止，含认证数据的临时副本已清理。
+- 未部署最新脚本/核心、未安装升级系统、未重启主机、未推送。不能称完整生产升级验收通过。
+- 本地存在其他并发业务改动，本轮保留原样，仅新增本报告与本段交接，未提交它们或其他修改。恢复工作前先核验当前 git 状态，不按下方历史“工作区干净”记录操作。
+
 # 当前交接：dev 合并 vless 与协议范围确认（2026-11-06）
 
 - 用户最终确定：main 仅基于原 main 做 fix，普通节点保留 VMess；dev 的普通节点、分流和 FWD0/FWD1 使用 VLESS；Rproxy 内部隧道与 Server 额外入站的 VMess 兼容保留，不再迁移这两处。

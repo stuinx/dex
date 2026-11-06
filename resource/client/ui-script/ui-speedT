@@ -1,3 +1,5 @@
 #!/bin/bash
-speedT=$(jq -r --argjson domainNUM "$1" '.v2node[$domainNUM].domain' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-wget -O /dev/null https://$speedT/spt 2>&1 | sed '$d' | awk 'END{print$3}' | sed 's/(//'
+set -o pipefail
+[[ ${1:-} =~ ^[0-9]+$ ]] || exit 1
+speedT=$(jq -er --arg index "$1" '.v2node[$index | tonumber].domain | select(type == "string" and test("^[A-Za-z0-9.-]+:[0-9]{1,5}$"))' /opt/de_GWD/0conf) || exit 1
+timeout 30 wget --timeout=10 --tries=1 --read-timeout=10 -O /dev/null -- "https://$speedT/spt" 2>&1 | sed '$d' | awk 'END{print$3}' | sed 's/(//'

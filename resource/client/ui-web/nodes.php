@@ -140,7 +140,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo $de_GWDconf->address->alias ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars((string)($de_GWDconf->address->alias ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -188,11 +188,11 @@ $de_GWDconf->v2node = array_values(array_filter($de_GWDconf->v2node, function($n
 }));
 for( $i=0; $i<count($de_GWDconf->v2node); $i++){
   $num = $i+1;
-  $domain = $de_GWDconf->v2node[$i]->domain;
-  $tls = $de_GWDconf->v2node[$i]->tls;
-  $name = $de_GWDconf->v2node[$i]->name;
-  $path = $de_GWDconf->v2node[$i]->path;
-  $uuid = $de_GWDconf->v2node[$i]->uuid;
+  $domain = htmlspecialchars($de_GWDconf->v2node[$i]->domain ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $tls = htmlspecialchars($de_GWDconf->v2node[$i]->tls ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $name = htmlspecialchars($de_GWDconf->v2node[$i]->name ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $path = htmlspecialchars($de_GWDconf->v2node[$i]->path ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $uuid = htmlspecialchars($de_GWDconf->v2node[$i]->uuid ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 print <<<EOT
 <tr>
 <td class="align-middle">$num</td>
@@ -247,7 +247,7 @@ $('#nodeTable').append(`
     <div class="modal-content">
       <div class="modal-body">
         <div class="input-group">
-          <input id="serverName${i}" type="text" class="form-control" value="${tlsValue}"></input>
+          <input id="serverName${i}" type="text" class="form-control" value=""></input>
           <div class="input-group-append">
             <button id="serverNameSave${i}" type="button" class="btn btn-secondary btn-sm">保存</button>
           </div>
@@ -257,6 +257,7 @@ $('#nodeTable').append(`
   </div>
 </div>
                         `)
+$('#serverName'+i).val(tlsValue)
 $('#commitTlsModal'+i).modal('show')
 
 $('#serverNameSave'+i).click(function(){

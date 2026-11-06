@@ -39,11 +39,7 @@ managedKeys='["youtube","claude","gemini","grok","wikipedia","reddit","github","
 appleDomains='["geosite:apple","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
 steamDomains='["domain:steamserver.net","geosite:steam@cn","geosite:category-games@cn"]'
 
-savedNodeSM=()
-for ((i=0; i<${#nodeSMKeys[@]}; i++)); do
-  key=${nodeSMKeys[$i]}
-  savedNodeSM[$i]=$(jq -r --arg key "$key" '.v2nodeDIV.nodeSM[$key] // empty' "$config" 2>/dev/null)
-done
+savedIdentities=$(jq -c '.v2nodeDIV.outboundNodes // {}' "$config") || exit 1
 savedSteam=$(jq -r '.v2nodeDIV.nodeSM.steam // empty' "$config" 2>/dev/null)
 
 nodeCount=$(jq -r '.v2node | length' "$config" 2>/dev/null)
@@ -67,6 +63,31 @@ if (( $# > 1 )); then
     [[ $steamSelection = 0 || $steamSelection = 1 ]] || { echo 'Invalid Steam selection' >&2; exit 1; }
   fi
 fi
+
+selectedNodes=()
+for ((i=0; i<${#nodeSMKeys[@]}; i++)); do
+  key=${nodeSMKeys[$i]}
+  tag=${nodeSMTags[$i]}
+  argIndex=$((i + 2))
+  selectedNodes[$i]=''
+  if (( $# >= argIndex )); then
+    selection=${!argIndex}
+    if [[ $selection != 0 ]]; then
+      selectedNodes[$i]=$(jq -ce --argjson index "$((selection - 1))" '.v2node[$index]' "$config") || exit 1
+    fi
+  else
+    selectedNodes[$i]=$(jq -cr --arg key "$key" --arg tag "$tag" --argjson identities "$savedIdentities" '
+      .v2nodeDIV.nodeSM[$key] as $address | $identities[$tag] as $saved |
+      [.v2node[]? | select(.domain == $address and .protocol == "vless") |
+        select($saved == null or
+          (.uuid == $saved.uuid and (.path // "") == ($saved.path // "") and .protocol == $saved.protocol
+            and (($saved | has("tls") | not) or
+              (if (.path // "") == "" then "" else (.tls // "" | if . == "" then ($address | split(":")[0]) else . end) end) == $saved.tls)))] |
+      if length > 1 then error("Ambiguous saved node; select the routing node again")
+      elif length == 1 then .[0] else empty end
+    ' "$config") || exit 1
+  fi
+done
 
 jq --argjson managedTags "$managedTags" \
    --argjson managedKeys "$managedKeys" \
@@ -94,20 +115,10 @@ for ((i=0; i<${#nodeSMKeys[@]}; i++)); do
   key=${nodeSMKeys[$i]}
   tag=${nodeSMTags[$i]}
   routingDomain=${nodeSMDomains[$i]}
-  argIndex=$((i + 2))
-  selection=''
+  node=${selectedNodes[$i]}
   address=''
-
-  if (( $# >= argIndex )); then
-    selection=${!argIndex}
-    if [[ $selection != 0 ]]; then
-      nodeIndex=$((selection - 1))
-      node=$(jq -ce --argjson nodeIndex "$nodeIndex" '.v2node[$nodeIndex] // empty' "$config" 2>/dev/null) || exit 1
-      address=$(jq -r '.domain // empty' <<< "$node")
-    fi
-  elif [[ -n ${savedNodeSM[$i]} ]]; then
-    address=${savedNodeSM[$i]}
-    node=$(jq -ce --arg address "$address" '[.v2node[]? | select(.domain == $address and .protocol == "vless")][0] // empty' "$config" 2>/dev/null) || continue
+  if [[ -n $node ]]; then
+    address=$(jq -r '.domain // empty' <<< "$node")
   fi
 
   if [[ -n $address ]]; then

@@ -49,8 +49,7 @@ for archive in de_GWD_amd64.zip de_GWD_arm64.zip resource/client/Archive.zip res
   unzip -tq "$archive" >/dev/null || fail "invalid ZIP: $archive"
 done
 
-cmp <(unzip -p resource/client/Archive.zip ui-script/ui-installDocker) \
-  resource/client/ui-script/ui-installDocker || fail 'Archive.zip is not synchronized with ui-installDocker'
+python3 tools/check-client-archive.py || fail 'Archive.zip is not synchronized with client sources'
 
 [[ -s version.php ]] || fail 'missing version.php'
 command -v jq >/dev/null 2>&1 || fail 'jq is required to validate the component manifest'

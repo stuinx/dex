@@ -1,3 +1,5 @@
 #!/bin/bash
-pingTCP=$(jq -r --argjson domainNUM "$1" '.v2node[$domainNUM].domain' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-echo "$(curl -o /dev/null -m 5 -kIsw '%{time_connect}\n' https://$pingTCP) * 1000" | bc | awk '{printf ("%.0f\n",$1)}' 
+[[ ${1:-} =~ ^[0-9]+$ ]] || exit 1
+pingTCP=$(jq -er --arg index "$1" '.v2node[$index | tonumber].domain | select(type == "string" and test("^[A-Za-z0-9.-]+:[0-9]{1,5}$"))' /opt/de_GWD/0conf) || exit 1
+elapsed=$(curl --connect-timeout 5 --max-time 5 -o /dev/null -kIsw '%{time_connect}\n' -- "https://$pingTCP") || exit 1
+awk -v elapsed="$elapsed" 'BEGIN {printf "%.0f\n", elapsed * 1000}'

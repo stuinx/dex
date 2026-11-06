@@ -1,23 +1,23 @@
 #!/bin/bash
-chmod +x /opt/de_GWD/update
-if [[ $(du -sk /opt/de_GWD/update 2>/dev/null | awk '{print$1}') -le 1 ]]; then
-updateCMDaddr=$(jq -r '.update.updateCMD' /opt/de_GWD/0conf 2>/dev/null | grep -oP "https://\K[^']+" | sed s'/.$//')
-systemctl stop nftables
-
-rm -rf /etc/resolv.conf
-cat << EOF >/etc/resolv.conf
-nameserver 119.29.29.29
-nameserver 180.76.76.76
-nameserver 114.114.114.114
-nameserver 223.5.5.5
-EOF
-
-wget -cqO /opt/de_GWD/update $updateCMDaddr
-fi
-
 updatePort=$(jq -r '.update.updatePort' /opt/de_GWD/0conf)
+if [[ ! $updatePort =~ ^[0-9]{1,5}$ ]] || (( 10#$updatePort < 1 || 10#$updatePort > 65535 )); then
+  echo 'Invalid update port' >&2
+  exit 1
+fi
+updateCMDaddr=$(jq -r '.update.updateCMD // empty' /opt/de_GWD/0conf 2>/dev/null | grep -oE "https://[^[:space:]\"'<>)]+" | head -n 1)
+if [[ -z $updateCMDaddr ]]; then
+  echo 'Update command requires an HTTPS URL' >&2
+  exit 1
+fi
+updateTmp=$(mktemp /opt/de_GWD/update.XXXXXX) || exit 1
+if ! timeout --signal=TERM --kill-after=5s 300s wget --connect-timeout=10 --read-timeout=30 --tries=4 --waitretry=2 -qO "$updateTmp" "$updateCMDaddr" || [[ ! -s $updateTmp ]] || ! bash -n "$updateTmp"; then
+  rm -f "$updateTmp"
+  echo 'Update script download or validation failed' >&2
+  exit 1
+fi
+chmod +x "$updateTmp" && mv -f "$updateTmp" /opt/de_GWD/update || { rm -f "$updateTmp"; exit 1; }
 
 kill $(ps -e | grep 'ttyd' | awk '{print$1}') >/dev/null 2>&1
 tmux kill-session -t updateGWD >/dev/null 2>&1
-sed -i "/ExecStart=/c\ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -W -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
-systemctl daemon-reload >/dev/null
+sed -i "/ExecStart=/c\ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -W -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service || exit 1
+systemctl daemon-reload >/dev/null || exit 1

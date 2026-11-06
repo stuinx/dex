@@ -30,114 +30,34 @@ path=$(jq -r --arg v2nodeID "$v2nodeID" ".v2node[$v2nodeID].path" /opt/de_GWD/0c
 [[ -n $tls ]] || tls=$domain
 [[ -n $domain && -n $uuid && $path == /* ]] || { echo "FWD1 upstream must be a VLESS WebSocket TLS node" >&2; exit 1; }
 
-rm -rf /opt/de_GWD/vtrui1
-mkdir -p /opt/de_GWD/vtrui1
-cp -f /opt/de_GWD/vtrui/vtrui /opt/de_GWD/vtrui1/vtrui1
-chmod +x /opt/de_GWD/vtrui1/vtrui1
-
-cat << EOF >/opt/de_GWD/vtrui1/config.json
-{
-  "log": {
-    "access":"none",
-    "error":"none",
-    "loglevel":"none"
-  },
-  "dns":{
-    "tag":"dnsflow",
-    "queryStrategy":"UseIP",
-    "disableCache":true,
-    "servers":["tcp+local://127.0.0.1:53"]
-  },
-  "routing":{
-    "rules":[
-    ]
-  },
-  "inbounds":[
-    {
-      "port": $FWD1port,
-      "protocol": "vless",
-      "settings":{
-        "decryption": "none",
-        "clients":[]
-      },
-      "streamSettings": {
-        "network": "ws",
-        "security": "tls",
-        "wsSettings": {
-          "path": "$FWD1path"
-        },
-        "tlsSettings": {
-          "certificates": [
-            {
-              "certificateFile": "/var/www/ssl/de_GWD.cer",
-              "keyFile": "/var/www/ssl/de_GWD.key"
-            }
-          ]
-        }
-      }
-    }
-  ]
-}
-EOF
-
-OBfwd=`cat << EOF
-{
-      "protocol": "vless",
-      "settings": {
-        "vnext": [
-          {
-            "address": "$domain",
-            "port": $port,
-            "users": [
-              {
-                "id": "$uuid",
-                "encryption": "none"
-              }
-            ]
-          }
-        ]
-      },
-      "streamSettings": {
-        "network": "ws",
-        "wsSettings": {
-          "path": "$path",
-          "headers": {
-            "Host": "$tls"
-          }
-        },
-        "security": "tls",
-        "tlsSettings": {
-          "serverName": "$tls",
-          "allowInsecure": false
-        },
-        "sockopt": {
-          "mark": 255,
-          "tcpFastOpen": true,
-          "tcpNoDelay": true
-        }
-      }
-}
-EOF
-`
-
-OBdir=`cat << EOF
-{
-      "tag":"direct",
-      "protocol":"freedom",
-      "streamSettings":{"sockopt":{"mark":255,"tcpFastOpen":true}}
-}
-EOF
-`
-
-for uuid in $FWD1uuid; do
-uuidStr='{"id":"'$uuid'"}'
-jq --argjson uuidStr "$uuidStr" '.inbounds[0].settings.clients+=[$uuidStr]' /opt/de_GWD/vtrui1/config.json | sponge /opt/de_GWD/vtrui1/config.json
-done
-jq '.outbounds=[]' /opt/de_GWD/vtrui1/config.json |\
-jq --argjson OBfwd "$OBfwd" '.outbounds+=[$OBfwd]' |\
-jq --argjson OBdir "$OBdir" '.outbounds+=[$OBdir]' | sponge /opt/de_GWD/vtrui1/config.json
-
-chmod 666 /opt/de_GWD/vtrui1/config.json
+[[ $port =~ ^[0-9]{1,5}$ ]] || exit 1
+port=$((10#$port))
+(( port >= 1 && port <= 65535 )) || exit 1
+[[ $uuid =~ ^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$ ]] || exit 1
+clients=$(jq -ce '.FORWARD.FWD1.uuid | if type == "array" and length > 0 and all(.[]; .FWD1uuid | type == "string" and test("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$")) then map({id:.FWD1uuid}) else error("Invalid FWD1 UUID list") end' /opt/de_GWD/0conf) || exit 1
+mkdir -p /opt/de_GWD/vtrui1 || exit 1
+configTemp=$(mktemp /opt/de_GWD/vtrui1/config.json.XXXXXX) || exit 1
+binaryTemp=$(mktemp /opt/de_GWD/vtrui1/vtrui1.XXXXXX) || { rm -f "$configTemp"; exit 1; }
+trap 'rm -f "$configTemp" "$binaryTemp"' EXIT
+if [[ -f /opt/de_GWD/vtrui1/config.json ]]; then
+  cp -p /opt/de_GWD/vtrui1/config.json "$configTemp" || exit 1
+else
+  chmod 666 "$configTemp" || exit 1
+fi
+jq -n --argjson inboundPort "$FWD1port" --arg inboundPath "$FWD1path" --argjson clients "$clients" \
+  --arg domain "$domain" --argjson port "$port" --arg tls "$tls" --arg uuid "$uuid" --arg path "$path" '
+  {log:{access:"none",error:"none",loglevel:"none"},
+   dns:{tag:"dnsflow",queryStrategy:"UseIP",disableCache:true,servers:["tcp+local://127.0.0.1:53"]},
+   routing:{rules:[]},
+   inbounds:[{port:$inboundPort,"protocol": "vless",settings:{decryption:"none",clients:$clients},
+     streamSettings:{"network": "ws", "security": "tls",wsSettings:{path:$inboundPath},
+       tlsSettings:{certificates:[{certificateFile:"/var/www/ssl/de_GWD.cer",keyFile:"/var/www/ssl/de_GWD.key"}]}}}],
+   outbounds:[{"protocol": "vless",settings:{vnext:[{address:$domain,port:$port,users:[{id:$uuid,encryption:"none"}]}]},
+     streamSettings:{"network": "ws",wsSettings:{path:$path,headers:{Host:$tls}},"security": "tls",
+       tlsSettings:{serverName:$tls,allowInsecure:false},sockopt:{mark:255,tcpFastOpen:true,tcpNoDelay:true}}},
+     {tag:"direct",protocol:"freedom",streamSettings:{sockopt:{mark:255,tcpFastOpen:true}}}]}' >"$configTemp" || exit 1
+cp -p /opt/de_GWD/vtrui/vtrui "$binaryTemp" && chmod +x "$binaryTemp" || exit 1
+mv -f "$binaryTemp" /opt/de_GWD/vtrui1/vtrui1 && mv -f "$configTemp" /opt/de_GWD/vtrui1/config.json || exit 1
 chmod 644 /var/www/ssl/*.key
 
 rm -rf /lib/systemd/system/vtrui1.service

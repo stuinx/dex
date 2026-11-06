@@ -10,7 +10,15 @@ path=$(jq -r '.update.v2node.path' /opt/de_GWD/0conf 2>/dev/null | grep -v '^nul
 
 address="$domain:$port"
 
-cat << EOF >/opt/de_GWD/vtrui/config.json
+runtime=$(mktemp /opt/de_GWD/vtrui/config.json.XXXXXX) || exit 1
+trap 'rm -f "$runtime"' EXIT
+if [[ -f /opt/de_GWD/vtrui/config.json ]]; then
+  cp -p /opt/de_GWD/vtrui/config.json "$runtime" || exit 1
+else
+  chmod 644 "$runtime" || exit 1
+fi
+export DE_GWD_RUNTIME_CONFIG="$runtime"
+cat << EOF >"$runtime"
 {
 "log": {
   "access":"none",
@@ -60,7 +68,15 @@ OBdirect=`cat << EOF
     }
 EOF
 `
-jq --argjson OBdirect "$OBdirect" '.outbounds+=[$OBdirect]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+directTemp=$(mktemp "${runtime}.XXXXXX") || exit 1
+if ! jq -e --argjson OBdirect "$OBdirect" '.outbounds+=[$OBdirect]' "$runtime" >"$directTemp"; then
+  rm -f "$directTemp"
+  exit 1
+fi
+cat "$directTemp" >"$runtime"
+rm -f "$directTemp"
+mv -f "$runtime" /opt/de_GWD/vtrui/config.json || exit 1
+unset DE_GWD_RUNTIME_CONFIG
 
 
 if [[ $(jq -r '.FORWARD.FWD0.status' /opt/de_GWD/0conf 2>/dev/null) = "on" ]];then

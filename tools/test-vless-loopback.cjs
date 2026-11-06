@@ -67,7 +67,8 @@ function socksUDP(port,target) {
     await new Promise(r=>udp.bind(0,'127.0.0.1',r));
     udp.on('message',(data,peer)=>udp.send(data,peer.port,peer.address));
     const server=JSON.parse(fs.readFileSync(root+'/server-coexist.json'));
-    for(const inbound of server.inbounds) {inbound.port=await freePort();delete inbound.streamSettings.sockopt;}
+    server.outbounds=[{tag:'direct',protocol:'freedom'}];
+    for(const inbound of server.inbounds) {inbound.listen='127.0.0.1';inbound.port=await freePort();delete inbound.streamSettings.sockopt;}
     await launch('loop-server',server,server.inbounds[0].port);
     for(const protocol of ['vmess','vless']) {
       const inbound=server.inbounds.find(i=>i.protocol===protocol);

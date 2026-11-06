@@ -132,6 +132,7 @@ try {
   write('0conf',{v2node:[legacyClientNode]});
   write('vtrui/config.json',{outbounds:[]});
   const clientBuilder=fs.readFileSync(path.join(repo,'resource/client/ui-script/ui-V2outbound'),'utf8');
+  fs.writeFileSync(path.join(opt, 'ui-V2outbound'), rewrite(clientBuilder), {mode: 0o755});
   run(clientBuilder,['vmess-extra',legacyClientNode.domain,legacyClientNode.tls,legacyClientNode.uuid,legacyClientNode.path],true);
   assert.deepEqual(read('vtrui/config.json').outbounds,[]);
   write('vtrui/config.json',configBeforeLegacyClient);

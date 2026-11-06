@@ -1,5 +1,6 @@
 <?php
 $repo = dirname(__DIR__);
+$validUUID = '00000000-0000-4000-8000-000000000001';
 $cases = [
     ['FWD0save.php', ['FWD0port' => '1', 'FWD0uuidList' => []], 200],
     ['FWD0save.php', ['FWD0port' => '65535', 'FWD0uuidList' => []], 200],
@@ -10,6 +11,13 @@ $cases = [
     ['FWD1save.php', ['FWD1port' => '65535', 'FWD1uuidList' => [], 'FWD1upstream' => 'node'], 200],
     ['FWD1save.php', ['FWD1port' => '0', 'FWD1uuidList' => [], 'FWD1upstream' => 'node'], 400],
     ['FWD1save.php', ['FWD1port' => '65536', 'FWD1uuidList' => [], 'FWD1upstream' => 'node'], 400],
+    ['FWD0save.php', ['FWD0port' => '443', 'FWD0uuidList' => [['FWD0uuid' => $validUUID]]], 200],
+    ['FWD0save.php', ['FWD0port' => '443', 'FWD0uuidList' => 'invalid'], 400],
+    ['FWD0save.php', ['FWD0port' => '443', 'FWD0uuidList' => [['FWD0uuid' => '/bad"uuid']]], 400],
+    ['FWD0save.php', ['FWD0port' => '443', 'FWD0uuidList' => [[]]], 400],
+    ['FWD1save.php', ['FWD1port' => '443', 'FWD1uuidList' => [['FWD1uuid' => $validUUID]], 'FWD1upstream' => 'node'], 200],
+    ['FWD1save.php', ['FWD1port' => '443', 'FWD1uuidList' => [['FWD1uuid' => ['bad']]], 'FWD1upstream' => 'node'], 400],
+    ['FWD1save.php', ['FWD1port' => '443', 'FWD1uuidList' => [['FWD1uuid' => 'bad']], 'FWD1upstream' => 'node'], 400],
 ];
 foreach ($cases as [$file, $query, $expected]) {
     $source = file_get_contents($repo . '/resource/client/ui-web/act/' . $file);
@@ -17,7 +25,7 @@ foreach ($cases as [$file, $query, $expected]) {
     $original = json_encode(['FORWARD' => ['untouched' => true]]);
     file_put_contents($config, $original);
     $source = str_replace("<?php require_once('../auth.php'); ?>", '<?php $auth = true; ?>', $source);
-    $source = str_replace("file_get_contents('/opt/de_GWD/0conf')", "file_get_contents('$config')", $source);
+    $source = str_replace('/opt/de_GWD/0conf', $config, $source);
     $source = str_replace('file_put_contents(\'/opt/de_GWD/0conf\', $newJsonString)', 'file_put_contents(\'' . $config . '\', $newJsonString)', $source);
     $source = preg_replace("/exec\('sudo \/opt\/de_GWD\/ui-FWD[01]save[^']*'\);/", '', $source);
     $encoded = base64_encode(json_encode($query));

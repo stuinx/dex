@@ -7,7 +7,7 @@ if (!isset($auth) || !$auth) {
 ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-$conf = json_decode(file_get_contents('/opt/de_GWD/0conf'), true);
+
 $nodeList = $_GET['nodeList'] ?? [];
 if (!is_array($nodeList)) {
     http_response_code(400);
@@ -61,9 +61,14 @@ foreach ($nodeList as $node) {
     $validatedNodes[] = $node;
 }
 
+$conf = json_decode(file_get_contents('/opt/de_GWD/0conf'), true);
+if (!is_array($conf) || json_last_error() !== JSON_ERROR_NONE) {
+    http_response_code(500);
+    exit('Node configuration is unreadable or invalid');
+}
 $conf['v2node'] = $validatedNodes;
 $newJsonString = json_encode($conf, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-if ($newJsonString === false || file_put_contents('/opt/de_GWD/0conf', $newJsonString) === false) {
+if ($newJsonString === false || file_put_contents('/opt/de_GWD/0conf', $newJsonString, LOCK_EX) !== strlen($newJsonString)) {
     http_response_code(500);
     exit('Unable to save node configuration');
 }

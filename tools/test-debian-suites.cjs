@@ -69,7 +69,15 @@ for (const [codename, architecture] of [
 dpkg() { [[ $1 != --print-architecture ]] || printf '${architecture}\\n'; return 0; }
 dpkg-query() { printf '%s\\n' "$*" >> "$QUERY_LOG"; printf 'install ok installed\\n'; }
 nproc() { printf '2\\n'; }
-curl() { return 0; }
+curl() {
+  local output=''
+  while (( $# )); do
+    case $1 in -o|-fsSLo) output=$2; shift ;; esac
+    shift
+  done
+  [[ -z $output ]] || printf 'fixture-apt-key\\n' > "$output"
+  return 0
+}
 apt-get() { printf '%s\\n' "$*" >> "$APT_LOG"; }
 apt-key() { printf 'legacy-key-cleanup\\n' >> "$APT_LOG"; }
 command() {
@@ -83,9 +91,13 @@ command() {
     assert(!aptLog.includes(codename === 'trixie' ? 'libmimalloc2.0' : 'libmimalloc3'));
     if (name === 'client') {
       assert(fs.readFileSync(path.join(fixture, 'etc/apt/sources.list.d/docker.sources'), 'utf8').includes(`Architectures: ${architecture}`));
+      assert.equal(fs.readFileSync(path.join(fixture, 'etc/apt/keyrings/docker.asc'), 'utf8'), 'fixture-apt-key\n');
+      assert.equal(fs.statSync(path.join(fixture, 'etc/apt/keyrings/docker.asc')).mode & 0o777, 0o644);
       assert(fs.readFileSync(path.join(fixture, 'query.log'), 'utf8').includes(packageName));
       const update = functionSource(source, 'updateAPT');
       run(`${mocks}\nchnAPTsource=mirror.example\n${rewrite(update)}\nupdateAPT`);
+      assert.equal(fs.readFileSync(path.join(fixture, 'etc/apt/keyrings/deb.sury.org.gpg'), 'utf8'), 'fixture-apt-key\n');
+      assert.equal(fs.statSync(path.join(fixture, 'etc/apt/keyrings/deb.sury.org.gpg')).mode & 0o777, 0o644);
       assert(fs.readFileSync(path.join(fixture, 'etc/apt/sources.list.d/php.list'), 'utf8').includes(`/php/ ${codename} main`));
       assert.equal(fs.readFileSync(path.join(fixture, 'apt.log'), 'utf8').includes('legacy-key-cleanup'), codename === 'bookworm');
     }

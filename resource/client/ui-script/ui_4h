@@ -1,20 +1,10 @@
 #!/bin/bash
-RED='\E[1;31m'
-GREEN='\E[1;32m'
-YELLOW='\E[1;33m'
-BLUE='\E[1;34m'
-PURPLE='\E[1;35m'
-CYAN='\E[1;36m'
-WHITE='\E[1;37m'
-cRES='\E[0m'
+/opt/de_GWD/ui-smartDNS || exit $?
+/opt/de_GWD/ui-DNSsplit || exit $?
 
-
-
-/opt/de_GWD/ui-smartDNS
-
-/opt/de_GWD/ui-DNSsplit
-
-[[ $1 = "r" ]] && systemctl restart smartdns && systemctl restart mosdns
-[[ $1 = "n" ]] && systemctl restart nftables
-
-exit 0
+for action in "$@"; do
+    case "$action" in
+        r) systemctl restart smartdns && systemctl restart mosdns || exit $? ;;
+        n) systemctl restart nftables || exit $? ;;
+    esac
+done

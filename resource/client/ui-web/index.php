@@ -209,7 +209,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo $de_GWDconf->address->alias; ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars((string)($de_GWDconf->address->alias ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -296,21 +296,21 @@ foreach ($nodeSMroutes as $nodeSMroute) {
   <div class="input-group-prepend">
     <span class="input-group-text">大陆白名单代理</span>
   </div>
-   <input id="CHNlistProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php foreach ($de_GWDconf->v2nodeDIV->nodeDT->CHNlistProxyIP as $k => $v) {echo "$v ";} ?>">
+   <input id="CHNlistProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php foreach ($de_GWDconf->v2nodeDIV->nodeDT->CHNlistProxyIP as $k => $v) {echo htmlspecialchars((string)($v ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . " ";} ?>">
 </div>
 
 <div class="input-group input-group-sm mb-3">
   <div class="input-group-prepend">
     <span class="input-group-text">全局代理</span>
   </div>
-   <input id="globalProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php foreach ($de_GWDconf->v2nodeDIV->nodeDT->globalProxyIP as $k => $v) {echo "$v ";} ?>">
+   <input id="globalProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php foreach ($de_GWDconf->v2nodeDIV->nodeDT->globalProxyIP as $k => $v) {echo htmlspecialchars((string)($v ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . " ";} ?>">
 </div>
 
 <div class="input-group input-group-sm">
   <div class="input-group-prepend">
     <span class="input-group-text">全局直连</span>
   </div>
-   <input id="directProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php foreach ($de_GWDconf->v2nodeDIV->nodeDT->directProxyIP as $k => $v) {echo "$v ";} ?>">
+   <input id="directProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php foreach ($de_GWDconf->v2nodeDIV->nodeDT->directProxyIP as $k => $v) {echo htmlspecialchars((string)($v ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . " ";} ?>">
 </div>
 
       </div>
@@ -328,7 +328,7 @@ foreach ($nodeSMroutes as $nodeSMroute) {
   <div class="modal-dialog modal-sm modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-body">
-        <textarea id="nodeCUrulesDomain" class="form-control mb-2" rows="12"><?php $customDomainList = $de_GWDconf->v2nodeDIV->nodeCU->rulesDomain; foreach ( $customDomainList as $k => $v) {if (end($customDomainList) == $v) echo "$v"; else echo "$v\n";} ?></textarea>
+        <textarea id="nodeCUrulesDomain" class="form-control mb-2" rows="12"><?php $customDomainList = $de_GWDconf->v2nodeDIV->nodeCU->rulesDomain; foreach ( $customDomainList as $k => $v) {if (end($customDomainList) == $v) echo htmlspecialchars((string)($v ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); else echo htmlspecialchars((string)($v ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n";} ?></textarea>
         <div class="alert-light mb-4" role="alert">
         纯字符串: google.com<br>
         子域名: domain:google.com<br>
@@ -337,7 +337,7 @@ foreach ($nodeSMroutes as $nodeSMroute) {
         预定义域名列表: geosite:google<br>
         </div>
 
-        <textarea id="nodeCUrulesIP" class="form-control mb-2" rows="6"><?php $customDomainList = $de_GWDconf->v2nodeDIV->nodeCU->rulesIP; foreach ( $customDomainList as $k => $v) {if (end($customDomainList) == $v) echo "$v"; else echo "$v\n";} ?></textarea>
+        <textarea id="nodeCUrulesIP" class="form-control mb-2" rows="6"><?php $customDomainList = $de_GWDconf->v2nodeDIV->nodeCU->rulesIP; foreach ( $customDomainList as $k => $v) {if (end($customDomainList) == $v) echo htmlspecialchars((string)($v ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); else echo htmlspecialchars((string)($v ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n";} ?></textarea>
         <div class="alert-light" role="alert">
         使用非内网IP，非专用网络IP<br>
         IP: 104.24.0.0<br>
@@ -371,16 +371,16 @@ foreach ($nodeSMroutes as $nodeSMroute) {
         <div class="input-group-prepend ">
           <span class="input-group-text">地址</span>
         </div>
-          <input id="ssAddress" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssAddress; ?>">
+          <input id="ssAddress" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->v2nodeDIV->ss->ssAddress ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
         <div class="input-group-prepend input-group-append">
           <span class="input-group-text">端口</span>
         </div>
-          <input id="ssPort" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssPort; ?>">
+          <input id="ssPort" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->v2nodeDIV->ss->ssPort ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
         <div class="input-group-prepend input-group-append">
           <span class="input-group-text">加密方式</span>
         </div>
         <div class="input-group-prepend input-group-append">
-          <button id="ssMethod" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssMethod; ?>"><?php echo $de_GWDconf->v2nodeDIV->ss->ssMethod; ?></button>
+          <button id="ssMethod" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown" value="<?php echo htmlspecialchars((string)($de_GWDconf->v2nodeDIV->ss->ssMethod ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>"><?php echo htmlspecialchars((string)($de_GWDconf->v2nodeDIV->ss->ssMethod ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></button>
           <div class="dropdown-menu">
             <a class='dropdown-item' href='#' id="ssAES256">AES-256-GCM</a>
             <a class='dropdown-item' href='#' id="ssAES128">AES-128-GCM</a>
@@ -390,7 +390,7 @@ foreach ($nodeSMroutes as $nodeSMroute) {
         <div class="input-group-prepend input-group-append">
           <span class="input-group-text">密码</span>
         </div>
-          <input id="ssSecure" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssSecure; ?>">
+          <input id="ssSecure" class="form-control" value="<?php echo htmlspecialchars((string)($de_GWDconf->v2nodeDIV->ss->ssSecure ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
       </div>
       </div>
       <div class="modal-footer">
@@ -416,14 +416,14 @@ foreach ($nodeSMroutes as $nodeSMroute) {
                 <div class="card-header">
                   <span>黑名单域名：</span>
                 </div>
-                  <textarea id="listB" class="form-control" aria-label="listB" rows="12" placeholder="一行一个域名" style="border-Radius: 0px;"><?php foreach($de_GWDconf->dns->listB as $v) {echo "$v\n";} ?></textarea>
+                  <textarea id="listB" class="form-control" aria-label="listB" rows="12" placeholder="一行一个域名" style="border-Radius: 0px;"><?php foreach($de_GWDconf->dns->listB as $v) {echo htmlspecialchars((string)($v ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n";} ?></textarea>
               </div>
 
               <div class="card mt-3">
                 <div class="card-header">
                   <span>白名单域名：</span>
                 </div>
-                  <textarea id="listW" class="form-control" aria-label="listW" rows="12" placeholder="一行一个域名"><?php foreach($de_GWDconf->dns->listW as $v) {echo "$v\n";} ?></textarea>
+                  <textarea id="listW" class="form-control" aria-label="listW" rows="12" placeholder="一行一个域名"><?php foreach($de_GWDconf->dns->listW as $v) {echo htmlspecialchars((string)($v ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n";} ?></textarea>
               </div>
       </div>
       <div class="modal-footer">
@@ -486,7 +486,7 @@ foreach ($nodeSMroutes as $nodeSMroute) {
     <div id="nodeDT" class="dropdown-menu">
 <?php
 for( $i=0; $i<count($de_GWDconf->v2node); $i++){
-  $name = $de_GWDconf->v2node[$i]->name;
+  $name = htmlspecialchars((string)($de_GWDconf->v2node[$i]->name ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 print <<<EOT
 <a class='dropdown-item' href='#' id='nodeDT$i' onclick="buttonNodeDT(this)">$name</a>
 EOT;
@@ -516,7 +516,7 @@ EOT;
     <div id="nodeCU" class="dropdown-menu">
 <?php
 for( $i=0; $i<count($de_GWDconf->v2node); $i++){
-  $name = $de_GWDconf->v2node[$i]->name;
+  $name = htmlspecialchars((string)($de_GWDconf->v2node[$i]->name ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 print <<<EOT
 <a class='dropdown-item' href='#' id='nodeCU$i' onclick="buttonNodeCU(this)">$name</a>
 EOT;
@@ -555,17 +555,17 @@ EOT;
   $checkNode = exec('/opt/de_GWD/ui-checkNode');
 for( $i=0; $i<count($de_GWDconf->v2node); $i++){
   $nodeNUM = $i+1;
-  $domain = $de_GWDconf->v2node[$i]->domain;
-  $name = $de_GWDconf->v2node[$i]->name;
+  $domain = htmlspecialchars((string)($de_GWDconf->v2node[$i]->domain ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+  $name = htmlspecialchars((string)($de_GWDconf->v2node[$i]->name ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
   if ( $checkNode != null && $checkNode == $i) $checkStatus = "btn-success"; else $checkStatus = "btn-outline-secondary";
 print <<<EOT
                   <tr> 
                     <td class="align-middle">$nodeNUM</td>
-                    <td class="align-middle"><span id="nodeDomain${i}">${domain}</span></td>
-                    <td class="text-left"><span id="nodeshow${i}">${name}</span></td>
-                    <td class="align-middle"><span id="ping${i}" class='text-success'></span></td>
-                    <td class="align-middle"><span id="speed${i}" class='text-success'><a href="javascript:void(0)" class="text-success" onclick="buttonSpeed(this)"><i class="far fa-play-circle fa-lg"></i></a></span></td>
-                    <td class="align-middle"><button id="switch${i}" type="button" class="btn $checkStatus btn-sm" onclick="buttonSwitch(this)">切换</button></td>
+                    <td class="align-middle"><span id="nodeDomain{$i}">{$domain}</span></td>
+                    <td class="text-left"><span id="nodeshow{$i}">{$name}</span></td>
+                    <td class="align-middle"><span id="ping{$i}" class='text-success'></span></td>
+                    <td class="align-middle"><span id="speed{$i}" class='text-success'><a href="javascript:void(0)" class="text-success" onclick="buttonSpeed(this)"><i class="far fa-play-circle fa-lg"></i></a></span></td>
+                    <td class="align-middle"><button id="switch{$i}" type="button" class="btn $checkStatus btn-sm" onclick="buttonSwitch(this)">切换</button></td>
                   </tr>
 EOT;
 }
@@ -602,7 +602,7 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text" style="min-width: 75px">DoH 1</span>
                 </div>
-                <input type="text" id="DoH1" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo $de_GWDconf->dns->doh[0];?>">
+                <input type="text" id="DoH1" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo htmlspecialchars((string)($de_GWDconf->dns->doh[0] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');?>">
                 <div class="input-group-append">
                   <span id="pingDOH1" class="input-group-text text-success"></span><span class="input-group-text text-secondary">ms</span>
                 </div>
@@ -612,7 +612,7 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text" style="min-width: 75px">DoH 2</span>
                 </div>
-                <input type="text" id="DoH2" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo $de_GWDconf->dns->doh[1];?>">
+                <input type="text" id="DoH2" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo htmlspecialchars((string)($de_GWDconf->dns->doh[1] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');?>">
                 <div class="input-group-append">
                   <span id="pingDOH2" class="input-group-text text-success"></span><span class="input-group-text text-secondary">ms</span>
                 </div>
@@ -622,7 +622,7 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text" style="min-width: 75px">DNS over gRPC</span>
                 </div>
-                <input type="text" id="DoGc" class="form-control" placeholder="域名:端口" required="required" value="<?php echo $DoG ?>" style="display:<?php if (empty($DoG) === false) echo 'block'; else echo 'none';?>">
+                <input type="text" id="DoGc" class="form-control" placeholder="域名:端口" required="required" value="<?php echo htmlspecialchars((string)($DoG ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>" style="display:<?php if (empty($DoG) === false) echo 'block'; else echo 'none';?>">
                 <div id="DoGping" class="input-group-prepend input-group-append" style="display:<?php if (empty($DoG) === false) echo 'block'; else echo 'none';?>">
                   <span id="pingDoG" class="form-control input-group-text text-success"></span>
                 </div>
@@ -656,9 +656,9 @@ unset($dnsClist[0][$index]);
 }
 foreach(array_unique($dnsClist[0]) as $k => $v){
   if ($v == end($dnsClist[0]))
-    echo $v;
+    echo htmlspecialchars((string)($v ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
   else
-    echo "$v\n";
+    echo htmlspecialchars((string)($v ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n";
 }
 ?></textarea>
                 </div>
@@ -670,7 +670,7 @@ foreach(array_unique($dnsClist[0]) as $k => $v){
                   静态<br>
                   </span>
                 </div>
-                  <textarea id="hostsCustomize" class="form-control" aria-label="hostsCustomize" rows="6" placeholder="IP 空格 abc.com &#10;IP 空格 *.abc.com"><?php passthru("sudo /opt/de_GWD/ui-hostsCustomize"); ?></textarea>
+                  <textarea id="hostsCustomize" class="form-control" aria-label="hostsCustomize" rows="6" placeholder="IP 空格 abc.com &#10;IP 空格 *.abc.com"><?php echo htmlspecialchars((string)shell_exec("sudo /opt/de_GWD/ui-hostsCustomize"), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></textarea>
                 </div>
             </div>
 
@@ -693,7 +693,7 @@ foreach(array_unique($dnsClist[0]) as $k => $v){
                 <div class="form-row">
                 <div class="col-md-6">
                 <div class="input-group my-2">
-                  <input id="localip" type="text" class="form-control" placeholder="本机地址" required="required" value="<?php echo $de_GWDconf->address->localIP; ?>">
+                  <input id="localip" type="text" class="form-control" placeholder="本机地址" required="required" value="<?php echo htmlspecialchars((string)($de_GWDconf->address->localIP ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
                 <div class="input-group-append">
                   <span class="input-group-text text-secondary">本机</span>
                 </div>
@@ -701,7 +701,7 @@ foreach(array_unique($dnsClist[0]) as $k => $v){
                 </div>
                 <div class="col-md-6">
                 <div class="input-group my-2">
-                  <input id="upstreamip" type="text" class="form-control" placeholder="上级地址" required="required" value="<?php echo $de_GWDconf->address->upstreamIP; ?>">
+                  <input id="upstreamip" type="text" class="form-control" placeholder="上级地址" required="required" value="<?php echo htmlspecialchars((string)($de_GWDconf->address->upstreamIP ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
                 <div class="input-group-append">
                   <span class="input-group-text text-secondary">上级</span>
                 </div>
@@ -787,7 +787,7 @@ $.get('./act/NodeDTswitch.php', {switchNodeDT:"NodeDTshow"}, function(data){
   $("#nodeDTiptext").css("display", "block")
   $("#nodeDTipButton").css("display", "block")
   $("#buttonNodeDTloading").removeClass()
-  $("#nodeDTshow").html(data)
+  $("#nodeDTshow").text(data)
   $("#nodeDTtext").html("OFF")
 })
 }
@@ -808,7 +808,7 @@ else {
 $.get('./act/NodeCUswitch.php', {switchNodeCU:"NodeCUshow"}, function(data){
   $("#nodeCUlist").css("display", "block")
   $("#nodeCUrulesButton").css("display", "block")
-  $('#nodeCUshow').html(data)
+  $('#nodeCUshow').text(data)
   $("#nodeCUtext").html("OFF")
   $("#buttonNodeCUloading").removeClass()
 })
@@ -841,23 +841,23 @@ return key.charAt(0).toUpperCase() + key.slice(1)
 function buttonNodeSM(buttonNodeSM, key){
 var nodeSMobj = $(buttonNodeSM).parent().find('a')
 var nodeSMindex = nodeSMobj.index($(buttonNodeSM))
-var nodeSMname = $('#nodeSM'+key+nodeSMindex).html()
-$('#nodeSMshow'+nodeSMRouteId(key)).html(nodeSMname).val(nodeSMindex)
+var nodeSMname = $('#nodeSM'+key+nodeSMindex).text()
+$('#nodeSMshow'+nodeSMRouteId(key)).text(nodeSMname).val(nodeSMindex)
 }
 
 function buttonNodeDT(buttonNodeDT){
 var NodeDTobj = $(buttonNodeDT).parent().find('a')
 var NodeDTindex = NodeDTobj.index($(buttonNodeDT))
-var NodeDTname = $('#nodeDT'+NodeDTindex).html()
-$('#nodeDTshow').html(NodeDTname)
+var NodeDTname = $('#nodeDT'+NodeDTindex).text()
+$('#nodeDTshow').text(NodeDTname)
 $.get("./act/NodeDTchange.php", {nodeDTnum:NodeDTindex}, function(){})
 }
 
 function buttonNodeCU(buttonNodeCU){
 var NodeCUobj = $(buttonNodeCU).parent().find('a')
 var NodeCUindex = NodeCUobj.index($(buttonNodeCU))
-var NodeCUname = $('#nodeCU'+NodeCUindex).html()
-$('#nodeCUshow').html(NodeCUname)
+var NodeCUname = $('#nodeCU'+NodeCUindex).text()
+$('#nodeCUshow').text(NodeCUname)
 $.get("./act/NodeCUchange.php", {nodeCUnum:NodeCUindex}, function(){})
 }
 
@@ -1057,7 +1057,7 @@ $.get('./act/uptime.php', function(data){$('#uptime').text(data)})
 
 $.get('./act/NodeDTcheck.php', function(data){
 if(data != "") {
-  $('#nodeDTshow').html(data)
+  $('#nodeDTshow').text(data)
   $("#nodeDTlist").css("display", "block")
   $("#nodeDTiptext").css("display", "block")
   $("#nodeDTipButton").css("display", "block")
@@ -1067,7 +1067,7 @@ if(data != "") {
 
 $.get('./act/NodeCUcheck.php', function(data){
 if(data != "") {
-  $('#nodeCUshow').html(data)
+  $('#nodeCUshow').text(data)
   $("#nodeCUlist").css("display", "block")
   $("#nodeCUrulesButton").css("display", "block")
   $("#nodeCUtext").html("OFF")
@@ -1082,7 +1082,7 @@ nodeSMRouteKeys.forEach(function(key, index){
   if (nodeSMname == '-none-') {
     nodeSMname = key == 'apple' ? ' 直连 ' : ' 默认代理 '
   }
-  $('#nodeSMshow'+nodeSMRouteId(key)).val(nodeSMnum).html(nodeSMname)
+  $('#nodeSMshow'+nodeSMRouteId(key)).val(nodeSMnum).text(nodeSMname)
 })
 let steamIndex = nodeSMRouteKeys.length * 2
 let steamNum = SMarray[steamIndex] || '0'
@@ -1090,7 +1090,7 @@ let steamName = SMarray[steamIndex + 1] || ' 直连 '
 if (steamName == '-none-') {
     steamName = ' 直连 '
 }
-$('#nodeSMshowSteam').val(steamNum).html(steamName)
+$('#nodeSMshowSteam').val(steamNum).text(steamName)
 })
 })
 </script>

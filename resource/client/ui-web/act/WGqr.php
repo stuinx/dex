@@ -1,7 +1,8 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-$WGnum = $_GET['WGnum'];
-passthru("sudo cat /etc/wireguard/client$WGnum.conf");
+require_once __DIR__ . '/_request.php';
+$WGnum = gwdRequestIndex('WGnum', 1);
+passthru('sudo cat ' . escapeshellarg('/etc/wireguard/client' . $WGnum . '.conf'));
 ?>
 <?php }?>
