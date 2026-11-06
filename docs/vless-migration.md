@@ -1,6 +1,8 @@
 # VLESS 主节点迁移
 
-此实现位于 `vless` 分支。Server/Client 安装入口、资源和 Client 自动更新默认使用此分支。
+原 `vless` 分支的实现已合并至 `dev`。Server/Client 安装入口、资源和 Client 自动更新默认使用 `dev`。本说明适用于 dev，不适用于保留原版 VMess 的 main。
+
+用户已确认迁移范围：普通节点、分流与 FWD0/FWD1 使用 VLESS；Rproxy 内部隧道与 Server 的 VMess 额外入站继续保留兼容。
 
 ## 行为
 
@@ -8,7 +10,7 @@
 - 现有 Server 执行更新时，先迁移原 VMess 主入站为 VLESS。原 UUID 列表和 WS 路径保持不变，公网 TLS 域名和端口不变；不再保留 VMess compatibility 入口。
 - 迁移后的主 VLESS 和全新安装的主节点都使用 `127.0.0.1:9890`。旧配置中的 `vmess` 兼容字段及 `vmess.conf` 会在成功应用配置时清理。
 - 主节点按 `tag=main` 识别；旧配置无标签时才回退到第一个入站。
-- `55 → 6. VMESS WS` 使用独立的 `vmess_ws` 字段。启用时填写域名和端口，自动生成 UUID 与 WS 路径；VMess WS 与 VLESS WS 均复用主线 `/var/www/ssl/de_GWD.cer` 和私钥，不单独申请证书。
+- `55 → 2. VMESS WS` 使用独立的 `vmess_ws` 字段。启用时填写域名和端口，自动生成 UUID 与 WS 路径；VMess WS 与 VLESS WS 均复用主线 `/var/www/ssl/de_GWD.cer` 和私钥，不单独申请证书。
 - Client 普通节点与分流只支持 VLESS；旧配置中缺少 `protocol` 或标记为 VMess 的普通节点会在清理时移除。Rproxy 内部隧道继续保留既有协议。
 - 同地址的不同节点按 UUID、路径、协议区分。分流出站在 `v2nodeDIV.outboundNodes` 保存所选身份，供按地址重建时消除歧义。旧记录没有身份且同时匹配多条时需重新选择一次节点，不任意猜测。
 - Client FWD0/FWD1 使用 VLESS + WebSocket + TLS；FWD1 上游必须是带 WebSocket 路径的 VLESS 节点。RproxyS 内部隧道仍使用原有协议。
