@@ -1,3 +1,11 @@
+# 当前交接：Client 更新的本机 DNS 故障已恢复（2026-11-07）
+
+- 用户在 vm1225 运行 de_GWD Fast Update 时，`preDL` 无法解析 `gh.stuinx.eu.org`，报 IPchnroute checksum 下载失败。
+- 根因：`/etc/resolv.conf` 指向 `127.0.0.1`，但 Pi-hole Docker 容器已退出（exit 137，非 OOM），本机 53/UDP、TCP 没有监听；SmartDNS/MosDNS 的 5331/5332 仍可解析。容器退出时间与本机 resolv.conf 更新时间相近，无法仅凭现有状态确定是谁停止了容器。
+- 已执行 `docker start pihole` 恢复既有服务。确认容器 running，Pi-hole FTL 重新监听 `0.0.0.0:53` 的 UDP/TCP，`getent` 可解析更新域名；原校验 URL 返回 HTTP 200、65 字节 SHA256。
+- 这次没有重跑完整 de_GWD 更新；已确认失败点是本机解析中断。再次更新前需考虑此前 code review 的 nftables 冷加载问题，避免更新重启 nftables 后数据面中断。
+- 本次未改源码或持久 DNS 配置；Pi-hole 维持原有 `restart=always` 策略。主机 DNS 已恢复。
+
 # 当前交接：PHP 8.5 首页空白已恢复（2026-11-07）
 
 - 症状：优化更新后 vm1225 的寒月首页只显示导航页眉、主体空白。
