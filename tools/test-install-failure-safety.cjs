@@ -17,10 +17,11 @@ function fn(source, name) {
 }
 function fixture(name) {
   const dir = path.join(root, name);
-  for (const item of ['tmp', 'opt/de_GWD/.repo', 'etc/apt/keyrings', 'etc/apt/sources.list.d', 'etc/systemd/system', 'var/www/html/act']) {
+  for (const item of ['tmp', 'opt/de_GWD/.repo', 'etc/apt/keyrings', 'etc/apt/sources.list.d', 'etc/nginx/conf.d', 'etc/systemd/system', 'var/www/html/act']) {
     fs.mkdirSync(path.join(dir, item), {recursive: true});
   }
   fs.writeFileSync(path.join(dir, 'etc/os-release'), 'VERSION_CODENAME=bookworm\n');
+  fs.writeFileSync(path.join(dir, 'etc/nginx/conf.d/default.conf'), 'fastcgi_pass unix:/run/php/php7.4-fpm.sock;\n');
   fs.writeFileSync(path.join(dir, 'etc/systemd/system/updateGWD.service'), 'ExecStart=previous\n');
   return dir;
 }
@@ -96,6 +97,15 @@ for (const [file, name, target] of [
     });
   }
 }
+
+check('PHP upgrade preserves an existing ionCube requirement', () => {
+  const dir = fixture('php-ioncube-preflight');
+  fs.mkdirSync(path.join(dir, 'usr/local/ioncube'), {recursive: true});
+  const result = run(dir, fn(sources.client, 'installDep'), 'phpVersion=8.5\ninstallDep');
+  assert.notEqual(result.status, 0, result.stderr + result.stdout);
+  assert.match(result.stdout, /ionCube.*PHP 8\.5 loader missing/);
+  assert(!fs.existsSync(path.join(dir, 'service.log')), 'PHP service actions must not start without the matching loader');
+});
 
 for (const file of ['client', 'server']) {
   for (const mode of ['fail', 'empty', 'success']) {
@@ -187,7 +197,7 @@ for (const mode of ['fail', 'syntax-error', 'installer-failure', 'success']) {
     const dir = fixture('client-auto-update-' + mode);
     fs.writeFileSync(path.join(dir, 'var/www/html/act/version.php'), 'v1.0.0\n');
     const source = sources['resource/client/ui-script/ui-autoUpdateHour'].match(/cat << "EOF" >\/opt\/de_GWD\/autoUpdate\n([\s\S]*?)\nEOF/)[1];
-    const payload = '#!/bin/bash\nupdateGWD(){ printf executed > "$FIXTURE/auto-executed"; return ' +
+    const payload = '#!/bin/bash\nupdateGWD(){ printf executed > "$FIXTURE/auto-executed"; printf "fastcgi_pass unix:/run/php/php8.5-fpm.sock;\\n" > "$FIXTURE/etc/nginx/conf.d/default.conf"; printf "php8.5-fpm\\n" > "$FIXTURE/opt/de_GWD/php-fpm-service"; return ' +
       (mode === 'installer-failure' ? '1' : '0') + '; }\n' + '# potentially interrupted download\n'.repeat(2500) +
       (mode === 'syntax-error' ? 'if\n' : 'start_menu\n');
     const result = run(dir, source, '', {MODE: mode === 'fail' ? 'fail' : 'success', PAYLOAD: payload, REMOTE_VERSION: 'v2.0.0'});
@@ -196,8 +206,9 @@ for (const mode of ['fail', 'syntax-error', 'installer-failure', 'success']) {
     assert.equal(result.status === 0, mode === 'success', result.stderr + result.stdout);
     const actions = fs.existsSync(path.join(dir, 'service.log')) ? fs.readFileSync(path.join(dir, 'service.log'), 'utf8') : '';
     assert.equal(actions.includes('stop php7.4-fpm'), installerStarted);
-    assert.equal(actions.includes('restart php7.4-fpm'), installerStarted, 'PHP must be restored after installer failure');
+    assert.equal(actions.includes('restart php8.5-fpm'), installerStarted, 'The Nginx-selected PHP-FPM service must be restored');
     assert(fs.readFileSync(path.join(dir, 'download-args.log'), 'utf8').includes('--connect-timeout=10'));
+    if (installerStarted) assert(fs.readFileSync(path.join(dir, 'download.log'), 'utf8').includes('https://ghfast.top/https://raw.githubusercontent.com/stuinx/dex/dev/client'));
   });
 }
 

@@ -15,6 +15,9 @@ export DEBIAN_FRONTEND=noninteractive
 TTYD_Ver="1.7.7"
 TTYD_SHA256_x86_64="8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55"
 TTYD_SHA256_aarch64="b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165"
+phpVersion="8.5"
+phpFpmService="php${phpVersion}-fpm"
+phpFpmSocket="/run/php/${phpFpmService}.sock"
 aptGetOpts=(-o Acquire::Retries=2 -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::http::Pipeline-Depth=0 -o Acquire::https::Pipeline-Depth=0)
 debianCodename=$( . /etc/os-release && printf '%s' "$VERSION_CODENAME" )
 debianSuite=bookworm
@@ -141,12 +144,11 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^socat$') ]] && aptPKG+=(socat)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^zip$') ]] && aptPKG+=(zip)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && aptPKG+=(docker-ce)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-fpm$') ]] && aptPKG+=(php7.4-fpm)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-cgi$') ]] && aptPKG+=(php7.4-cgi)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-sqlite3$') ]] && aptPKG+=(php7.4-sqlite3)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-xml$') ]] && aptPKG+=(php7.4-xml)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-intl$') ]] && aptPKG+=(php7.4-intl)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-json$') ]] && aptPKG+=(php7.4-json)
+[[ -z $(dpkg -l | awk '{print$2}' | grep -Fx "php${phpVersion}-fpm") ]] && aptPKG+=("php${phpVersion}-fpm")
+[[ -z $(dpkg -l | awk '{print$2}' | grep -Fx "php${phpVersion}-cgi") ]] && aptPKG+=("php${phpVersion}-cgi")
+[[ -z $(dpkg -l | awk '{print$2}' | grep -Fx "php${phpVersion}-sqlite3") ]] && aptPKG+=("php${phpVersion}-sqlite3")
+[[ -z $(dpkg -l | awk '{print$2}' | grep -Fx "php${phpVersion}-xml") ]] && aptPKG+=("php${phpVersion}-xml")
+[[ -z $(dpkg -l | awk '{print$2}' | grep -Fx "php${phpVersion}-intl") ]] && aptPKG+=("php${phpVersion}-intl")
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sqlite3$') ]] && aptPKG+=(sqlite3)
 [[ -z $(dpkg -l | awk '{print$2}' | grep -Fx "$mimallocPackage") ]] && aptPKG+=("$mimallocPackage")
 if [[ -n $aptPKG ]]; then
@@ -154,7 +156,7 @@ if [[ -n $aptPKG ]]; then
   apt-get "${aptGetOpts[@]}" install -y $(echo ${aptPKG[@]}) || { echo -e "${WHITE}Docker dependencies${RED} APT install Failed${cRES}"; exit 1; }
 fi
 
-for requiredPackage in docker-ce containerd.io php7.4-fpm python3-toml "$mimallocPackage"; do
+for requiredPackage in docker-ce containerd.io "$phpFpmService" python3-toml "$mimallocPackage"; do
   if ! dpkg-query -W -f='${Status}\n' "$requiredPackage" 2>/dev/null | grep -q 'install ok installed'; then
     echo -e "${WHITE}Dependencies${RED} Missing package: $requiredPackage${cRES}"
     exit 1
@@ -2010,6 +2012,11 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Debian ${GREEN
 
 
 installDep(){
+local ioncubeLoader="/usr/local/ioncube/ioncube_loader_lin_${phpVersion}.so"
+if [[ -d "/usr/local/ioncube" && ! -f $ioncubeLoader ]]; then
+  echo -e "${WHITE}ionCube${RED} PHP $phpVersion loader missing; refusing to disable the existing extension${cRES}"
+  exit 1
+fi
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Dependencies${cRES}\r\c"
 sed -i "/www-data/d" /etc/sudoers
 sed -i "/Allow members of group sudo to execute any command/a\www-data ALL=(root)  NOPASSWD:ALL" /etc/sudoers
@@ -2024,16 +2031,16 @@ DPKGclean=$(dpkg --list | grep "^rc" | cut -d " " -f 3)
 rm -rf /var/log/journal/*
 systemctl restart systemd-journald >/dev/null 2>&1
 
-if [[ -d "/usr/local/ioncube" ]]; then
-echo "zend_extension = /usr/local/ioncube/ioncube_loader_lin_7.4.so" >/etc/php/7.4/mods-available/ioncube.ini
-ln -sf /etc/php/7.4/mods-available/ioncube.ini /etc/php/7.4/fpm/conf.d/00-ioncube.ini
-ln -sf /etc/php/7.4/mods-available/ioncube.ini /etc/php/7.4/cli/conf.d/00-ioncube.ini
+if [[ -f $ioncubeLoader ]]; then
+echo "zend_extension = $ioncubeLoader" >"/etc/php/$phpVersion/mods-available/ioncube.ini"
+ln -sf "/etc/php/$phpVersion/mods-available/ioncube.ini" "/etc/php/$phpVersion/fpm/conf.d/00-ioncube.ini"
+ln -sf "/etc/php/$phpVersion/mods-available/ioncube.ini" "/etc/php/$phpVersion/cli/conf.d/00-ioncube.ini"
 fi
 
-sed -i "/zend_extension/d" /etc/php/7.4/cli/php.ini
-sed -i "/zend_extension/d" /etc/php/7.4/fpm/php.ini
-sed -i "s/^opcache/;&/" /etc/php/7.4/cli/php.ini
-sed -i "s/^opcache/;&/" /etc/php/7.4/fpm/php.ini
+sed -i "/zend_extension/d" "/etc/php/$phpVersion/cli/php.ini"
+sed -i "/zend_extension/d" "/etc/php/$phpVersion/fpm/php.ini"
+sed -i "s/^opcache/;&/" "/etc/php/$phpVersion/cli/php.ini"
+sed -i "s/^opcache/;&/" "/etc/php/$phpVersion/fpm/php.ini"
 
 cat << EOF >/etc/php/00-init.ini
 expose_php              = Off
@@ -2078,13 +2085,13 @@ session.cookie_lifetime  = 0
 session.cookie_httponly  = 1
 session.cookie_secure    = 1
 EOF
-ln -sf /etc/php/00-init.ini /etc/php/7.4/cli/conf.d/00-init.ini
-ln -sf /etc/php/00-init.ini /etc/php/7.4/fpm/conf.d/00-init.ini
+ln -sf /etc/php/00-init.ini "/etc/php/$phpVersion/cli/conf.d/00-init.ini"
+ln -sf /etc/php/00-init.ini "/etc/php/$phpVersion/fpm/conf.d/00-init.ini"
 
-rm -rf /etc/php/7.4/fpm/pool.d
-cat << EOF >/etc/php/7.4/fpm/php-fpm.conf
+rm -rf "/etc/php/$phpVersion/fpm/pool.d"
+cat << EOF >"/etc/php/$phpVersion/fpm/php-fpm.conf"
 [global]
-pid = /run/php/php7.4-fpm.pid
+pid = /run/php/${phpFpmService}.pid
 error_log = /var/log/php.log
 
 [www]
@@ -2093,7 +2100,7 @@ group = www-data
 listen.owner = www-data
 listen.group = www-data
 listen.mode = 0666
-listen = /run/php/php7.4-fpm.sock
+listen = $phpFpmSocket
 listen.backlog = -1
 listen.allowed_clients = 127.0.0.1
 
@@ -2113,7 +2120,7 @@ env[TEMP] = /tmp
 env[TMPDIR] = /tmp
 EOF
 
-cat << EOF >/etc/php/7.4/mods-available/opcache.ini
+cat << EOF >"/etc/php/$phpVersion/mods-available/opcache.ini"
 ; configuration for php opcache module
 ; priority=10
 zend_extension=opcache.so
@@ -2131,18 +2138,17 @@ opcache.save_comments=1
 EOF
 
 rm -rf /var/log/php.log
-rm -rf /run/php7.4-fpm.pid
-rm -rf /lib/systemd/system/php7.4-fpm.service
-cat << EOF >/etc/systemd/system/php7.4-fpm.service
+rm -rf "/lib/systemd/system/$phpFpmService.service"
+cat << EOF >"/etc/systemd/system/$phpFpmService.service"
 [Unit]
-Description=The PHP 7.4 FastCGI Process Manager
+Description=The PHP $phpVersion FastCGI Process Manager
 After=network.target
 
 [Service]
 Type=simple
-PIDFile=/run/php7.4-fpm.pid
+PIDFile=/run/php/$phpFpmService.pid
 ExecStartPre=/usr/bin/touch /var/log/php.log
-ExecStart=/usr/sbin/php-fpm7.4 --nodaemonize --fpm-config /etc/php/7.4/fpm/php-fpm.conf
+ExecStart=/usr/sbin/php-fpm$phpVersion --nodaemonize --fpm-config /etc/php/$phpVersion/fpm/php-fpm.conf
 ExecReload=$(which kill) -USR2 \$MAINPID
 Restart=always
 RestartSec=2
@@ -2152,8 +2158,12 @@ TimeoutStopSec=5
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload >/dev/null
-systemctl enable php7.4-fpm >/dev/null 2>&1
-systemctl restart php7.4-fpm
+systemctl enable "$phpFpmService" >/dev/null 2>&1
+systemctl restart "$phpFpmService" || exit 1
+if [[ $(systemctl is-active "$phpFpmService") != "active" ]] || [[ ! -S $phpFpmSocket ]]; then
+  echo -e "${WHITE}PHP-FPM${RED} Service or socket unavailable${cRES}"
+  exit 1
+fi
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Dependencies${cRES}"
 }
@@ -2351,7 +2361,7 @@ location ~ [^/]\.php(/|$) {
 
   include               fastcgi_params;
   fastcgi_param         SCRIPT_FILENAME   \$document_root\$fastcgi_script_name;
-  fastcgi_pass          unix:/run/php/php7.4-fpm.sock;
+  fastcgi_pass          unix:$phpFpmSocket;
   fastcgi_index         index.php;
 }
 # PHP_END
@@ -2376,7 +2386,16 @@ sed -i '/ssl_trusted_certificate/d' /etc/nginx/conf.d/.ssl_certs
 sed -i '/ssl_stapling/d' /etc/nginx/conf.d/.ssl_certs
 sed -i '/ssl_stapling_verify/d' /etc/nginx/conf.d/.ssl_certs
 sed -i '/ssl_stapling_file/d' /etc/nginx/conf.d/.ssl_certs
-systemctl restart nginx >/dev/null 2>&1
+nginx -t || exit 1
+systemctl restart nginx || exit 1
+if [[ $(systemctl is-active nginx) != "active" ]] || [[ $(systemctl is-active "$phpFpmService") != "active" ]] || [[ ! -S $phpFpmSocket ]]; then
+  echo -e "${WHITE}Nginx/PHP-FPM${RED} Service or socket unavailable${cRES}"
+  exit 1
+fi
+printf '%s\n' "$phpFpmService" >/opt/de_GWD/php-fpm-service
+if [[ $phpFpmService != "php7.4-fpm" ]] && systemctl is-active --quiet php7.4-fpm; then
+  systemctl disable --now php7.4-fpm || exit 1
+fi
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Nginx${cRES}"
 }
@@ -3035,12 +3054,12 @@ else
   echo -e "${WHITE} Nginx          \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
 fi
 
-if [[ $(systemctl is-active 'php7.4-fpm') = "active" ]]; then
-  echo -e "${WHITE} php7.4-FPM     \c" && echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]${cRES}"
-elif [ ! -f "/etc/php/7.4/fpm/php-fpm.conf" ]; then
-  echo -e "${WHITE} php7.4-FPM     \c" && echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]${cRES}"
+if [[ $(systemctl is-active "$phpFpmService") = "active" ]]; then
+  echo -e "${WHITE} PHP $phpVersion-FPM     \c" && echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]${cRES}"
+elif [ ! -f "/etc/php/$phpVersion/fpm/php-fpm.conf" ]; then
+  echo -e "${WHITE} PHP $phpVersion-FPM     \c" && echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]${cRES}"
 else
-  echo -e "${WHITE} php7.4-FPM     \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
+  echo -e "${WHITE} PHP $phpVersion-FPM     \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
 fi
 
 if [[ -n $(crontab -l 2>&1 | grep "autoUpdate") ]] && [[ -f "/opt/de_GWD/autoUpdate" ]]; then
