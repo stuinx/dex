@@ -26,9 +26,9 @@ fi
 repoOwner="${DE_GWD_REPO_OWNER:-stuinx}"
 repoName="${DE_GWD_REPO_NAME:-dex}"
 branch="${DE_GWD_BRANCH:-dev}"
-repoBase="${DE_GWD_RAW_BASE:-https://gh.stuinx.eu.org/https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}}"
+repoBase="${DE_GWD_RAW_BASE:-https://ghfast.top/https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}}"
 repoFallbackBase="${DE_GWD_RAW_FALLBACK_BASE:-https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}}"
-chnrouteBase="${DE_GWD_CHNROUTE_BASE:-https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/chnroute/main}"
+chnrouteBase="${DE_GWD_CHNROUTE_BASE:-https://ghfast.top/https://raw.githubusercontent.com/stuinx/chnroute/main}"
 extraSettings="/opt/de_GWD/extra-inbounds.json"
 haproxyConfig="/etc/haproxy/haproxy.cfg"
 haproxyMarker="# de_GWD managed HAProxy configuration"
@@ -353,7 +353,7 @@ timeout --signal=TERM --kill-after=5s 300s wget --connect-timeout=10 --read-time
 fi
 
 if [[ $(ttyd -v 2>&1 | grep -o '[0-9]\.[0-9]\.[0-9]') != $TTYD_Ver ]]; then
-ttydBase="${DE_GWD_TTYD_BASE:-https://gh.stuinx.eu.org/https://github.com/tsl0922/ttyd/releases/download}"
+ttydBase="${DE_GWD_TTYD_BASE:-https://ghfast.top/https://github.com/tsl0922/ttyd/releases/download}"
 ttydArch=$(uname -m)
 case "$ttydArch" in
   x86_64) ttydExpectedSha256=$TTYD_SHA256_x86_64 ;;

@@ -17,7 +17,7 @@ bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx
 
 ## Client (amd64 & arm64):
 ```
-bash <(wget --no-check-certificate -qO- https://gh.stuinx.eu.org/https://raw.githubusercontent.com/stuinx/dex/dev/client)
+bash <(wget --no-check-certificate -qO- https://ghfast.top/https://raw.githubusercontent.com/stuinx/dex/dev/client)
 ```
 或
 
