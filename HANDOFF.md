@@ -5,7 +5,7 @@
 - vm1252 (`root@10.0.0.252`, Debian amd64) 完整下载 GHFast 上的 `de_GWD_amd64.zip`：51,972,660 字节，SHA256 `84ba0e4f320bab67e9449effef8944385691a61c2bfaebd0e05288fd116c4fa5`，Python ZIP 完整性检查通过。另在隔离临时目录运行当前 `preDL()` 下载路径：归档与 100,007 字节 `IPchnroute` 均通过校验；ttyd 1.7.7 发布文件 1,362,040 字节，SHA256 与脚本预期一致。
 - `preDL()` 验收数据及脚本写入 `/tmp/ghfast_preDL_acceptance*`，已清理。当前复核确认 `/opt/de_GWD/.repo/de_GWD.zip`、`/opt/de_GWD/.repo/IPchnroute`、`/etc/de_GWD/0conf` 与 `/opt/de_GWD/vtrui/vtrui` 均不存在；没有执行完整 Client 安装/服务启动，也未更改 VM 安装目录。
 - 本地 `bash -n client`、`bash -n tools/test-download-reliability.sh`、`git diff --check`、download-reliability 11 场景、`tools/check-self-owned-release-chain.sh`（1,753 个归档资源）均通过。
-- 本轮只涉及 Client 下载源配置；sam 与 vm1225 Server/运行态验证没有重跑，先前范围见 2026-11-06 dev 验收记录。当前改动尚待提交并快进推送 `origin/dev`。
+- 本轮只涉及 Client 下载源配置；sam 与 vm1225 Server/运行态验证没有重跑，先前范围见 2026-11-06 dev 验收记录。代码提交 `8a7c200` 已快进推送至 `origin/dev`，没有强推。
 
 # 当前交接：Client 慢速归档下载修复与 vm1252 验收（2026-11-07）
 
