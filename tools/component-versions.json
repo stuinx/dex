@@ -1,35 +1,35 @@
 {
   "schema": 1,
-  "generated_at": "2026-09-21",
+  "generated_at": "2026-11-08",
   "components": {
     "xray": {
       "repo": "XTLS/Xray-core",
-      "tag": "v26.3.27",
+      "tag": "v26.10.31",
       "archive_type": "zip",
       "amd64": {
         "asset": "Xray-linux-64.zip",
         "member": "xray",
-        "sha256": "23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae"
+        "sha256": "e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214"
       },
       "arm64": {
         "asset": "Xray-linux-arm64-v8a.zip",
         "member": "xray",
-        "sha256": "4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c"
+        "sha256": "1811c8f1da0c3b6dc707ebaf1c8390e987ba39859a8f0a7aadd8526157f2ec8d"
       }
     },
     "coredns": {
       "repo": "coredns/coredns",
-      "tag": "v1.14.7",
+      "tag": "v1.15.0",
       "archive_type": "tar.gz",
       "amd64": {
-        "asset": "coredns_1.14.7_linux_amd64.tgz",
+        "asset": "coredns_1.15.0_linux_amd64.tgz",
         "member": "coredns",
-        "sha256": "9a09356438c6d9591cb80011a2a7a52f87fc3a113f6690e41f243f98b98faac9"
+        "sha256": "2495c5b8f3fab6d0a336c397f1227b75406d86e6ec7125744a29df9e936ab8cd"
       },
       "arm64": {
-        "asset": "coredns_1.14.7_linux_arm64.tgz",
+        "asset": "coredns_1.15.0_linux_arm64.tgz",
         "member": "coredns",
-        "sha256": "bf26782d19b5340e3e6cb50f1ed6df72f58e4a30932c79d167f0f0a8b1e92e16"
+        "sha256": "73a5bf107c9791d57741ccd59ad138ab00bcd5bb3f62e2e28c999f5c047334a4"
       }
     },
     "smartdns": {
@@ -64,17 +64,17 @@
     },
     "yq": {
       "repo": "mikefarah/yq",
-      "tag": "v4.54.1",
+      "tag": "v4.54.2",
       "archive_type": "raw",
       "amd64": {
         "asset": "yq_linux_amd64",
         "member": "",
-        "sha256": "8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f"
+        "sha256": "44c7759059b4910827a0059a2757b22001e59360cdecdb2ef8dedc4b6c7e9f32"
       },
       "arm64": {
         "asset": "yq_linux_arm64",
         "member": "",
-        "sha256": "189088da0c6429ec5178dfaab1a114805f6cab0b61b165ab236efedf1d57a71b"
+        "sha256": "bd44211dcd29a5f0eb701d4b7eb5ccd0cfff3bd3966cb4f7f9bd5b13701d997e"
       }
     }
   }
