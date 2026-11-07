@@ -56,14 +56,14 @@
     <!-- Navbar -->
     <ul class="nav navbar-nav ml-auto ml-md-0">
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
           <i class="fab fa-youtube"></i>
           <span>Jellyfin</span>
         </a>
       </li>
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8099')">
           <i class="fas fa-shield-alt"></i>
           <span>Bitwarden</span>
@@ -242,7 +242,7 @@ EOT;
     <div class="form-row">
       <div class="col-md-6 input-group my-2">
         <div class="input-group-prepend">
-          <button id="buttonBWinstall" type="button" class="btn <?php if ($checkBitwarden === installed) echo 'btn-success'; else echo 'btn-outline-secondary'; ?>"><?php if ($checkBitwarden === installed) echo 'Bitwarden'; else echo 'install Bitwarden';?></button>
+          <button id="buttonBWinstall" type="button" class="btn <?php if ($checkBitwarden === 'installed') echo 'btn-success'; else echo 'btn-outline-secondary'; ?>"><?php if ($checkBitwarden === 'installed') echo 'Bitwarden'; else echo 'install Bitwarden';?></button>
         </div>
         <div class="input-group-prepend">
           <button id="bitwardenBackup" type="button" class="btn btn-outline-secondary">
@@ -264,7 +264,7 @@ EOT;
 
       <div class="col-md-6 input-group my-2">
         <div class="input-group-prepend">
-          <button id="buttonJFinstall" type="button" class="btn <?php if ($checkJellyfin === installed) echo 'btn-success'; else echo 'btn-outline-secondary'; ?>"><?php if ($checkBitwarden === installed) echo 'Jellyfin'; else echo 'install Jellyfin';?></button>
+          <button id="buttonJFinstall" type="button" class="btn <?php if ($checkJellyfin === 'installed') echo 'btn-success'; else echo 'btn-outline-secondary'; ?>"><?php if ($checkBitwarden === 'installed') echo 'Jellyfin'; else echo 'install Jellyfin';?></button>
         </div>
         <div class="input-group-prepend">
           <button id="JellyfinBackup" type="button" class="btn btn-outline-secondary">
