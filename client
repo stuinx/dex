@@ -263,11 +263,51 @@ else
     sha256sum_de_GWD=$(curl --connect-timeout 10 --max-time 60 --retry 3 --retry-delay 2 --retry-max-time 180 -fsSLo- "$repoBase/de_GWD_${architecture}.zip.sha256sum")
     [[ -z $sha256sum_de_GWD ]] && echo -e "${WHITE}de_GWD checksum${RED} Download Failed${cRES}" && exit 1
     if [[ -n $sha256sum_de_GWD ]] && [[ $(checkSum /opt/de_GWD/.repo/de_GWD.zip $sha256sum_de_GWD) = "false" ]]; then
-    rm -rf /tmp/de_GWD.zip
-    timeout --signal=TERM --kill-after=5s 300s wget --connect-timeout=10 --read-timeout=30 --tries=4 --waitretry=2 --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip "$repoBase/de_GWD_${architecture}.zip"
-    [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && rm -rf /tmp/de_GWD.zip && timeout --signal=TERM --kill-after=5s 300s wget --connect-timeout=10 --read-timeout=30 --tries=4 --waitretry=2 --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip "$repoFallbackBase/de_GWD_${architecture}.zip"
-    [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit 1
-    [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "true" ]] && mv -f /tmp/de_GWD.zip /opt/de_GWD/.repo/de_GWD.zip
+      local archiveName primaryArchiveDir fallbackArchiveDir primaryArchive fallbackArchive legacyArchiveSize primaryArchiveSize
+      archiveName="de_GWD_${architecture}.zip"
+      primaryArchiveDir="/tmp/de_GWD_download/primary"
+      fallbackArchiveDir="/tmp/de_GWD_download/fallback"
+      primaryArchive="$primaryArchiveDir/$archiveName"
+      fallbackArchive="$fallbackArchiveDir/$archiveName"
+      mkdir -p "$primaryArchiveDir" "$fallbackArchiveDir" || { echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}"; exit 1; }
+      if [[ -s /tmp/de_GWD.zip ]]; then
+        legacyArchiveSize=$(wc -c < /tmp/de_GWD.zip)
+        primaryArchiveSize=$(wc -c < "$primaryArchive" 2>/dev/null || printf 0)
+        if [[ $legacyArchiveSize -gt $primaryArchiveSize ]]; then
+          cp -f -- /tmp/de_GWD.zip "$primaryArchive"
+        fi
+      fi
+
+      if [[ $(checkSum "$primaryArchive" "$sha256sum_de_GWD") != "true" ]]; then
+        if timeout --signal=TERM --kill-after=5s 5400s wget --continue --directory-prefix="$primaryArchiveDir" --connect-timeout=10 --read-timeout=30 --tries=4 --waitretry=2 --no-check-certificate --show-progress -q "$repoBase/$archiveName"; then
+          if [[ $(checkSum "$primaryArchive" "$sha256sum_de_GWD") != "true" ]]; then
+            rm -f -- "$primaryArchive"
+            if timeout --signal=TERM --kill-after=5s 5400s wget --continue --directory-prefix="$primaryArchiveDir" --connect-timeout=10 --read-timeout=30 --tries=4 --waitretry=2 --no-check-certificate --show-progress -q "$repoBase/$archiveName"; then
+              [[ $(checkSum "$primaryArchive" "$sha256sum_de_GWD") = "true" ]] || rm -f -- "$primaryArchive"
+            fi
+          fi
+        fi
+      fi
+
+      if [[ $(checkSum "$primaryArchive" "$sha256sum_de_GWD") != "true" ]]; then
+        if timeout --signal=TERM --kill-after=5s 5400s wget --continue --directory-prefix="$fallbackArchiveDir" --connect-timeout=10 --read-timeout=30 --tries=4 --waitretry=2 --no-check-certificate --show-progress -q "$repoFallbackBase/$archiveName"; then
+          if [[ $(checkSum "$fallbackArchive" "$sha256sum_de_GWD") != "true" ]]; then
+            rm -f -- "$fallbackArchive"
+            if timeout --signal=TERM --kill-after=5s 5400s wget --continue --directory-prefix="$fallbackArchiveDir" --connect-timeout=10 --read-timeout=30 --tries=4 --waitretry=2 --no-check-certificate --show-progress -q "$repoFallbackBase/$archiveName"; then
+              [[ $(checkSum "$fallbackArchive" "$sha256sum_de_GWD") = "true" ]] || rm -f -- "$fallbackArchive"
+            fi
+          fi
+        fi
+      fi
+
+      if [[ $(checkSum "$primaryArchive" "$sha256sum_de_GWD") = "true" ]]; then
+        mv -f "$primaryArchive" /opt/de_GWD/.repo/de_GWD.zip
+      elif [[ $(checkSum "$fallbackArchive" "$sha256sum_de_GWD") = "true" ]]; then
+        mv -f "$fallbackArchive" /opt/de_GWD/.repo/de_GWD.zip
+      else
+        echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}"
+        exit 1
+      fi
     fi
 fi
 

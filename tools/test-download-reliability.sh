@@ -265,6 +265,128 @@ run_server_case(){
   printf 'PASS server repoDL %s\n' "$mode"
 }
 
+run_client_archive_case(){
+  local mode=$1
+  local fixture="$test_root/client-archive-$mode"
+  local oldPayload='existing-client-archive'
+  local goodPayload='client-archive-prefix-and-rest'
+  local partialPayload='interrupted-client-archive'
+  local target="$fixture/opt/de_GWD/.repo/de_GWD.zip"
+  local status=0
+  mkdir -p "$fixture/opt/de_GWD/.repo" "$fixture/tmp"
+  printf '%s' 'current-ipchnroute' >"$fixture/opt/de_GWD/.repo/IPchnroute"
+  printf '%s' "$oldPayload" >"$target"
+  if [[ $mode == resume ]]; then
+    printf '%s' 'client-archive-prefix-' >"$fixture/tmp/de_GWD.zip"
+    mkdir -p "$fixture/tmp/de_GWD_download/primary"
+    printf '%s' 'older-' >"$fixture/tmp/de_GWD_download/primary/de_GWD_amd64.zip"
+  fi
+
+  (
+    set +e
+    WHITE='' RED='' GREEN='' cRES=''
+    repoBase='https://primary.invalid'
+    repoFallbackBase='https://fallback.invalid'
+    chnrouteBase='https://chnroute.invalid'
+    architecture=amd64
+    DOWNLOAD_MODE=$mode
+    ARG_LOG="$fixture/args.log"
+    HASH_IPCHNROUTE=$(sha256_text 'current-ipchnroute')
+    HASH_ARCHIVE=$(sha256_text "$goodPayload")
+    GOOD_PAYLOAD=$goodPayload
+    PARTIAL_PAYLOAD=$partialPayload
+
+    extract_function checkSum "$repo_root/client" >"$fixture/checkSum.bash"
+    source "$fixture/checkSum.bash"
+    extract_function preDL "$repo_root/client" | sed \
+      -e "s|/tmp/|$fixture/tmp/|g" \
+      -e "s|/opt/de_GWD|$fixture/opt/de_GWD|g" \
+      -e '/^cat << "EOF" >.*\/tcpTime/,$d' >"$fixture/preDL.bash"
+    printf 'return 0\n}\n' >>"$fixture/preDL.bash"
+    source "$fixture/preDL.bash"
+    cd "$fixture"
+
+    timeout(){
+      printf 'timeout %s\n' "$*" >>"$ARG_LOG"
+      while [[ ${1-} == --* ]]; do shift; done
+      shift
+      "$@"
+    }
+    curl(){
+      printf 'curl %s\n' "$*" >>"$ARG_LOG"
+      case "$*" in
+        *IPchnroute.sha256sum*) printf '%s\n' "$HASH_IPCHNROUTE" ;;
+        *de_GWD_amd64.zip.sha256sum*) printf '%s\n' "$HASH_ARCHIVE" ;;
+        *aliyun.com*) printf '%s\n' 'Date: Sat, 07 Nov 2026 12:00:00 GMT' ;;
+        *) return 2 ;;
+      esac
+    }
+    wget(){
+      local output='' url=''
+      local i
+      local -a args=("$@")
+      printf 'wget %s\n' "${args[*]}" >>"$ARG_LOG"
+      for ((i=0; i<${#args[@]}; i++)); do
+        case ${args[i]} in
+          --directory-prefix=*) output=${args[i]#*=} ;;
+          http://*|https://*) url=${args[i]} ;;
+        esac
+      done
+      [[ -n $output && -n $url ]] || return 2
+      mkdir -p "$output"
+      output="$output/${url##*/}"
+      case $DOWNLOAD_MODE in
+        fallback)
+          if [[ $url == https://primary.invalid/* ]]; then
+            printf '%s' "$PARTIAL_PAYLOAD" >"$output"
+            return 8
+          fi
+          if [[ -s $output ]]; then
+            printf '%s' "$GOOD_PAYLOAD" >>"$output"
+          else
+            printf '%s' "$GOOD_PAYLOAD" >"$output"
+          fi
+          ;;
+        resume)
+          [[ $url == https://primary.invalid/* && $(<"$output") == 'client-archive-prefix-' ]] || return 9
+          printf '%s' 'and-rest' >>"$output"
+          ;;
+        fail) printf '%s' "$PARTIAL_PAYLOAD" >"$output"; return 8 ;;
+        mismatch) printf '%s' "$PARTIAL_PAYLOAD" >"$output" ;;
+        success) printf '%s' "$GOOD_PAYLOAD" >"$output" ;;
+      esac
+    }
+    unzip(){ printf '%s\n' 'No errors detected in compressed data'; }
+    preDL
+  ) >"$fixture/output.log" 2>&1 || status=$?
+
+  if [[ $mode == success || $mode == fallback || $mode == resume ]]; then
+    if [[ $status -ne 0 ]]; then
+      report_case_failure "$fixture" "client preDL archive $mode returned status $status"
+      return 1
+    fi
+    if [[ $(<"$target") != "$goodPayload" ]]; then
+      report_case_failure "$fixture" "client preDL archive $mode did not install verified content"
+      return 1
+    fi
+  else
+    if [[ $status -eq 0 ]]; then
+      report_case_failure "$fixture" "client preDL archive $mode unexpectedly succeeded"
+      return 1
+    fi
+    if [[ $(<"$target") != "$oldPayload" ]]; then
+      report_case_failure "$fixture" "client preDL archive $mode changed the existing archive"
+      return 1
+    fi
+  fi
+  if ! grep -Fq -- 'timeout --signal=TERM --kill-after=5s 5400s' "$fixture/args.log" \
+    || ! grep -Fq -- 'wget --continue --directory-prefix=' "$fixture/args.log"; then
+    report_case_failure "$fixture" "client preDL archive $mode did not use resumable long-download settings"
+    return 1
+  fi
+  printf 'PASS client preDL archive %s\n' "$mode"
+}
+
 assert_download_bounds(){
   local log_file=$1
   grep -Fq -- 'curl --connect-timeout 10 --max-time 60 --retry 3 --retry-delay 2 --retry-max-time 180' "$log_file"
@@ -278,4 +400,9 @@ run_client_case success
 run_server_case fail
 run_server_case mismatch
 run_server_case success
+run_client_archive_case fail
+run_client_archive_case mismatch
+run_client_archive_case success
+run_client_archive_case fallback
+run_client_archive_case resume
 printf '%s\n' 'PASS: isolated client/server core downloads preserve old files on transfer/checksum failure and replace only after checksum success'
