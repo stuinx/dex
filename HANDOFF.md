@@ -4,7 +4,7 @@
 - 根因：vm1225 的 Nginx 使用 PHP 8.5.12；页面模板将 `installed` 当裸常量比较，PHP 8 抛出 `Undefined constant "installed"` 并在页眉后终止。nginx/php-fpm 服务均 active，错误日志在截图时段记录了 index.php fatal。
 - 修复：dev 的 `resource/client/ui-web/{index,nodes,update,app,forward,ddns}.php` 将 14 处裸常量比较改为字符串；客户端 Archive 已同步，SHA256 `dc010c06b6f073c8430c2cd5950a96ffb9dbfb73a4841ff940ee1b3cb596e907`。这一比较未在原优化差异中变更；PHP 8 运行时使原缺陷显现。
 - vm1225 已做最小在线修复，六个旧页面分别保留于 `/root/dex-php85-blank-page-20261107-lm212wkj/`，模式/属主保留；未重启服务。Chrome 登录页重载后主体和节点、DNS、IP 区域完整显示；六页 PHP 8.5 lint 与 Nginx 配置检查通过。
-- 本地验证：Archive 源码逐字节一致（1753 项）、release-chain 校验、`git diff --check` 通过。变更尚待提交/推送。
+- 本地验证：Archive 源码逐字节一致（1753 项）、release-chain 校验、`git diff --check` 通过。修复提交 `e5263ad` 已正常推送至 `origin/dev`，推送后本地工作区干净。
 - 先前 code review 的其他发现仍未修复：SET_*.nft 持久化 `flush set` 导致重启冷加载失败；legacy Rproxy 迁移未校验 listen/TLS；ping/speed 对省略端口的旧节点拒绝。不得把本次页面恢复说成这些问题已解决。
 
 # 当前交接：双端验收通过，代码已推送 dev（2026-11-06）

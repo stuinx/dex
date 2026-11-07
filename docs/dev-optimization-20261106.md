@@ -4,7 +4,7 @@
 
 - vm1225 在更新后出现首页仅显示页眉、正文空白。活动 Nginx 指向 PHP 8.5.12；错误日志记录 `index.php` 因未加引号的 `installed` 常量而 fatal。对应比较在此前优化差异中未修改，更新后的 PHP 8 运行时使遗留写法失效。
 - 六个 Web 页面共 14 处 `=== installed` 改为 `=== 'installed'`，并同步重打包客户端 `Archive.zip`。vm1225 六个线上页面已用相同最小修复恢复，更新前副本备份至 `/root/dex-php85-blank-page-20261107-lm212wkj/`。
-- 验证：Chrome 原登录页重载后节点表、DNS 和 IP 配置区均显示；六页 PHP 8.5 lint、Nginx 配置、Archive 1753 项源码逐字节检查、release-chain 检查和 `git diff --check` 通过。此修复后续提交/推送状态以 Git 核验为准。
+- 验证：Chrome 原登录页重载后节点表、DNS 和 IP 配置区均显示；六页 PHP 8.5 lint、Nginx 配置、Archive 1753 项源码逐字节检查、release-chain 检查和 `git diff --check` 通过。修复提交 `e5263ad` 已正常推送至 `origin/dev`。
 
 ## 范围与基线
 
