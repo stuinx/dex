@@ -1,3 +1,44 @@
+# 当前交接：Client 慢速归档下载修复与 vm1252 验收（2026-11-07）
+
+- 用户要求修复 vm1252 上 de_GWD 客户端归档下载失败，并已授权用本机 `stuinxo` 身份测试 `root@10.0.0.252`。本地仓库 `/Users/stuinx/Documents/ChatGPT/dex-workspace/原始仓库/dex` 当前为 `dev`，基线 `2c17efa4c219837478530e0f2b756b270d2355f2`。
+- `client` 的 `preDL()` 将归档全局下载时限从 300 秒延长到 5400 秒，按主源/备用源分别保留可续传分片，先沿用较大的历史 `/tmp/de_GWD.zip` 分片，校验和不符时重试干净下载；只有 SHA256 正确才移动到 `/opt/de_GWD/.repo/de_GWD.zip`。不完整分片跨重试保留。对应回归用例加入 `tools/test-download-reliability.sh`。
+- 本地验收通过：Client/Server download-reliability 的 11 个场景、`bash -n client`、测试脚本语法、`git diff --check`、`tools/check-self-owned-release-chain.sh`；资源链根目录的 amd64 包 SHA256 为 `84ba0e4f320bab67e9449effef8944385691a61c2bfaebd0e05288fd116c4fa5`。
+- vm1252 实测用当前 `preDL()` 下载归档阶段：第一次网络尝试只留下 375829 字节备用源分片并失败；再次测试从该分片续传，耗时约 6 分 10 秒，完成 51972660 字节，SHA256 与 dev 校验值一致，`unzip -tq` 通过。已放入 `/opt/de_GWD/.repo/de_GWD.zip`；用户原始 `/tmp/de_GWD.zip` 仍保留（10513344 字节）。没有改动配置或启动服务。
+- 该 VM 目前仍缺 `/etc/de_GWD/0conf` 与 `/opt/de_GWD/vtrui/vtrui`，所以这次只验收了失败的 Client 归档获取边界，没有执行完整安装/更新或运行态 Client 验收。`sam`/Server 源码未改；sam 与 vm1225 的全面验证记录见下面 2026-11-06 交接。本次 Client-only 下载修复由 vm1252 直接验收。
+- 修复提交 `e898e07` 已从基线 `2c17efa` 正常快进推送至 `origin/dev`，未强推。推送前确认远端仍在同一基线；本地回归与发布资源链均通过。
+
+# 当前交接：vm1252 SSH 核验与安装状态（2026-11-07）
+
+- 用户授权使用本机 `stuinxo` SSH 身份登录 `root@10.0.0.252`。SSH 首次提示主机密钥变更；通过已登录的 Proxmox 控制台在 VM 1252 内读取地址和 ED25519 指纹，均与目标 IP 及 SSH 握手一致后，才用临时 known_hosts 文件建立 SSH。没有覆盖本机原 known_hosts。
+- 该机报告 `amd64`，hostname `dex`，IP `10.0.0.252`。此前安装/更新失败遗留 `/tmp/de_GWD.zip` 2,932,416 字节；`/opt/de_GWD/.repo/de_GWD.zip`、`/opt/de_GWD/vtrui/vtrui`、`/etc/de_GWD/0conf` 和 `/var/www/html/index.php` 均不存在。`nftables` disabled/inactive 且规则集为空；当前没有可恢复的 vtrui 二进制。此状态符合新装/半完成 Client，不能当作既有 Client 验收。
+- DNS 对 `gh.stuinx.eu.org` 和 `raw.githubusercontent.com` 均可解析。主源 checksum 曾返回 HTTP 200/65 字节；主源对 1 字节 Range GET 返回 HTTP 206，但 256 KiB Range GET 在连接阶段 10 秒超时，HEAD 探测也有超时/成功交替；直连 GitHub checksum 请求超时。结合用户日志中的低速 5% 下载，当前证据指向下载连接不稳定/无法持续传输，而不是 DNS 或校验文件缺失；因脚本使用静默 wget，尚未取得确切 wget 失败原因或完整归档哈希。
+- `Failed to issue method call: Access denied` 与归档错误是两件事，最可能来自 `localectl`/`timedatectl` 的 D-Bus 调用，具体命令未核实。脚本仍输出无条件的 `System Config` 成功标记。
+- 本轮仅通过 SSH/PVE 做只读核查，没有重跑安装、启动服务、改远端配置或传输文件。下一步若继续 VM1252 Client 验收，先取得完整且通过 SHA256 的归档，再按用户授权范围运行安装/更新并验证；不要将此 VM 的状态与 vm1225 混同。
+
+# 当前交接：Client 更新归档下载校验失败（2026-11-07）
+
+- 用户提供的新日志标注主机 `vm1252`，shell 提示符为 `root@dex`。Locale 生成后出现 `Failed to issue method call: Access denied`，随后系统配置函数仍打印成功标记；`/tmp/IPchnroute` 下载完成，`/tmp/de_GWD.zip` 仅到约 5%，最后脚本返回 `de_GWD Zip Download Failed` 并退出到 root 提示符。
+- 当前 `client` 的 `preDL()` 对 de_GWD zip 下载后比对 SHA256；主源校验失败后重试备用源，若仍不匹配便退出。下载使用 300 秒总时限、30 秒 read timeout 和最多 4 次尝试。该日志证明归档未通过最终校验；仅凭现有输出不能分辨主源超时、备用源异常或返回内容不匹配。
+- 流程在归档验证/解包前失败；没有证据显示新的 de_GWD 归档已应用。此前 `preConf()` 已运行，所以 locale/timezone 等系统配置步骤可能已对主机产生部分影响。`Access denied` 最可能来自 `localectl`/`timedatectl` 的 D-Bus 调用，具体命令尚未确定；成功标记是无条件打印。
+- 没有连接或操作该主机，没有并发重跑更新。后续先从该主机只读检查 `/tmp/de_GWD.zip`（若仍存在）的大小和 SHA256，并分别诊断 `gh.stuinx.eu.org` 主源与 `raw.githubusercontent.com` 备用源；不要把此日志当作更新完成。主机名以用户本次标注 `vm1252` 记录，不与先前 vm1225 测试混同。
+
+# 当前交接：Client 更新下载缓慢及 locale D-Bus 提示（2026-11-07）
+
+- 用户提供的更新日志显示 `locale-gen en_US.UTF-8` 完成，随后出现一次 `Failed to issue method call: Access denied`，脚本仍输出 `System Config` 成功标记并继续下载；本轮未连接 vm1225 检查实时进程。
+- `client` 的 `preConf()` 在 locale 生成后调用 `localectl set-locale`，并调用 `timedatectl`；没有对这些命令逐项检查失败，末尾成功标记无条件输出。该 D-Bus 提示最可能来自 `localectl`/`timedatectl`，单凭日志片段不能精确区分；不阻止流程继续。
+- 随后 `/tmp/IPchnroute` 下载完成并进入 `de_GWD.zip` 下载，说明更新已到 `preDL()` 的归档获取阶段。提供的速度为约 23 KB/s、预计约 35 分钟。
+- `preDL()` 下载归档的每个来源都有 300 秒超时；主源校验失败后会试 `raw.githubusercontent.com` 备用源，每个尝试最多 300 秒。当前速度若持续，主源会在归档完成前超时并转试备用源。只有校验和通过后才会把临时 zip 移入 `/opt/de_GWD/.repo/de_GWD.zip` 并进入后续解包；本日志尚无解包/安装结果。
+- 未操作或中断用户正在运行的更新，也未改源码或远端配置。后续先观察 300 秒后的主源/备用源结果，避免并发启动第二个更新进程。
+
+# 当前交接：节点测速异常定位（2026-11-07）
+
+- 用户反馈 vm1225 节点表第 13 行 `tw.vin.dpdns.org:2087` 测速为 ERROR，第 14 行 `sam.stuinx.eu.org:443` 测速 5.43。
+- 此前在 vm1225 实际运行 Client 脚本：gcp-tw TCP 延迟 195 ms、测速 ERROR；sam TCP 延迟 208 ms、测速 5.44 MB/s。与用户截图数值不同，需按采样时点看待。
+- 本机网络对 `https://tw.vin.dpdns.org:2087/spt` 的 TLS 校验通过，但 HEAD/GET 均返回 HTTP 404；对 `https://sam.stuinx.eu.org/spt` 的 TLS 校验通过，HEAD 返回 200，范围 GET 返回 206 且下载 1 字节。
+- 源码 `resource/client/ui-script/ui-speedT` 固定请求 `https://<domain:port>/spt`；Server Nginx 文档根目录为 `/var/www/html`，安装时应创建 `/var/www/html/spt`（约 100 MiB）。目前可确认 gcp-tw 入口未提供 `/spt`，但实际原因（文件缺失、虚拟主机或端口映射）尚未登录服务器核验。
+- 判断：该测速 ERROR 与 vm1225 的 DNS/证书校验无关，现有证据指向 gcp-tw 服务端测速路径响应 404。没有修改源码、服务器配置或推送代码。
+- 后续如要恢复测速，应在 gcp-tw 主机核对 `/var/www/html/spt` 是否存在，以及 2087 对应 Nginx `listen`/`server_name`/root；修复后从 vm1225 重跑两条 Client 脚本。`sam` 当前端点正常。
+
 # 当前交接：Client 更新的本机 DNS 故障已恢复（2026-11-07）
 
 - 用户在 vm1225 运行 de_GWD Fast Update 时，`preDL` 无法解析 `gh.stuinx.eu.org`，报 IPchnroute checksum 下载失败。
