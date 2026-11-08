@@ -1,7 +1,7 @@
 #!/bin/bash
 set -o pipefail
 
-rawProxyBase="${DE_GWD_GH_RAW_BASE:-https://gh.stuinx.eu.org/https://raw.githubusercontent.com}"
+rawProxyBase="${DE_GWD_GH_RAW_BASE:-https://ghfast.top/https://raw.githubusercontent.com}"
 chnrouteBase="${DE_GWD_CHNROUTE_BASE:-$rawProxyBase/stuinx/chnroute/main}"
 
 exec 9>/opt/de_GWD/.repo/.rules-update.lock || exit 1

@@ -2160,7 +2160,13 @@ EOF
 systemctl daemon-reload >/dev/null
 systemctl enable "$phpFpmService" >/dev/null 2>&1
 systemctl restart "$phpFpmService" || exit 1
-if [[ $(systemctl is-active "$phpFpmService") != "active" ]] || [[ ! -S $phpFpmSocket ]]; then
+for attempt in {1..10}; do
+  if systemctl is-active --quiet "$phpFpmService" && [[ -S $phpFpmSocket ]]; then
+    break
+  fi
+  sleep 1
+done
+if ! systemctl is-active --quiet "$phpFpmService" || [[ ! -S $phpFpmSocket ]]; then
   echo -e "${WHITE}PHP-FPM${RED} Service or socket unavailable${cRES}"
   exit 1
 fi
@@ -2473,8 +2479,8 @@ cp -f /opt/de_GWD/.repo/version.php /var/www/html/act/version.php
 pullpihole(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Install Pi-hole${cRES}\r\c"
 dockerRegistry="${DE_GWD_DOCKER_REGISTRY:-hub.stuinx.eu.org}"
-dockerImage="$dockerRegistry/pihole/pihole:latest"
-docker pull "$dockerImage" || {
+dockerImage="${DE_GWD_DOCKER_IMAGE:-$dockerRegistry/pihole/pihole:latest}"
+docker pull --platform="linux/$(dpkg --print-architecture)" "$dockerImage" || {
   echo -e "${WHITE}Pi-hole${RED} Image download failed${cRES}"
   exit 1
 }
@@ -2484,7 +2490,7 @@ docker pull "$dockerImage" || {
 
 installPihole(){
 dockerRegistry="${DE_GWD_DOCKER_REGISTRY:-hub.stuinx.eu.org}"
-dockerImage="$dockerRegistry/pihole/pihole:latest"
+dockerImage="${DE_GWD_DOCKER_IMAGE:-$dockerRegistry/pihole/pihole:latest}"
 docker rm -f pihole >/dev/null 2>&1
 rm -rf "/etc/dnsmasq.d"
 mkdir -p "/etc/dnsmasq.d"
@@ -3489,7 +3495,7 @@ if [[ -f $nftFile ]]; then
   fi
 fi
 
-if command -v nft >/dev/null 2>&1 && nft list table ip de_GWD >/dev/null 2>&1; then
+if command -v nft >/dev/null 2>&1 && nft list chain ip de_GWD prerouting >/dev/null 2>&1; then
   if ! nft list set ip de_GWD HAProxyPort >/dev/null 2>&1; then
     nft add set ip de_GWD HAProxyPort '{ type inet_service; }' || return 1
   fi
